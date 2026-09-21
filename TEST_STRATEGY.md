@@ -3,15 +3,17 @@
 How each phase of [CUTOVER_PLAN.md](CUTOVER_PLAN.md) is proven correct, and how the test data that proves it is produced. Every phase must pass the same **three validation levels** before its proxy flag is flipped to `NEW` for all users; the mapping of legacy constructs to the code under test is in [COMPONENT_MAPPING.md](COMPONENT_MAPPING.md); the defects the tests must *not* preserve are in [TECH_DEBT_REGISTRY.md](TECH_DEBT_REGISTRY.md).
 
 > Starting position: the repository has **no automated tests** – no `tests/` directory, no utPLSQL, and `README.md:120` states all testing is manual via Forms (PROC-01). Everything below is new.
+>
+> **Two databases.** The target database is **PostgreSQL** ([MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md) §9–§10). The legacy PL/SQL is therefore kept runnable **on Oracle only**, as the characterization / golden oracle: the Phase 0 utPLSQL suites (§3) and the legacy side of every parallel-run and shadow-mode comparison (§2.2) execute against the legacy Oracle database, while the new path executes against PostgreSQL. Reconciliation (§2.3) compares **outputs** across the two engines/databases; it never replays Oracle SQL on PostgreSQL. Each module's Oracle packages are dropped once that module's gate has passed ([CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2 rule 6).
 
 ---
 
 ## 1. Principles
 
-1. **Golden oracle before porting.** The legacy PL/SQL, running against the repaired seed, is characterized with utPLSQL first; its outputs are committed as fixtures. Java is then written to those fixtures, not to the source code's comments (which are frequently wrong – ARCH-06, VAL-04).
+1. **Golden oracle before porting.** The legacy PL/SQL, running on Oracle against the repaired seed, is characterized with utPLSQL first; its outputs are committed as fixtures. Java is then written to those fixtures, not to the source code's comments (which are frequently wrong – ARCH-06, VAL-04). The Oracle instance exists for this purpose alone.
 2. **Tests assert the corrected value where a defect is being fixed.** For every known bug the team records a *preserve* or *fix* decision (§4). A "fix" fixture carries both `expected_legacy` and `expected_new`; the parallel-run diff must show *exactly* that difference and nothing else.
-3. **Same database, same inputs.** Legacy and new run against the same schema state (cloned per scenario), so differences are attributable to code, not data.
-4. **Reconciliation through the six `VW_*` views**, which no in-repo form or package references (`DATA_DICTIONARY.md` §6) and which therefore stay stable while everything else moves.
+3. **Same seeded state, same inputs, two databases.** Legacy runs on Oracle and new runs on PostgreSQL, each restored to the *same* scenario state (the repaired seed + fixtures loaded into both, or a CDC-synchronised copy during bake), so differences are attributable to code or to a *declared* Oracle→PostgreSQL semantic difference ([MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md) §10), not to data. Every comparison is on captured outputs normalised to a common form (numbers as scaled decimals, dates as ISO strings, `''` and `NULL` both reported as `NULL` with a separate `empty-string count` column).
+4. **Reconciliation through the six `VW_*` views on Oracle and their PostgreSQL equivalents.** The Oracle views are referenced by no in-repo form or package (`DATA_DICTIONARY.md` §6) and therefore stay stable while everything else moves; the PostgreSQL side runs an equivalent query per view (`tests/reconciliation/pg/`), with `WITH RECURSIVE` replacing `CONNECT BY` for the hierarchy.
 5. **No production PII, ever.** All fixtures are synthetic (§6.5).
 
 ---
@@ -22,8 +24,8 @@ How each phase of [CUTOVER_PLAN.md](CUTOVER_PLAN.md) is proven correct, and how 
 graph TD
   SEED["Repaired seed: 01_reference_data.sql + 02_employee_data.sql + edge-case fixtures"]
   L1["Level 1: JUnit unit / business-logic tests vs golden values"]
-  L2["Level 2: API contract diff / parallel run (same inputs through utPLSQL and REST)"]
-  L3["Level 3: Data reconciliation through the six VW_* views (counts + aggregates)"]
+  L2["Level 2: API contract diff / parallel run (same inputs through utPLSQL on Oracle and REST on PostgreSQL)"]
+  L3["Level 3: Data reconciliation - six VW_* views on Oracle vs equivalent queries on PostgreSQL (counts + aggregates)"]
   GOLD["Golden fixtures (utPLSQL output, committed)"]
   GATE["Phase exit gate"]
 
@@ -39,7 +41,7 @@ graph TD
 
 ### 2.1 Level 1 — Unit / business-logic (JUnit 5 vs golden values)
 
-- Pure-Java tests of services and validators, no database (`@ExtendWith(MockitoExtension.class)`) plus a thin slice of `@DataJpaTest` against Testcontainers Oracle for repository queries that replace dynamic SQL (`search_employees`, SEC-03).
+- Pure-Java tests of services and validators, no database (`@ExtendWith(MockitoExtension.class)`) plus a thin slice of `@DataJpaTest` against Testcontainers **PostgreSQL** for repository queries that replace dynamic SQL (`search_employees`, SEC-03), for the `WITH RECURSIVE` org-hierarchy query, and for the `GENERATED … STORED` `available` column.
 - Inputs and expected outputs come from the golden fixtures (§3) as parameterised tests (`@CsvFileSource`), so a change to a fixture is a reviewable diff.
 - Each legacy error code (`-20001 … -20504`, [COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) §11) has at least one test asserting the Java exception type, `ApiError.code`, and HTTP status.
 - Bean Validation rules in `hrms-validation` are tested once, centrally; the exported JSON schema consumed by React is snapshot-tested so the two tiers cannot drift (VAL-03 regression guard).
@@ -48,36 +50,60 @@ graph TD
 
 Harness (`tools/parallel-run/`, new): for each scenario file
 
-1. restore the scenario's schema snapshot (Oracle Flashback or a per-scenario PDB clone);
-2. execute the **legacy path** – the utPLSQL block that calls the package exactly as the form does (same argument order and defaults, e.g. `PKG_LEAVE.submit_leave_request(p_emp_id, p_leave_type_id, p_start_date, p_end_date, p_half_day_flag, p_reason, p_user)` as in `HRMS_LEAVE.xml:152-160`);
+1. restore the scenario's schema snapshot on **both** databases – Oracle Flashback or a per-scenario PDB clone on the legacy side, a template-database clone (`CREATE DATABASE … TEMPLATE scenario_base`) on the PostgreSQL side – from the same seed + fixture scripts (the Oracle fixture SQL and its PostgreSQL translation are generated together by `tools/fixtures/`);
+2. execute the **legacy path on Oracle** – the utPLSQL block that calls the package exactly as the form does (same argument order and defaults, e.g. `PKG_LEAVE.submit_leave_request(p_emp_id, p_leave_type_id, p_start_date, p_end_date, p_half_day_flag, p_reason, p_user)` as in `HRMS_LEAVE.xml:152-160`);
 3. capture: return value / `SQLCODE`, affected rows of the domain tables (excluding `CREATED_DATE/MODIFIED_DATE`), `AUDIT_LOG` rows (action + table), `NOTIFICATION_QUEUE` rows (type + recipient);
-4. restore the snapshot again;
-5. execute the **new path** – the REST call with the same payload and a JWT for the same `empId`;
-6. capture the same artefacts;
-7. diff; the result must be empty **or** match the scenario's declared `expected_diff` (only permitted for "fix" decisions in §4).
+4. (no second restore is needed – the two paths write to different databases);
+5. execute the **new path on PostgreSQL** – the REST call with the same payload and a JWT for the same `empId`;
+6. capture the same artefacts from PostgreSQL;
+7. normalise both captures (§1 principle 3) and diff; the result must be empty **or** match the scenario's declared `expected_diff` (only permitted for "fix" decisions in §4 or for a declared semantic difference tagged with its [MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md) §10 row, e.g. `pg-empty-string`).
 
-Where the legacy has no API (Forms-only logic such as `HRMS_EMPLOYEE` base-table DML), step 2 executes the equivalent SQL the form would issue (`INSERT INTO EMPLOYEES …`) so the DB triggers fire – this is how the trigger layer (`-20501…-20504`) gets a legacy oracle.
+Where the legacy has no API (Forms-only logic such as `HRMS_EMPLOYEE` base-table DML), step 2 executes the equivalent SQL the form would issue (`INSERT INTO EMPLOYEES …`) on Oracle so the DB triggers fire – this is how the trigger layer (`-20501…-20504`) gets a legacy oracle. PostgreSQL has no triggers; the new side's equivalent is the service call.
+
+**Shadow mode** (Payroll, [CUTOVER_PLAN.md](CUTOVER_PLAN.md) §8.3) is the same comparison run continuously on live data: legacy `PKG_PAYROLL` calculates on Oracle, the CDC feed carries the inputs to PostgreSQL, the Java engine calculates there into `payroll_details_shadow`, and the harness diffs per `(RUN, EMP_ID, ELEMENT_ID)`.
 
 ### 2.3 Level 3 — Data reconciliation through the six `VW_*` views
 
-Run after each Level-2 scenario suite and nightly during bake periods, against a **legacy-written** and a **new-written** copy of the same scenario script. Compare counts and aggregates, never full rows (views contain `SYSDATE`-dependent columns such as `TENURE_YEARS`).
+Run after each Level-2 scenario suite and nightly during bake periods, against a **legacy-written** copy on Oracle and a **new-written** copy on PostgreSQL of the same scenario script (during bake: the live Oracle schema vs the CDC-synchronised / new-written PostgreSQL schema). Compare counts and aggregates, never full rows (views contain `SYSDATE`-dependent columns such as `TENURE_YEARS`).
+
+The six `VW_*` views **live on Oracle and are never ported as views the new system depends on**. For each one the harness carries a PostgreSQL equivalent query in `tests/reconciliation/pg/<view>.sql`, translated once in Phase 0 (item 0.5a) and frozen until Phase 5; the pair is validated on the seed before any module cuts over (both must return identical result sets – that is the Phase 0 gate). Translation rules: `NVL`→`COALESCE`, `DECODE`→`CASE`, `SYSDATE`→`CURRENT_DATE`, `MONTHS_BETWEEN(…)/12`→`EXTRACT(YEAR FROM age(…))`, `LISTAGG`→`string_agg`, `ROUND(x,1)` unchanged, identifiers lower-cased. The hierarchy view is the only structural change:
+
+```sql
+-- tests/reconciliation/pg/vw_org_hierarchy.sql (equivalent of VW_ORG_HIERARCHY, DATA_DICTIONARY.md §6.2)
+WITH RECURSIVE org AS (
+  SELECT e.emp_id, e.manager_id, 1 AS org_level,
+         '/' || e.emp_id::text AS org_path, ARRAY[e.emp_id] AS visited
+  FROM   employees e
+  WHERE  e.manager_id IS NULL AND e.employment_status = 'ACTIVE'
+  UNION ALL
+  SELECT e.emp_id, e.manager_id, o.org_level + 1,
+         o.org_path || '/' || e.emp_id::text, o.visited || e.emp_id
+  FROM   employees e JOIN org o ON e.manager_id = o.emp_id
+  WHERE  e.employment_status = 'ACTIVE'
+  AND    NOT e.emp_id = ANY (o.visited)          -- cycle guard, replaces NOCYCLE
+)
+SELECT o.*, NOT EXISTS (SELECT 1 FROM org c WHERE c.manager_id = o.emp_id) AS is_leaf
+FROM   org o;
+```
+
+A cyclic chain is reported as "rows with `manager_id` never reached" (`employees` active rows minus `org` rows) and treated as the same **hard failure** the Oracle-side `CONNECT_BY_ISCYCLE=1` check produces.
 
 | View (`DATA_DICTIONARY.md` §6) | Count checks | Aggregate checks | Phase(s) | Notes |
 |---|---|---|---|---|
 | `VW_ACTIVE_EMPLOYEES` (§6.1) | `COUNT(*)`; `COUNT GROUP BY DEPT_ID`, `LOCATION_CODE`, `EMPLOYMENT_TYPE`, `GRADE_ID` | `SUM(CURRENT_SALARY)`, `COUNT(CURRENT_SALARY IS NULL)` (must be 0 – every active employee has exactly one active salary row) | 3, 4, 5 | `TENURE_YEARS` excluded (date-dependent). |
-| `VW_ORG_HIERARCHY` (§6.2) | `COUNT(*)`; `COUNT GROUP BY ORG_LEVEL`; `COUNT WHERE IS_LEAF=1` | `MAX(ORG_LEVEL)`; `ORG_PATH` equality per `EMP_ID` (string compare) | 3, 5 | Harness query wraps the view's base SQL with `CONNECT BY NOCYCLE` and reports `CONNECT_BY_ISCYCLE=1` rows as a **hard failure** rather than letting `ORA-01436` abort the run (DATA-02). The unmodified view must also execute without error. |
+| `VW_ORG_HIERARCHY` (§6.2) | `COUNT(*)`; `COUNT GROUP BY ORG_LEVEL`; `COUNT WHERE IS_LEAF=1` | `MAX(ORG_LEVEL)`; `ORG_PATH` equality per `EMP_ID` (string compare) | 3, 5 | Oracle side: harness query wraps the view's base SQL with `CONNECT BY NOCYCLE` and reports `CONNECT_BY_ISCYCLE=1` rows as a **hard failure** rather than letting `ORA-01436` abort the run (DATA-02); the unmodified view must also execute without error. PostgreSQL side: the `WITH RECURSIVE` query above; `ORG_PATH` format (`/id/id`) and `IS_LEAF` (`1/0` vs boolean) are normalised before compare. |
 | `VW_EMPLOYEE_COMPENSATION` (§6.3) | `COUNT(*)` (= active employees with an active salary row) | per `EMP_ID`: `BASE_SALARY`, `GRADE_MIN`, `GRADE_MAX`, `GRADE_MIDPOINT`; **`COMPA_RATIO` equal to 1 dp** (view formula `ROUND(BASE_SALARY / GRADE_MIDPOINT * 100, 1)`) – the Java `SalaryService.compaRatio()` is unit-tested against the same formula and the view is the cross-check; `AVG(COMPA_RATIO) GROUP BY GRADE_NAME` | 3, 4 | Detects a wrong grade join or a duplicate active salary row (would double-count). |
-| `VW_LEAVE_SUMMARY` (§6.4) | `COUNT(*)` per `(EMP_ID, LEAVE_TYPE_NAME)` for current `CALENDAR_YEAR` | per row: `OPENING_BALANCE`, `ACCRUED`, `USED`, `ADJUSTMENT`, `PENDING`; `SUM(USED)`, `SUM(PENDING)` per type; `UTILIZATION_PCT` | 2, 5 | **`AVAILABLE` in this view is `OPENING + ACCRUED − USED + ADJUSTMENT` and omits `− PENDING`** (VAL-05), while `LEAVE_BALANCES.AVAILABLE` (virtual column) and the new API subtract `PENDING`. The harness therefore asserts `view.AVAILABLE − api.available == view.PENDING` for every row – an exact, explainable offset – until the view is corrected in Phase 5, after which the offset must be 0. |
+| `VW_LEAVE_SUMMARY` (§6.4) | `COUNT(*)` per `(EMP_ID, LEAVE_TYPE_NAME)` for current `CALENDAR_YEAR` | per row: `OPENING_BALANCE`, `ACCRUED`, `USED`, `ADJUSTMENT`, `PENDING`; `SUM(USED)`, `SUM(PENDING)` per type; `UTILIZATION_PCT` | 2, 5 | **`AVAILABLE` in this view is `OPENING + ACCRUED − USED + ADJUSTMENT` and omits `− PENDING`** (VAL-05), while `LEAVE_BALANCES.AVAILABLE` (Oracle virtual column; PostgreSQL `GENERATED ALWAYS AS … STORED`) and the new API subtract `PENDING`. The harness therefore asserts `view.AVAILABLE − api.available == view.PENDING` for every row – an exact, explainable offset – until the PostgreSQL reconciliation query is corrected in Phase 5, after which the offset must be 0. The PostgreSQL equivalent query deliberately reproduces the Oracle view's formula (omitting `− PENDING`) until then. |
 | `VW_PAYROLL_LATEST` (§6.5) | `COUNT(*)` (= employees with an approved run) | per `EMP_ID`: `GROSS_PAY`, `TOTAL_TAXES`, `TOTAL_DEDUCTIONS`, `NET_PAY` **to the cent**; `SUM(NET_PAY)`, `SUM(GROSS_PAY)`; invariant `GROSS_PAY − TOTAL_TAXES − TOTAL_DEDUCTIONS == NET_PAY` | 4, 5 | The view derives `NET_PAY` as `SUM(AMOUNT)` and relies on taxes/deductions being **negative** – the Java engine must keep that sign convention or the view (and reconciliation) silently breaks. `STATUS='ERROR'` detail rows are excluded by the view; their count is compared separately from `PAYROLL_DETAILS`. |
 | `VW_PENDING_APPROVALS` (§6.6) | `COUNT GROUP BY APPROVAL_TYPE`; `COUNT GROUP BY APPROVER_ID` | `MIN/MAX(REQUEST_DATE)` | 1, 2, 5 | `PERFORMANCE` rows = reviews in `MANAGER_REVIEW`; `LEAVE` rows = `PENDING` requests. `DETAILS` string compared exactly (`'N day(s) MM/DD-MM/DD'`) to catch business-day count differences. |
 
-Tolerance: monetary values 0.00; ratios 0.1 (matching the views' own `ROUND(…,1)`); counts 0.
+Tolerance: monetary values 0.00; ratios 0.1 (matching the views' own `ROUND(…,1)`); counts 0. Oracle `NUMBER` and PostgreSQL `NUMERIC` are compared as scaled `BigDecimal` after the same `ROUND`; a difference attributable to `''`-vs-`NULL` (e.g. a `GROUP BY` bucket appearing only on one side) is reported under its own `pg-empty-string` tag and is a failure unless the migration's empty-string normalisation explains it ([RISK_REGISTER.md](RISK_REGISTER.md) R-12).
 
 ---
 
 ## 3. Characterization testing with utPLSQL (the golden oracle)
 
-Delivered in Phase 0 (item 0.5 of [CUTOVER_PLAN.md](CUTOVER_PLAN.md)). Suites live in a new `tests/utplsql/` directory (does not exist today). Each suite runs against the repaired seed and writes its observed outputs to `tests/golden/<package>.<procedure>.csv`, which is then committed and reviewed – **the review is where "preserve vs fix" is decided** (§4).
+Delivered in Phase 0 (item 0.5 of [CUTOVER_PLAN.md](CUTOVER_PLAN.md)). Suites live in a new `tests/utplsql/` directory (does not exist today) and run **on the legacy Oracle instance only** – utPLSQL has no PostgreSQL port and none is wanted, because no PL/SQL exists on the target. The Oracle instance and each `PKG_*` package are retained precisely as long as the suites below are still the oracle for an un-validated module. Each suite runs against the repaired seed and writes its observed outputs to `tests/golden/<package>.<procedure>.csv`, which is then committed and reviewed – **the review is where "preserve vs fix" is decided** (§4).
 
 | Package.procedure | Scenarios characterised | Observed outputs captured | Notes / known defects surfaced |
 |---|---|---|---|
@@ -117,12 +143,11 @@ Recorded here so that Level-1 tests **assert the corrected value** and Level-2 d
 | Phase ([CUTOVER_PLAN.md](CUTOVER_PLAN.md)) | Level 1 – unit (JUnit) | Level 2 – contract diff / parallel run | Level 3 – reconciliation views | Acceptance gate (all must hold) |
 |---|---|---|---|---|
 | **0** Foundation | `auth-service`: BCrypt verify; JWT issue/expire from `SYSTEM_PARAMETERS`; role seeding reproduces `has_permission` truth table (grades 1–10 × `PAYROLL/EMPLOYEE/LEAVE/ADMIN/REPORTS` × `VIEW/EDIT/APPROVE/CREATE`); `FieldEncryptionService` round-trip; `SystemParameterService` defaults; `hrms-validation` schema snapshot | SSO bridge smoke (token → Forms session → `HRMS_MENU` opens with correct `:GLOBAL.current_emp_id` for every seed user); re-encryption: `decrypt_legacy(old) == decrypt_v2(new)` for all rows with `SSN_ENCRYPTED`/`ACCOUNT_NUMBER_ENC` | Baseline capture of all six views on the repaired seed (committed as `tests/golden/views-baseline.csv`); all views compile | Seed loads with 0 errors (DATA-01); utPLSQL golden suites (§3) committed and green; CI builds schema from scratch with `INVALID` = {`TRG_EMP_BEFORE_UPDATE`} only; security sign-off of the SEC-05/07/08 divergence |
-| **1** Performance | Review/goal state machines; rating bounds and labels; goal auto-complete; `generate_reviews_for_cycle` set | `create_review_cycle/open/generate/create_review/submit_self/submit_manager/acknowledge/add_goal/update_goal_progress` – empty diff on `REVIEW_CYCLES`, `PERFORMANCE_REVIEWS`, `PERFORMANCE_GOALS`, `AUDIT_LOG`, `NOTIFICATION_QUEUE` | `VW_PENDING_APPROVALS` (`PERFORMANCE`): counts by approver; `AVG(OVERALL_RATING)` per cycle (from base table, 1 dp) | Empty diff; view counts equal; 2-week bake with zero rollback |
+| **1** Performance | Review/goal state machines; rating bounds and labels; goal auto-complete; `generate_reviews_for_cycle` set | `create_review_cycle/open/generate/create_review/submit_self/submit_manager/acknowledge/add_goal/update_goal_progress` – empty diff on `REVIEW_CYCLES`, `PERFORMANCE_REVIEWS`, `PERFORMANCE_GOALS`, `AUDIT_LOG`, `NOTIFICATION_QUEUE` | `VW_PENDING_APPROVALS` (`PERFORMANCE`): counts by approver; `AVG(OVERALL_RATING)` per cycle (from base table, 1 dp) | Empty diff; view counts equal; 4-week bake with zero rollback |
 | **2** Leave | `BusinessCalendar` incl. observed holidays (**corrected**); overlap predicate incl. AM/PM (**corrected**); balance rule with `− PENDING`; tenure; 5-day past rule; full `-2020x/-2021x` contract; carryover expiry (**corrected**) | `submit/approve/reject/cancel_leave_request`, `run_monthly_accrual`, `process_carryover`, `expire_carryover` – empty diff **except** declared BUG-04/05/06 cases | `VW_LEAVE_SUMMARY`: all balance columns equal; `AVAILABLE` offset == `PENDING`; `VW_PENDING_APPROVALS` (`LEAVE`) counts and `DETAILS` strings equal except observed-holiday cases | Empty diff outside declared cases; one accrual cycle reconciled via `LEAVE_ACCRUAL_LOG`; scheduler hand-over verified (no double accrual) |
 | **3** Employee | `EmployeeNumberGenerator` (`EMP-000100` after seed; 50-thread race → 0 violations); every `-2000x/-2001x/-2050x` rule; hire-date limit (**single configured value**); e-mail uniqueness on insert *and* update; `-20503`/`-20504` invariants; acyclic manager check; `SalaryService` one-active-row invariant and `compaRatio()`; JPA `Specification` search equivalence with `search_employees` result sets for 20 filter combinations (SEC-03 replacement) | `create/update/transfer/promote/terminate/rehire_employee` and direct `INSERT/UPDATE/DELETE EMPLOYEES` (trigger layer) – empty diff except VAL-01 (91–180 days) and BUG-03 (extra history rows); `EMP_NUMBER` compared by format | `VW_ACTIVE_EMPLOYEES` counts/sums; `VW_EMPLOYEE_COMPENSATION` per-employee compa-ratio to 1 dp and exactly one active salary row; `VW_ORG_HIERARCHY` counts, `MAX(ORG_LEVEL)`, `ORG_PATH` per employee, no cycles | Read-only React pages reconciled first (`NEW_READONLY`); then writes; triggers dropped only after 1-week bake with empty nightly diff |
-| **4a** Payroll façade | Controller authz (`PAYROLL:VIEW/APPROVE`); DTO mapping of `PAY_PERIODS/PAYROLL_RUNS/PAYROLL_DETAILS` | Façade calls the *same* package – diff must be empty by construction; verifies JDBC parameter mapping and error-code translation (`-20102/-20103`) | `VW_PAYROLL_LATEST` unchanged before/after façade cutover (same engine) | Empty diff; operators run one full period through the React UI |
-| **4b** Payroll engine | `TaxEngine` boundary table for 2024 (all 6 single + 6 joint thresholds ±0.01, 4 frequencies, allowances 0–5); 10 legacy states + unlisted → `MISSING_TAX_RATE`; FICA/Medicare wage base; gross by frequency; sign convention; batch restart at employee 60 | `create → calculate → approve` for all 23 seed salary rows × `MONTHLY`/`BIWEEKLY` × filing statuses: per `(RUN, EMP_ID, ELEMENT_ID)` `AMOUNT` diff 0.00 for 2024; declared `expected_diff` for non-2024 / unlisted-state fixtures; `ERROR` rows identical | `VW_PAYROLL_LATEST` per employee gross/taxes/deductions/net to the cent; `SUM(NET_PAY)`; `GROSS − TAXES − DEDUCTIONS == NET` | Shadow mode: N (≥ 3) consecutive real periods with 0.00 difference on 2024-rule inputs and fully explained differences otherwise, signed off by Payroll; then `payroll.engine=JAVA` |
-| **5** Reporting / decommission | Report query tests; admin CRUD validation; corrected `VW_LEAVE_SUMMARY` and `NOCYCLE` `VW_ORG_HIERARCHY` unit-tested as SQL | `PKG_REPORTING` ref cursors vs REST, row-for-row per report | **Final full pass** of all six views old vs new *before* view definitions change; re-baseline committed *after* | Zero legacy proxy hits for 30 days; no `INVALID` objects; `tests/golden/views-baseline.csv` regenerated and reviewed |
+| **4** Payroll engine (sole payroll gate – no façade phase) | Controller authz (`PAYROLL:VIEW/APPROVE`); `TaxEngine` boundary table for 2024 (all 6 single + 6 joint thresholds ±0.01, 4 frequencies, allowances 0–5); 10 legacy states + unlisted → `MISSING_TAX_RATE`; FICA/Medicare wage base; gross by frequency; sign convention; batch restart at employee 60 | `create → calculate → approve` for all 23 seed salary rows × `MONTHLY`/`BIWEEKLY` × filing statuses: per `(RUN, EMP_ID, ELEMENT_ID)` `AMOUNT` diff 0.00 for 2024; declared `expected_diff` for non-2024 / unlisted-state fixtures; `ERROR` rows identical | `VW_PAYROLL_LATEST` per employee gross/taxes/deductions/net to the cent; `SUM(NET_PAY)`; `GROSS − TAXES − DEDUCTIONS == NET` | Shadow mode (legacy engine on Oracle vs Java engine on PostgreSQL): N (≥ 3) consecutive real periods with 0.00 difference on 2024-rule inputs and fully explained differences otherwise, signed off by Payroll; then `payroll.engine=JAVA` and `payroll=NEW` together with the cutover migration; operators remain on `HRMS_PAYROLL` until then |
+| **5** Reporting / decommission | Report query tests on PostgreSQL; admin CRUD validation; corrected leave-summary and recursive org-hierarchy reconciliation queries unit-tested as SQL | `PKG_REPORTING` ref cursors (Oracle) vs pure-Java `reporting-service` REST (PostgreSQL), row-for-row per report | **Final full pass** of all six Oracle views vs PostgreSQL equivalents *before* the query definitions change; re-baseline committed *after*; final Oracle view output archived | Zero legacy proxy hits for 30 days; no PL/SQL remaining in the target; Oracle instance decommissioned; `tests/golden/views-baseline.csv` regenerated and reviewed |
 
 ---
 
@@ -130,7 +155,7 @@ Recorded here so that Level-1 tests **assert the corrected value** and Level-2 d
 
 ### 6.1 Repair `data/seed/01_reference_data.sql` first (DATA-01)
 
-The seed does not load today (`ORA-00904`). Fix, in this order, then commit a CI job that runs DDL + seed against a containerised Oracle on every push:
+The seed does not load today (`ORA-00904`). Fix, in this order, then commit a CI job that runs DDL + seed against a containerised Oracle (legacy) **and** the translated DDL + seed against a containerised PostgreSQL (target) on every push:
 
 | Table | Seed as checked in | DDL (`schema/tables/*.sql`) | Fix |
 |---|---|---|---|
@@ -194,11 +219,12 @@ A generator (`tools/fixtures/`, new) reads the DDL `CHECK`/`NOT NULL`/`FK`/`UK` 
 
 | Concern | Tool | New path |
 |---|---|---|
-| PL/SQL characterization | utPLSQL 3.x | `tests/utplsql/` |
+| PL/SQL characterization | utPLSQL 3.x on the legacy Oracle instance (retired with the last package) | `tests/utplsql/` |
 | Golden fixtures | CSV, reviewed in PRs | `tests/golden/` |
-| Java unit | JUnit 5, Mockito, AssertJ, `@DataJpaTest` with Testcontainers Oracle | `backend/src/test/` |
-| Contract diff / parallel run | Java harness driving utPLSQL + REST, per-scenario Flashback/PDB clone | `tools/parallel-run/` |
-| Reconciliation | SQL pack over the six `VW_*` views, run by the harness and nightly in bake | `tools/reconcile/` |
+| Java unit | JUnit 5, Mockito, AssertJ, `@DataJpaTest` with Testcontainers PostgreSQL | `backend/src/test/` |
+| Contract diff / parallel run | Java harness driving utPLSQL (Oracle) + REST (PostgreSQL), per-scenario Flashback/PDB clone and PostgreSQL template clone, output normaliser | `tools/parallel-run/` |
+| Reconciliation | SQL pack: six `VW_*` views on Oracle + six equivalent queries on PostgreSQL (`WITH RECURSIVE` hierarchy), run by the harness and nightly in bake | `tools/reconcile/`, `tests/reconciliation/pg/` |
+| Schema migration | Flyway (PostgreSQL DDL), CDC round-trip smoke, row-count/checksum comparer | `backend/src/main/resources/db/migration/`, `tools/sync/` |
 | Fixture generation | constraint-driven generator, seeded RNG | `tools/fixtures/` |
 | React | Vitest + React Testing Library for components (`Toolbar`, `ReferenceDropdown`, `useErrorHandler`); Playwright for golden-path flows per phase; validation-schema snapshot test | `frontend/src/**/*.test.tsx`, `frontend/e2e/` |
 | Architecture | ArchUnit (no `employee` ⇄ `payroll` cycle; only `salary` writes `SALARY_RECORDS`) | `backend/src/test/.../ArchitectureTest.java` |

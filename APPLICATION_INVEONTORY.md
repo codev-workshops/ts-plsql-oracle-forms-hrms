@@ -4,6 +4,8 @@ Inventory of every source artifact physically present in this repository, derive
 
 Companion documents: [DEPENDENCY_MAP.md](DEPENDENCY_MAP.md), [DATA_DICTIONARY.md](DATA_DICTIONARY.md), [TECH_DEBT_REGISTRY.md](TECH_DEBT_REGISTRY.md).
 
+> **Target stack note.** Everything inventoried here is the *legacy* system: Oracle Forms 12c on WebLogic and PL/SQL on Oracle Database 19c. The modernization target ([MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md)) is Spring Boot + React on **PostgreSQL**; none of the Forms modules, `.pll` libraries, `PKG_*` packages or triggers below are carried into the target. The legacy schema remains on Oracle only during coexistence, where the packages serve as the characterization / golden oracle until each module is validated and then dropped ([CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2, [TEST_STRATEGY.md](TEST_STRATEGY.md) §3).
+
 ## Summary
 
 | Layer | Type | Count | Files |

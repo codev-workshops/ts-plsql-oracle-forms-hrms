@@ -1,6 +1,10 @@
 # HRMS Data Dictionary
 
-Schema: `HRMS` (Oracle Database 19c). Source of truth is the DDL under `schema/`. Business meaning is taken from DDL `COMMENT ON` statements, check constraints, and how the column is used by the packages, triggers, forms and seed data in this repository; where meaning is inferred only from the name it is marked *(inferred)*.
+Schema: `HRMS` (**legacy**: Oracle Database 19c). Source of truth is the DDL under `schema/`.
+
+> **Target database note.** This dictionary documents the legacy Oracle schema as checked in. The modernization target database is **PostgreSQL** ([MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md) §9–§10): the 30 tables and 29 sequences are migrated there, while the legacy Oracle schema remains only during coexistence as the data of record for not-yet-migrated modules and as the reconciliation/characterization oracle ([CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2). Oracle-specific constructs described below are therefore *legacy semantics to be preserved in behaviour, not definitions to be re-created as-is*: `VARCHAR2` (empty string = `NULL`) → `VARCHAR`/`TEXT` with blank-to-`NULL` normalisation; `NUMBER(p,s)` → `NUMERIC(p,s)`; `DATE` → `DATE` or `TIMESTAMP(0)` per column; `SEQ_*` (`CACHE 20`) → PostgreSQL sequences (`CACHE 1`, partitioned per [CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2 rule 4); the `LEAVE_BALANCES.AVAILABLE` virtual column (§3) → `GENERATED ALWAYS AS (…) STORED`; `CONNECT BY` in `VW_ORG_HIERARCHY` (§6.2) → `WITH RECURSIVE`; the six `VW_*` views (§6) stay on Oracle as reconciliation oracles with equivalent PostgreSQL queries ([TEST_STRATEGY.md](TEST_STRATEGY.md) §2.3); the triggers (§7) and every `PKG_*` package are replaced by Java services and are not ported.
+
+Business meaning is taken from DDL `COMMENT ON` statements, check constraints, and how the column is used by the packages, triggers, forms and seed data in this repository; where meaning is inferred only from the name it is marked *(inferred)*.
 
 Conventions used throughout:
 
