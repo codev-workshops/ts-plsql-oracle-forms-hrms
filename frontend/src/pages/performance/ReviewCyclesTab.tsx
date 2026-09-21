@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client';
-import type { CycleStatus, ReviewCycle } from '../../api/types';
+import type { CycleStatus, GenerateReviewsResult, ReviewCycle } from '../../api/types';
 import { useAuth } from '../../app/AuthContext';
 import { formatDate } from '../../app/format';
 import { useToast } from '../../app/ToastContext';
@@ -25,15 +25,15 @@ export function ReviewCyclesTab() {
   const query = useQuery({ queryKey: ['performance', 'cycles', params], queryFn: () => api.performance.listCycles(params) });
   const admin = hasAuthority('PERFORMANCE:ADMIN');
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['performance', 'cycles'] });
-  const action = useMutation<ReviewCycle | import('../../api/types').GenerateReviewsResult, unknown, { cycleId: number; type: 'open' | 'close' | 'generate' }>({
-    mutationFn: ({ cycleId, type }: { cycleId: number; type: 'open' | 'close' | 'generate' }) =>
+  const action = useMutation<ReviewCycle | GenerateReviewsResult, unknown, { cycleId: number; type: 'open' | 'close' | 'generate' }>({
+    mutationFn: ({ cycleId, type }) =>
       type === 'open' ? api.performance.openCycle(cycleId) : type === 'close' ? api.performance.closeCycle(cycleId) : api.performance.generateReviews(cycleId),
     onSuccess: (result, variables) => {
       invalidate();
       if (variables.type === 'open') push({ kind: 'success', message: 'Cycle opened' });
       else if (variables.type === 'close') push({ kind: 'success', message: 'Cycle closed' });
       else {
-        const generated = result as import('../../api/types').GenerateReviewsResult;
+        const generated = result as GenerateReviewsResult;
         push({ kind: 'success', message: `Generated ${generated.generated} reviews (${generated.skipped} skipped)` });
       }
     },

@@ -2,6 +2,13 @@
 
 exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the pages depend on 1`] = `
 {
+  "AcknowledgeRequest": {
+    "employeeComments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
   "ChangePasswordRequest": {
     "currentPassword": {
       "required": true,
@@ -45,6 +52,50 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "enum",
     },
   },
+  "GoalProgressRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "progressPct": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "GoalRequest": {
+    "goalCategory": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "goalDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "goalTitle": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "targetDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "weightPct": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+  },
   "LoginRequest": {
     "password": {
       "required": true,
@@ -52,6 +103,80 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
     "username": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "ManagerReviewRequest": {
+    "developmentPlan": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "improvementAreas": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerAssessment": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "overallRating": {
+      "required": true,
+      "rules": [
+        "-20403",
+        "-20403",
+      ],
+      "type": "decimal",
+    },
+    "strengths": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "ReviewCycleRequest": {
+    "calibrationDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "cycleName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "cycleYear": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "endDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "managerReviewDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "selfReviewDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "startDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "SelfAssessmentRequest": {
+    "selfAssessment": {
       "required": true,
       "rules": [],
       "type": "string",

@@ -37,14 +37,11 @@ describe('validation-schema adapter', () => {
   });
 
   it('snapshot: the DTO/field vocabulary the pages depend on', () => {
-    const snapshotDtos = new Set(['ChangePasswordRequest', 'EmployeeSearchQuery', 'LoginRequest', 'SsoExchangeRequest']);
     const shape = Object.fromEntries(
-      Object.entries(validationSchema.dtos)
-        .filter(([dto]) => snapshotDtos.has(dto))
-        .map(([dto, spec]) => [
+      Object.entries(validationSchema.dtos).map(([dto, spec]) => [
         dto,
         Object.fromEntries(Object.entries(spec.fields).map(([f, s]) => [f, { type: s.type, required: s.required, rules: (s.rules ?? []).map((r) => r.errorCode) }])),
-        ]),
+      ]),
     );
     expect(shape).toMatchSnapshot();
   });
