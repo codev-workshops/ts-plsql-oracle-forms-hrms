@@ -720,6 +720,7 @@ async def run_agent(label, prompt, schema, mode=None, minutes=60):
     node = label.split(".")[1]
     group = {"backend-salary": "backend", "remediate-backend": "remediate",
              "remediate-frontend": "remediate"}.get(node, node)
+    # mode is left unset (inherits the parent session mode); "lite" is gated per org.
     return await agent(
         prompt,
         phase=group,
@@ -799,7 +800,7 @@ async def run_phase(phase):
     backend_branch = backend_results[-1][1]["branch"]  # top of the backend stack (P3: employee-service)
 
     for round_no in range(1, MAX_REMEDIATION_ROUNDS + 2):
-        merge = await run_agent(f"{pid}.fan-in.r{round_no}", merge_prompt(phase, heads, round_no), MERGE_RESULT, mode="lite", minutes=30)
+        merge = await run_agent(f"{pid}.fan-in.r{round_no}", merge_prompt(phase, heads, round_no), MERGE_RESULT, minutes=30)
         if merge["conflicts_resolved"].startswith(("UNRESOLVED:", "BUILD-FAIL:")):
             raise RuntimeError(f"{pid} fan-in failed: {merge['conflicts_resolved']}")
 
@@ -840,7 +841,7 @@ async def run_phase(phase):
             log(f"[{pid}] gate {gate['gate_id']} pre-approved via HRMS_WF_APPROVED_GATES")
             granted.append({"gate_id": gate["gate_id"], "approver": "pre-approved (HRMS_WF_APPROVED_GATES)", "notes": ""})
             continue
-        decision = await run_agent(f"{pid}.approval.{gate['gate_id']}", approval_prompt(phase, gate), APPROVAL_RESULT, mode="lite", minutes=60)
+        decision = await run_agent(f"{pid}.approval.{gate['gate_id']}", approval_prompt(phase, gate), APPROVAL_RESULT, minutes=60)
         if not decision["approved"]:
             log(f"[{pid}] STOP: gate {gate['gate_id']} not approved ({decision['approver']}: {decision['notes']}). "
                 f"Re-run with the same run_id and HRMS_WF_APPROVED_GATES including {gate['gate_id']} once granted.")
@@ -848,7 +849,7 @@ async def run_phase(phase):
         granted.append({"gate_id": gate["gate_id"], "approver": decision["approver"], "notes": decision["notes"]})
 
     # 8. Promote – fast-forward the phase branch; next phase's contract cuts from it.
-    promoted = await run_agent(f"{pid}.promote", promote_prompt(phase, report["head_sha"], granted), PROMOTE_RESULT, mode="lite", minutes=30)
+    promoted = await run_agent(f"{pid}.promote", promote_prompt(phase, report["head_sha"], granted), PROMOTE_RESULT, minutes=30)
     log(f"[{pid}] promoted {promoted['phase_branch']} @ {promoted['head_sha']}")
     return {"phase": pid, "status": "promoted", "phase_branch": promoted["phase_branch"], "head_sha": promoted["head_sha"],
             "integration_report": report["report_url"]}
