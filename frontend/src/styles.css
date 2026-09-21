@@ -33,6 +33,7 @@ input[aria-invalid='true'], select[aria-invalid='true'] { border-color: #c0392b;
 .tile h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
 .tile p { margin: 0; color: #52606d; font-size: 0.9rem; }
 .tile-legacy small { display: block; margin-top: 0.5rem; color: #7b8794; }
+.tile-disabled { opacity: 0.6; cursor: not-allowed; background: #f5f7fa; }
 
 .toolbar { display: flex; gap: 0.4rem; align-items: center; padding: 0.5rem 0; }
 .toolbar-pagination { display: inline-flex; gap: 0.4rem; align-items: center; margin-left: 0.5rem; }

@@ -24,13 +24,20 @@ export function HomePage() {
               <p>{t.description}</p>
             </Link>
           ) : (
-            // Legacy module: full navigation so the reverse proxy performs the SSO exchange
-            // and opens the Forms module; the SPA never touches /legacy/sso/exchange itself.
-            <a key={t.id} href={t.path} className="tile tile-legacy" role="listitem" data-testid={`tile-${t.id}`} data-legacy="true">
+            // Legacy module (P0-D1, golden-oracle mode OFF): Oracle Forms are not run in this
+            // environment, so the tile is rendered disabled and never navigates.
+            <div
+              key={t.id}
+              className="tile tile-legacy tile-disabled"
+              role="listitem"
+              aria-disabled="true"
+              data-testid={`tile-${t.id}`}
+              data-legacy="true"
+            >
               <h2>{t.label}</h2>
               <p>{t.description}</p>
-              <small>Opens in Oracle Forms</small>
-            </a>
+              <small>Not available in this environment</small>
+            </div>
           ),
         )}
       </div>
