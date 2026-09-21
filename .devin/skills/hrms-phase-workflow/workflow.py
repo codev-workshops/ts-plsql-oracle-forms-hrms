@@ -637,6 +637,12 @@ Do NOT flip production proxy flags or drop anything on Oracle – those are oper
 # Reusable per-phase sub-graph
 # --------------------------------------------------------------------------
 
+def blocked(result):
+    """True only for a real blocker; agents often write 'none'/'None. Note: ...' when there is nothing blocking."""
+    text = (result.get("blockers") or "").strip()
+    return bool(text) and not text.lower().startswith(("none", "no blocker", "n/a", "-"))
+
+
 def gate_passed(result):
     return all(
         result[k]
@@ -692,7 +698,7 @@ async def run_backend(phase, contract_branch, pid):
         res = await run_agent(
             f"{pid}.{node['name']}", impl_prompt(phase, "backend", node, branch, base, extra_note=note), BRANCH_RESULT, minutes=90)
         results.append((node["name"], res))
-        if res["blockers"]:
+        if blocked(res):
             raise RuntimeError(f"{pid} {node['name']} reported blockers: {res['blockers']}")
         base = branch  # next node stacks on this one
     return results
@@ -704,7 +710,7 @@ async def run_phase(phase):
 
     # 1. Contract node – freezes the API surface; nothing fans out before it lands.
     contract = await run_agent(f"{pid}.contract", contract_prompt(phase), CONTRACT_RESULT, minutes=45)
-    if contract["blockers"]:
+    if blocked(contract):
         raise RuntimeError(f"{pid} contract blocked: {contract['blockers']}")
     contract_branch = contract["branch"]
     log(f"[{pid}] contract landed: {contract['pr_url']} @ {contract['head_sha']}")
@@ -726,10 +732,10 @@ async def run_phase(phase):
                           impl_prompt(phase, "frontend", phase["frontend"], frontend_branch, contract_branch, extra_note=fe_note),
                           BRANCH_RESULT, minutes=90),
     ])
-    if frontend["blockers"]:
+    if blocked(frontend):
         raise RuntimeError(f"{pid} frontend reported blockers: {frontend['blockers']}")
     for name, r in backend_results:
-        if r["blockers"]:
+        if blocked(r):
             raise RuntimeError(f"{pid} {name} reported blockers: {r['blockers']}")
     if not (frontend["level1_passed"] and all(r["level1_passed"] for _, r in backend_results)):
         raise RuntimeError(f"{pid}: a parallel session finished without green Level-1 tests; fan-in refused")
@@ -769,7 +775,7 @@ async def run_phase(phase):
                                                         BRANCH_RESULT, minutes=90)))
         fixed = await parallel([t for _, t in tasks])
         for (role, _), res in zip(tasks, fixed):
-            if res["blockers"]:
+            if blocked(res):
                 raise RuntimeError(f"{pid} {role} remediation blocked: {res['blockers']}")
             heads = [(b, res["head_sha"] if b == res["branch"] else s) for b, s in heads]
         log(f"[{pid}] remediation r{round_no} pushed by {[r for r, _ in tasks]}; re-running fan-in + integration")
