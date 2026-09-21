@@ -178,7 +178,7 @@ Environment variables read at start (defaults in the file):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HRMS_WF_BASE_BRANCH` | `main` | branch P0 is cut from; must carry the reference documents |
+| `HRMS_WF_BASE_BRANCH` | `devin/1789629102-hrms-analysis-artifacts` | branch P0 is cut from; must carry the reference documents |
 | `HRMS_WF_PHASES` | `P0,P1,P2,P3,P4,P5` | subset to run (in order); earlier phases must already be promoted |
 | `HRMS_WF_APPROVED_GATES` | empty | gate ids granted out of band, e.g. `P1.bake-4-weeks,P4.shadow-gate` |
 

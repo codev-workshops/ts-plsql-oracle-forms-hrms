@@ -29,7 +29,7 @@ REPO = "codev-workshops/ts-plsql-oracle-forms-hrms"
 REPO_URL = f"https://github.com/{REPO}"
 
 # Branch that carries the reference documents and from which phase/p0-foundation is cut.
-BASE_BRANCH = os.environ.get("HRMS_WF_BASE_BRANCH", "main")
+BASE_BRANCH = os.environ.get("HRMS_WF_BASE_BRANCH", "devin/1789629102-hrms-analysis-artifacts")
 
 # Phases to run in this invocation (subset of P0..P5, in order). Earlier phases
 # must already be promoted; the workflow verifies the previous phase branch exists.
@@ -644,14 +644,31 @@ def gate_passed(result):
     ) and result["failure_owner"] == "none"
 
 
-def run_agent(label, prompt, schema, mode="default", minutes=60):
-    return agent(
+WF_PHASES = [
+    {"title": "contract", "detail": "Freeze the module API surface (endpoints, ApiError codes, validation-schema.json) as a contract PR"},
+    {"title": "backend", "detail": "Spring services/entities/Flyway + Level-1 JUnit + parallel-run scenarios, stacked on contract"},
+    {"title": "frontend", "detail": "React pages + Vitest, consuming the generated validation schema, stacked on contract"},
+    {"title": "fan-in", "detail": "Merge backend+frontend heads on top of contract into the integration branch"},
+    {"title": "integration", "detail": "Playwright e2e + Level-2 parallel run + Level-3 reconciliation on the merged tree"},
+    {"title": "remediate", "detail": "Fix routed findings on the owning branch, then rebase + re-run"},
+    {"title": "approval", "detail": "Manual gates: calendar bakes, shadow gate, sign-offs"},
+    {"title": "promote", "detail": "Fast-forward the phase branch; next phase cuts from it"},
+]
+
+
+async def run_agent(label, prompt, schema, mode=None, minutes=60):
+    # label is "<pid>.<node>[.rN]"; the workflow phase group is the node name.
+    node = label.split(".")[1]
+    group = {"backend-salary": "backend", "remediate-backend": "remediate",
+             "remediate-frontend": "remediate"}.get(node, node)
+    return await agent(
         prompt,
-        output_schema=schema,
+        phase=group,
+        schema=schema,
+        label=label,
         repos=[REPO],
         mode=mode,
-        phase_label=label,
-        soft_time_limit_minutes=minutes,
+        soft_time_limit_minutes=min(minutes, 60),
     )
 
 
@@ -703,12 +720,12 @@ async def run_phase(phase):
         fe_note = ("\nP4 deviation: the React payroll pages go live only when payroll.engine is promoted to JAVA after "
                    "the manual shadow gate (≥3 periods, 0.00 diff). Build and test them fully, gated on payroll=NEW.")
 
-    backend_results, frontend = await parallel(
-        run_backend(phase, contract_branch, pid),
-        run_agent(f"{pid}.frontend",
-                  impl_prompt(phase, "frontend", phase["frontend"], frontend_branch, contract_branch, extra_note=fe_note),
-                  BRANCH_RESULT, minutes=90),
-    )
+    backend_results, frontend = await parallel([
+        lambda: run_backend(phase, contract_branch, pid),
+        lambda: run_agent(f"{pid}.frontend",
+                          impl_prompt(phase, "frontend", phase["frontend"], frontend_branch, contract_branch, extra_note=fe_note),
+                          BRANCH_RESULT, minutes=90),
+    ])
     if frontend["blockers"]:
         raise RuntimeError(f"{pid} frontend reported blockers: {frontend['blockers']}")
     for name, r in backend_results:
@@ -743,14 +760,14 @@ async def run_phase(phase):
         # Route remediation to the responsible node(s) only, then rebase the merge and re-run.
         tasks = []
         if owner in ("backend", "both"):
-            tasks.append(("backend", run_agent(f"{pid}.remediate-backend.r{round_no}",
-                                               remediation_prompt(phase, "backend", backend_branch, report["findings"], report["report_url"], round_no),
-                                               BRANCH_RESULT, minutes=90)))
+            tasks.append(("backend", lambda: run_agent(f"{pid}.remediate-backend.r{round_no}",
+                                                       remediation_prompt(phase, "backend", backend_branch, report["findings"], report["report_url"], round_no),
+                                                       BRANCH_RESULT, minutes=90)))
         if owner in ("frontend", "both"):
-            tasks.append(("frontend", run_agent(f"{pid}.remediate-frontend.r{round_no}",
-                                                remediation_prompt(phase, "frontend", frontend_branch, report["findings"], report["report_url"], round_no),
-                                                BRANCH_RESULT, minutes=90)))
-        fixed = await parallel(*(t for _, t in tasks))
+            tasks.append(("frontend", lambda: run_agent(f"{pid}.remediate-frontend.r{round_no}",
+                                                        remediation_prompt(phase, "frontend", frontend_branch, report["findings"], report["report_url"], round_no),
+                                                        BRANCH_RESULT, minutes=90)))
+        fixed = await parallel([t for _, t in tasks])
         for (role, _), res in zip(tasks, fixed):
             if res["blockers"]:
                 raise RuntimeError(f"{pid} {role} remediation blocked: {res['blockers']}")
@@ -783,10 +800,13 @@ async def run_phase(phase):
 # --------------------------------------------------------------------------
 
 async def main():
-    await register_workflow(
-        name="hrms-phase-workflow",
-        description="HRMS modernization: contract → parallel backend+frontend → fan-in → integration session → gate, per phase P0–P5",
-    )
+    await register_workflow({
+        "name": "hrms-phase-workflow",
+        "description": "HRMS modernization: contract → parallel backend+frontend → fan-in → integration session → gate, per phase P0–P5",
+        "product": f"{REPO} (Spring Boot + React on PostgreSQL)",
+        "soft_time_limit_minutes": 60,
+        "phases": WF_PHASES,
+    })
     unknown = [p for p in PHASES_TO_RUN if p not in PHASES]
     if unknown:
         raise ValueError(f"Unknown phases in HRMS_WF_PHASES: {unknown}")
