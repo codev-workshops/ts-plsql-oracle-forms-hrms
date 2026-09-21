@@ -76,6 +76,28 @@ local PostgreSQL only (Testcontainers or docker compose). Concretely:
 """.strip()
 
 
+# Human decisions resolving `failure_owner=contract` findings. With a decision
+# recorded for the phase, the contract finding is routed to BOTH implementation
+# nodes (remediation) with the decision text instead of halting the run.
+CONTRACT_DECISIONS = {
+    "P0": (
+        "DECISION P0-D1 (project owner, golden-oracle mode OFF): legacy Oracle Forms are not run, so LEGACY TILES ARE OUT OF "
+        "SCOPE for this phase. Do not design a token carrier for the legacy-tile navigation. Backend: keep the SSO bridge "
+        "code (SsoController, proxy/module-legacy.conf) compiling and unit-tested, fix the contract-conformance defects "
+        "the integration report lists (auth_request method/body, ProxyModule lower-case enum + clientIp in the parallel-run "
+        "scenarios, seeded accounts fixture, tool jar Main-Class/paths), and mark the end-to-end SSO exchange `untested-live` "
+        "in the scenario registry. Frontend: render legacy tiles disabled with a 'not available in this environment' hint "
+        "(no navigation), and skip/remove the legacy-tile Playwright test with a comment referencing P0-D1. Integration: "
+        "the legacy-tile e2e is excluded from the P0 gate; every other check stands."
+    ),
+}
+
+
+def phase_decisions(phase):
+    text = CONTRACT_DECISIONS.get(phase["id"])
+    return f"\nRecorded contract decision(s) for this phase:\n{text}" if text else ""
+
+
 def oracle_rules(phase_id=None):
     if ORACLE_MODE != "off":
         return ""
@@ -592,7 +614,7 @@ Report `blockers` non-empty if anything in the definition of done is not met.
 def remediation_prompt(phase, role, branch, findings, report_url, round_no):
     return f"""
 You are the {role.upper()} REMEDIATION node for {phase['title']} (remediation round {round_no} of {MAX_REMEDIATION_ROUNDS}).
-{GLOBAL_RULES}{oracle_rules()}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
 The integration session on `{sub_branch(phase, 'integration')}` failed and routed these findings to {role}. Full reports: {report_url}
 Findings:
@@ -607,7 +629,7 @@ def merge_prompt(phase, heads, round_no):
     heads_txt = bullets(f"{name}: {sha}" for name, sha in heads)
     return f"""
 You are the FAN-IN node for {phase['title']} (round {round_no}).
-{GLOBAL_RULES}{oracle_rules()}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
 Create or refresh the phase-integration merge branch `{sub_branch(phase, 'integration')}`:
 1. `git fetch`; reset the integration branch to `{sub_branch(phase, 'contract')}` (create it if missing; force-push is allowed ONLY on this integration branch).
@@ -623,7 +645,7 @@ def integration_prompt(phase, merge, round_no):
     it = phase["integration"]
     return f"""
 You are the INTEGRATION-TEST session for {phase['title']} (round {round_no}). You run in your own session; do not modify application code – you produce a verdict and a routed findings list.
-{GLOBAL_RULES}{oracle_rules()}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
 Check out `{sub_branch(phase, 'integration')}` at {merge['head_sha']}. Start PostgreSQL + backend + frontend (docker compose / repo scripts). {oracle_env_note()}
 
@@ -812,6 +834,9 @@ async def run_phase(phase):
             break
 
         owner = report["failure_owner"]
+        if owner == "contract" and pid in CONTRACT_DECISIONS:
+            log(f"[{pid}] contract finding resolved by recorded decision; routing remediation to both nodes")
+            owner = "both"
         if owner in ("contract", "environment"):
             raise RuntimeError(f"{pid} integration failed with owner={owner}; human intervention required: {report['findings']}")
         if round_no > MAX_REMEDIATION_ROUNDS:
