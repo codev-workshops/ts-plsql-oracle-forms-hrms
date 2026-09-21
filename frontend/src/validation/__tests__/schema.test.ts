@@ -1,4 +1,5 @@
 import generated from '../../generated/validation-schema.json';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { evaluateRules, fieldErrors, getDto, getParameter, validationSchema, zodFor } from '../schema';
 
 describe('validation-schema adapter', () => {
@@ -9,9 +10,9 @@ describe('validation-schema adapter', () => {
 
   it('builds a Zod schema for LoginRequest from the JSON (trim + required + format)', () => {
     const schema = zodFor('LoginRequest');
-    const ok = schema.safeParse({ username: '  admin@hrms.example ', password: 'x' });
+    const ok = schema.safeParse({ username: `  ${SEED_ACCOUNTS.executive.email} `, password: 'x' });
     expect(ok.success).toBe(true);
-    if (ok.success) expect(ok.data.username).toBe('admin@hrms.example');
+    if (ok.success) expect(ok.data.username).toBe(SEED_ACCOUNTS.executive.email);
 
     const bad = schema.safeParse({ username: '', password: '' });
     expect(bad.success).toBe(false);

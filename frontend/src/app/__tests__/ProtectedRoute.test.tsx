@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { MOCK_USERS, seedRefreshSession } from '../../mocks/handlers';
 import { renderWithProviders } from '../../test/render';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { ProtectedRoute } from '../ProtectedRoute';
 
 function routes() {
@@ -28,28 +29,28 @@ describe('ProtectedRoute', () => {
   });
 
   it('restores a session from the hrms_refresh cookie on reload', async () => {
-    seedRefreshSession('staff@hrms.example');
+    seedRefreshSession(SEED_ACCOUNTS.staff.email);
     renderWithProviders(routes(), { initialEntries: ['/'] });
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
   });
 
   it('renders the outlet for an authenticated user', () => {
-    renderWithProviders(routes(), { initialUser: MOCK_USERS['staff@hrms.example'], initialEntries: ['/'] });
+    renderWithProviders(routes(), { initialUser: MOCK_USERS[SEED_ACCOUNTS.staff.email], initialEntries: ['/'] });
     expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
   });
 
   it('sends users lacking the authority to /forbidden', () => {
-    renderWithProviders(routes(), { initialUser: MOCK_USERS['staff@hrms.example'], initialEntries: ['/payroll'] });
+    renderWithProviders(routes(), { initialUser: MOCK_USERS[SEED_ACCOUNTS.staff.email], initialEntries: ['/payroll'] });
     expect(screen.getByRole('heading', { name: 'Forbidden' })).toBeInTheDocument();
   });
 
   it('lets users holding one of the authorities through', () => {
-    renderWithProviders(routes(), { initialUser: MOCK_USERS['admin@hrms.example'], initialEntries: ['/payroll'] });
+    renderWithProviders(routes(), { initialUser: MOCK_USERS[SEED_ACCOUNTS.executive.email], initialEntries: ['/payroll'] });
     expect(screen.getByRole('heading', { name: 'Payroll' })).toBeInTheDocument();
   });
 
   it('forces mustChangePassword users onto /password', () => {
-    renderWithProviders(routes(), { initialUser: MOCK_USERS['newhire@hrms.example'], initialEntries: ['/'] });
+    renderWithProviders(routes(), { initialUser: MOCK_USERS[SEED_ACCOUNTS.firstLogin.email], initialEntries: ['/'] });
     expect(screen.getByRole('heading', { name: 'Password' })).toBeInTheDocument();
   });
 });

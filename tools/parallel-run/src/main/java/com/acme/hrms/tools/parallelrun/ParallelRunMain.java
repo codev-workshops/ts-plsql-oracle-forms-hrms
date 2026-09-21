@@ -19,9 +19,10 @@ import java.util.Map;
  * </pre>
  *
  * Without {@code --oracle} only the target side is executed and compared to the contract (that is
- * what the backend build does); with it, every scenario also runs on the golden oracle and utPLSQL
- * suites' JUnit XML is written next to the report. Exit 0 = every row PASS; 1 = differences; 2 =
- * usage/connection error.
+ * what the backend build does) and untested-live scenarios (P0-D1) expect the contracted no-Oracle
+ * outcome, reported as {@code UNTESTED-LIVE}; with it, every scenario also runs on the golden
+ * oracle and utPLSQL suites' JUnit XML is written next to the report. Exit 0 = every row PASS or
+ * UNTESTED-LIVE; 1 = differences; 2 = usage/connection error.
  */
 public final class ParallelRunMain {
 
@@ -81,7 +82,7 @@ public final class ParallelRunMain {
         report.add(
             new DiffReport.Row(
                 s.id(),
-                s.expect(),
+                ScenarioRegistry.targetExpect(s, legacy != null),
                 ScenarioRegistry.legacyOutcome(s),
                 leg,
                 target,

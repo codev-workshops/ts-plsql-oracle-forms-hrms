@@ -6,9 +6,10 @@ import { defineConfig } from '@playwright/test';
  *  - default (mock): Vite serves the app with the msw browser worker (`VITE_MOCK_API=true`),
  *    no backend required. Level-1 smoke.
  *  - `E2E_REAL_STACK=1`: Level-3 real-stack run. Vite is started WITHOUT the mock worker and
- *    proxies `/api` to the running auth-service (vite.config.ts). The integration session
- *    starts PostgreSQL + auth-service (backend/auth docker compose) and seeds the accounts
- *    used by e2e/golden-path.spec.ts before invoking `E2E_REAL_STACK=1 npm run e2e`.
+ *    proxies `/api` to the running auth-service (vite.config.ts). Start PostgreSQL 16
+ *    (`docker run postgres:16`), run the auth-service boot jar (backend/auth) so it applies
+ *    Flyway migrations, apply `tools/fixtures/pg/*.sql` with psql, then invoke
+ *    `E2E_REAL_STACK=1 npm run e2e`. Accounts are defined in e2e/seed-accounts.ts.
  *    Set `E2E_BASE_URL` to point at an already-running frontend/proxy (e.g. the nginx
  *    edge on http://localhost:8000) instead of letting Playwright start Vite.
  *

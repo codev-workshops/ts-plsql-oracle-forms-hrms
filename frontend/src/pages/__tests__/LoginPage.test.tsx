@@ -6,6 +6,7 @@ import { getAccessToken } from '../../api/http';
 import { MOCK_PASSWORD } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithProviders } from '../../test/render';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { LoginPage } from '../LoginPage';
 
 function renderLogin(entries = ['/login']) {
@@ -40,20 +41,20 @@ describe('LoginPage', () => {
   it('signs in through POST /api/auth/login, keeps the token in memory and redirects home', async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.type(await screen.findByLabelText('E-mail'), 'admin@hrms.example');
+    await user.type(await screen.findByLabelText('E-mail'), SEED_ACCOUNTS.executive.email);
     await user.type(screen.getByLabelText('Password'), `${MOCK_PASSWORD}{enter}`);
 
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
-    expect(getAccessToken()).toMatch(/^access-admin@hrms.example/);
+    expect(getAccessToken()).toMatch(new RegExp(`^access-${SEED_ACCOUNTS.executive.email}`));
     // Nothing of ours is persisted (the only key is msw's internal cookie store).
     expect(Object.keys(window.localStorage).filter((k) => !k.startsWith('__msw'))).toEqual([]);
-    expect(JSON.stringify(window.localStorage)).not.toContain('access-admin');
+    expect(JSON.stringify(window.localStorage)).not.toContain(`access-${SEED_ACCOUNTS.executive.email}`);
   });
 
   it('shows the uniform -20301 message inline for bad credentials', async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.type(await screen.findByLabelText('E-mail'), 'admin@hrms.example');
+    await user.type(await screen.findByLabelText('E-mail'), SEED_ACCOUNTS.executive.email);
     await user.type(screen.getByLabelText('Password'), 'wrong{enter}');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password');
@@ -68,7 +69,7 @@ describe('LoginPage', () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await user.type(await screen.findByLabelText('E-mail'), 'admin@hrms.example');
+    await user.type(await screen.findByLabelText('E-mail'), SEED_ACCOUNTS.executive.email);
     await user.type(screen.getByLabelText('Password'), 'whatever{enter}');
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many failed attempts');
   });
@@ -76,7 +77,7 @@ describe('LoginPage', () => {
   it('routes a mustChangePassword user to /password', async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.type(await screen.findByLabelText('E-mail'), 'newhire@hrms.example');
+    await user.type(await screen.findByLabelText('E-mail'), SEED_ACCOUNTS.firstLogin.email);
     await user.type(screen.getByLabelText('Password'), `${MOCK_PASSWORD}{enter}`);
     expect(await screen.findByRole('heading', { name: 'Set your password' })).toBeInTheDocument();
   });
@@ -90,7 +91,7 @@ describe('LoginPage', () => {
       </Routes>,
       { initialEntries: [{ pathname: '/login', state: { from: { pathname: '/employees' } } } as unknown as string] },
     );
-    await user.type(await screen.findByLabelText('E-mail'), 'staff@hrms.example');
+    await user.type(await screen.findByLabelText('E-mail'), SEED_ACCOUNTS.staff.email);
     await user.type(screen.getByLabelText('Password'), `${MOCK_PASSWORD}{enter}`);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Employees' })).toBeInTheDocument());
   });

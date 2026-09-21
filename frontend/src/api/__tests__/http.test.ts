@@ -1,4 +1,5 @@
 import { HttpResponse, http as mswHttp } from 'msw';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { api } from '../client';
 import { bindSessionHandlers, getAccessToken, setAccessToken } from '../http';
 import { revokeAccessToken, seedAccessToken, seedRefreshSession } from '../../mocks/handlers';
@@ -6,26 +7,26 @@ import { server } from '../../mocks/server';
 
 describe('axios interceptor (401 → refresh → replay | /login)', () => {
   it('attaches the in-memory bearer token', async () => {
-    setAccessToken(seedAccessToken('staff@hrms.example'));
+    setAccessToken(seedAccessToken(SEED_ACCOUNTS.staff.email));
     const me = await api.auth.me();
-    expect(me.email).toBe('staff@hrms.example');
+    expect(me.email).toBe(SEED_ACCOUNTS.staff.email);
   });
 
   it('refreshes once on 401 TOKEN_INVALID and replays the request', async () => {
-    const s = seedRefreshSession('staff@hrms.example');
+    const s = seedRefreshSession(SEED_ACCOUNTS.staff.email);
     setAccessToken(s.accessToken);
     revokeAccessToken(s.accessToken);
     const refreshed = vi.fn();
     bindSessionHandlers({ onTokenRefreshed: refreshed, onSessionExpired: vi.fn() });
 
     const me = await api.auth.me();
-    expect(me.email).toBe('staff@hrms.example');
+    expect(me.email).toBe(SEED_ACCOUNTS.staff.email);
     expect(getAccessToken()).not.toBe(s.accessToken);
     expect(refreshed).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates concurrent refreshes', async () => {
-    const s = seedRefreshSession('staff@hrms.example');
+    const s = seedRefreshSession(SEED_ACCOUNTS.staff.email);
     setAccessToken(s.accessToken);
     revokeAccessToken(s.accessToken);
     let refreshCalls = 0;
@@ -51,7 +52,7 @@ describe('axios interceptor (401 → refresh → replay | /login)', () => {
     server.events.on('request:start', ({ request }) => {
       if (request.url.endsWith('/api/auth/refresh')) refreshCalls += 1;
     });
-    await expect(api.auth.login({ username: 'admin@hrms.example', password: 'nope' })).rejects.toMatchObject({
+    await expect(api.auth.login({ username: SEED_ACCOUNTS.executive.email, password: 'nope' })).rejects.toMatchObject({
       response: { status: 401, data: { code: '-20301' } },
     });
     expect(refreshCalls).toBe(0);
@@ -59,7 +60,7 @@ describe('axios interceptor (401 → refresh → replay | /login)', () => {
   });
 
   it('passes non-401 ApiErrors straight through', async () => {
-    setAccessToken(seedAccessToken('staff@hrms.example'));
+    setAccessToken(seedAccessToken(SEED_ACCOUNTS.staff.email));
     server.use(
       mswHttp.get('/api/reference/departments', () =>
         HttpResponse.json({ code: 'FORBIDDEN', message: 'nope', traceId: 't' }, { status: 403 }),

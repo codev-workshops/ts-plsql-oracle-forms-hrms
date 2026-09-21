@@ -4,9 +4,10 @@ import { Route, Routes } from 'react-router-dom';
 import { setAccessToken } from '../../api/http';
 import { MOCK_PASSWORD, MOCK_USERS, seedAccessToken } from '../../mocks/handlers';
 import { renderWithProviders } from '../../test/render';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { ChangePasswordPage } from '../ChangePasswordPage';
 
-function renderPage(email = 'admin@hrms.example', entries = ['/password']) {
+function renderPage(email: string = SEED_ACCOUNTS.executive.email, entries = ['/password']) {
   setAccessToken(seedAccessToken(email));
   return renderWithProviders(
     <Routes>
@@ -81,7 +82,7 @@ describe('ChangePasswordPage', () => {
   });
 
   it('shows the forced first-login variant without Cancel', () => {
-    renderPage('newhire@hrms.example');
+    renderPage(SEED_ACCOUNTS.firstLogin.email);
     expect(screen.getByRole('heading', { name: 'Set your password' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('You must set a new password before continuing.');
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
