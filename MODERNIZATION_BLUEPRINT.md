@@ -1,9 +1,11 @@
 # HRMS Modernization Blueprint
 
-Strategy evaluation for moving the Oracle Forms 12c / PL/SQL HRMS to a **Spring Boot backend + React frontend**. Every judgement below is tied to evidence already catalogued in [APPLICATION_INVEONTORY.md](APPLICATION_INVEONTORY.md), [DEPENDENCY_MAP.md](DEPENDENCY_MAP.md), [DATA_DICTIONARY.md](DATA_DICTIONARY.md) and [TECH_DEBT_REGISTRY.md](TECH_DEBT_REGISTRY.md), plus the six Forms XML exports under `forms/xml-exports/` and the eleven packages under `plsql/packages/`.
+Strategy evaluation for moving the Oracle Forms 12c / PL/SQL HRMS to a **Spring Boot backend + React frontend on PostgreSQL**. Every judgement below is tied to evidence already catalogued in [APPLICATION_INVEONTORY.md](APPLICATION_INVEONTORY.md), [DEPENDENCY_MAP.md](DEPENDENCY_MAP.md), [DATA_DICTIONARY.md](DATA_DICTIONARY.md) and [TECH_DEBT_REGISTRY.md](TECH_DEBT_REGISTRY.md), plus the six Forms XML exports under `forms/xml-exports/` and the eleven packages under `plsql/packages/`.
 
 Companion documents produced with this blueprint: [COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) (form → Java/React mapping), [CUTOVER_PLAN.md](CUTOVER_PLAN.md) (phasing), [RISK_REGISTER.md](RISK_REGISTER.md), [TEST_STRATEGY.md](TEST_STRATEGY.md).
 
+> Target-stack decisions agreed with the stakeholder: **(A)** the target database is **PostgreSQL**, not Oracle 19c. **(B)** *All* business logic moves into the Java layer – every `PKG_*` package and both `.pll` libraries are eliminated; **no PL/SQL façade of any kind is retained in the target architecture**. **(C)** The golden-oracle / parallel-run / shadow-mode verification approach ([TEST_STRATEGY.md](TEST_STRATEGY.md)) is preserved: the legacy PL/SQL stays runnable **on Oracle only**, as the characterization oracle for each module until that module is validated, and is then dropped. Option (d) below is therefore evaluated for completeness and rejected everywhere; see §10 for the PostgreSQL-specific migration surface.
+>
 > Scope note: only what is checked in is evaluated. `HRMS_REPORTS` and `HRMS_ADMIN` forms, `HRMS_REPORT_LIB.pll`, Oracle Reports `.rdf` files, `USER_CREDENTIALS`, `DBMS_SCHEDULER` job DDL, directory-object DDL and any `tests/` directory are **not in the repository** (see [APPLICATION_INVEONTORY.md](APPLICATION_INVEONTORY.md) §8). Where they matter they are called out as gaps, not evaluated as code.
 
 ---
@@ -13,9 +15,9 @@ Companion documents produced with this blueprint: [COMPONENT_MAPPING.md](COMPONE
 | Option | Description | What it means for this repo |
 |---|---|---|
 | **(a) Lift-and-shift to Oracle APEX** | Regenerate each form as an APEX page on the same schema; keep all PL/SQL packages, DB triggers and views untouched. | Fast for base-table blocks (`HRMS_EMPLOYEE`, `HRMS_PAYROLL`, `HRMS_PERFORMANCE`); inherits every item in `TECH_DEBT_REGISTRY.md` unchanged. Not the requested target stack. |
-| **(b) Rewrite as Spring Boot + React** | Re-implement business rules in Java services over JPA entities; React SPA; PL/SQL retired per module. | Target stack. Highest one-off effort, only option that can fix SEC-*/ARCH-* structurally. |
+| **(b) Rewrite as Spring Boot + React** | Re-implement business rules in Java services over JPA entities on PostgreSQL; React SPA; PL/SQL retired per module once the module passes its parallel-run gate. | Target stack. Highest one-off effort, only option that can fix SEC-*/ARCH-* structurally, and the only option compatible with a PostgreSQL target (PL/SQL packages have no PostgreSQL equivalent – §10). |
 | **(c) Rewrite as .NET + Blazor** | Same as (b) with a different runtime. | Functionally equivalent rewrite; scored lower on *target-stack fit* only because the organisation has chosen Spring Boot + React. Included for completeness. |
-| **(d) Hybrid: PL/SQL packages as API layer, new UI on top** | Expose `PKG_*` through ORDS/JDBC-backed Spring controllers; React UI; Forms retired but packages stay authoritative. | Cheap where a package is *already* the only write path (`PKG_LEAVE`, `PKG_PERFORMANCE`, most of `PKG_PAYROLL`); unsafe where the package is the problem (`PKG_SECURITY`) or where the form bypasses it (`HRMS_EMPLOYEE`). |
+| **(d) Hybrid: PL/SQL packages as API layer, new UI on top** | Expose `PKG_*` through ORDS/JDBC-backed Spring controllers; React UI; Forms retired but packages stay authoritative. | Cheap where a package is *already* the only write path (`PKG_LEAVE`, `PKG_PERFORMANCE`, most of `PKG_PAYROLL`); unsafe where the package is the problem (`PKG_SECURITY`) or where the form bypasses it (`HRMS_EMPLOYEE`). **Ruled out as a target-state option by decision (B) and by the PostgreSQL target (A)**: it would pin the data of record to Oracle. Scored below so the trade-off is visible. |
 
 Scoring scale used in every table: **1 = poor, 5 = excellent** from the migration team's point of view (so *low effort* = 5, *low risk* = 5).
 
@@ -70,7 +72,7 @@ Justification:
 5. **Grade-based authorization cannot express the roles the forms need.** `has_permission` (SEC-07) is called with `('PAYROLL','VIEW')`, `('PAYROLL','APPROVE')`, `('EMPLOYEE','EDIT')`, `('ADMIN','VIEW')`, `('REPORTS','VIEW')` from `HRMS_MENU.xml` / `HRMS_PAYROLL.xml` / `HRMS_EMPLOYEE.xml`. A "payroll clerk" is impossible without grade ≥ 8. The rewrite introduces `ROLES` / `ROLE_PERMISSIONS` and maps the grade rule as a *seed* for initial role assignment only.
 6. **Hybrid is actively unsafe here** because the API layer would inherit ARCH-03 (security package depending on `PKG_EMPLOYEE`) and every SEC-* item while adding a new, network-reachable attack surface for `search_employees` SQL injection (SEC-03) if the same style is used for employee lookups.
 
-Delivered as: `auth-service` (Spring Security, JWT/OIDC, BCrypt/Argon2, `ROLES` model) in Phase 0/1 of [CUTOVER_PLAN.md](CUTOVER_PLAN.md). The legacy Forms tier keeps its own `PKG_SECURITY` session only behind the SSO bridge until Phase 5.
+Delivered as: `auth-service` (Spring Security, JWT/OIDC, BCrypt/Argon2, `ROLES` model) in Phase 0/1 of [CUTOVER_PLAN.md](CUTOVER_PLAN.md). The legacy Forms tier keeps its own `PKG_SECURITY` session, on the legacy Oracle instance, only behind the SSO bridge until Phase 5.
 
 ---
 
@@ -140,14 +142,15 @@ Delivered as: `auth-service` (Spring Security, JWT/OIDC, BCrypt/Argon2, `ROLES` 
 | Target-stack fit | 1 | 5 | 2 | 3 |
 | **Total** | **15** | **14** | **11** | **18** |
 
-### 4.3 Recommendation: **(d) Hybrid short-term → (b) rewrite as the Phase 4 deliverable**
+### 4.3 Recommendation: **(b) Rewrite**
 
-Payroll is the one area where the raw scores favour hybrid, and where the answer is *time-dependent*:
+Payroll is the one area where the raw scores favour hybrid (d). It is nevertheless a pure rewrite, for three reasons:
 
-- **Short-term hybrid is viable.** `HRMS_PAYROLL.xml` already treats `PKG_PAYROLL` as an API: the form itself contains no calculation logic. A `PayrollController` that calls `create_payroll_run` / `calculate_payroll` / `approve_payroll` via JDBC (`SimpleJdbcCall`) and reads `PAY_PERIODS` / `PAYROLL_RUNS` through JPA reproduces the form exactly. This lets the Forms tier be retired for payroll operators early, and gives the parallel-run harness in [TEST_STRATEGY.md](TEST_STRATEGY.md) a stable oracle.
-- **Short-term hybrid does not fix money.** BUG-02 means withholding is wrong for any tax year other than 2024 and for any state not in the `CASE`. Hybrid *freezes* that. PERF-02's partial commits also mean the API would have to add idempotent restart logic around a package that cannot provide it.
+- **Hybrid is excluded by the target stack.** Decision (B) eliminates every `PKG_*` package from the target, and a PostgreSQL data store (A) cannot host `PKG_PAYROLL` at all. A `PayrollController` calling the package over JDBC would keep the payroll data of record on Oracle for as long as the façade lived, blocking the schema migration for the whole `PAY_*`/`PAYROLL_*` table group. The fact that `HRMS_PAYROLL.xml` already treats `PKG_PAYROLL` as an API (the form contains no calculation logic) is still useful – it means the *legacy* call surface is small and clean, which is exactly what the utPLSQL golden oracle in [TEST_STRATEGY.md](TEST_STRATEGY.md) characterises.
+- **Hybrid would not fix money anyway.** BUG-02 means withholding is wrong for any tax year other than 2024 and for any state not in the `CASE`; a façade would freeze that. PERF-02's partial commits also mean the API would have to add idempotent restart logic around a package that cannot provide it.
 - **Therefore the target is (b).** A Java `TaxEngine` driven by `TAX_BRACKETS` (year + filing status + state; the table already exists with no reader – DATA-05), a `PayrollRunService` that calculates a run in one transaction (or in explicitly checkpointed, restartable batches via Spring Batch), and a `PayRegisterExporter` replacing `UTL_FILE`. The corrected engine is validated against the legacy engine only for **2024 inputs**, where both must agree; for other years the test oracle is the bracket table, not the package (see [TEST_STRATEGY.md](TEST_STRATEGY.md) "preserve vs fix").
 - **ARCH-01 constraint.** `SALARY_RECORDS` ownership must already have moved to the shared `SalaryService` (Section 3.3) before the payroll rewrite; otherwise the Java `PayrollService` re-creates the cycle by owning salary records that `EmployeeService` also writes. Payroll is therefore the *last* domain to cut over (Phase 4).
+- **Consequence for operators.** Without a façade, payroll operators stay on `HRMS_PAYROLL` (Oracle) until the Java engine has passed shadow mode; the shadow-mode gate is the *only* payroll cutover gate ([CUTOVER_PLAN.md](CUTOVER_PLAN.md) §8, [RISK_REGISTER.md](RISK_REGISTER.md) R-06).
 
 ---
 
@@ -236,7 +239,7 @@ The one behaviour that must *change* is the base-table `UpdateAllowed`/`InsertAl
 | `PKG_VALIDATION` | 47+125 | **Single source of truth** → shared validation schema (Bean Validation annotations + a JSON schema exported to React) | Resolves VAL-02/VAL-03: one definition consumed by both tiers. |
 | `PKG_NOTIFICATION` | 42+177 | Rewrite as `NotificationService` (Spring Mail / queue) | Removes `UTL_SMTP` from the DB (ARCH-05); hard-coded SMTP host (VAL-06) becomes config. |
 | `PKG_INTEGRATION` | 50+213 | Rewrite in Phase 5; `import_time_attendance` parsing and `sync_org_structure` are TODO stubs today (BUG-08) | Flat-file drops via `UTL_FILE` to undefined directory objects (PROC-02, SEC-11). |
-| `PKG_REPORTING` | 63+207 | Hybrid initially (ref-cursor reports exposed via read-only JDBC), rewrite in Phase 5 | Read-only; `refresh_reporting_tables` is a stub. The 6 `VW_*` views are kept as reconciliation oracles ([TEST_STRATEGY.md](TEST_STRATEGY.md)). |
+| `PKG_REPORTING` | 63+207 | Rewrite as Java `reporting-service` (read-only JPA/SQL queries over the migrated PostgreSQL schema) in Phase 5 | Read-only; `refresh_reporting_tables` is a stub. The ref-cursor procedures are characterised on Oracle and used as the row-for-row oracle for the Java endpoints, then dropped. The 6 Oracle `VW_*` views are kept on the legacy side as reconciliation oracles ([TEST_STRATEGY.md](TEST_STRATEGY.md)). |
 | `HRMS_COMMON_LIB.pll` | – | React: `Toolbar` component, `useErrorHandler` hook, `AuthContext` | See [COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) §7. |
 | `HRMS_VALIDATION_LIB.pll` | – | **Do not port.** Delete; UI consumes the shared validation schema | VAL-02 (regex rejects sub-domains), VAL-03 (3× duplication), VAL-04 (comment/code mismatch). |
 
@@ -250,16 +253,16 @@ The one behaviour that must *change* is the base-table `UpdateAllowed`/`InsertAl
 | Performance | 17 | **22** | 19 | 19 | **(b)** | 1 |
 | Leave | 15 | **20** | 17 | 18 | **(b)** – fix BUG-04/05/06 in the port | 2 |
 | Employee | 10 | **18** | 15 | 14 | **(b)** after extracting shared `SalaryService` (ARCH-01/02) | 3 |
-| Payroll | 15 | 14 | 11 | **18** | **(d) → (b)**: hybrid façade first, Java `TaxEngine` (BUG-02) as the Phase 4 exit criterion | 4 |
-| Reporting / Integration | – | – | – | – | Hybrid read-only → rewrite | 5 |
+| Payroll | 15 | 14 | 11 | 18 | **(b)** – Java `TaxEngine` / `PayrollRunService` (BUG-02); hybrid excluded by decisions (A)/(B); shadow mode is the sole cutover gate | 4 |
+| Reporting / Integration | – | – | – | – | **Rewrite (read-only)** – Java `reporting-service` / `integration-service` | 5 |
 
-Lift-and-shift to APEX (a) is not recommended for any area: it is not the target stack and, more importantly, it preserves every write-path and security defect intact. .NET + Blazor (c) is technically equivalent to (b) and loses only on target-stack fit.
+Lift-and-shift to APEX (a) is not recommended for any area: it is not the target stack and, more importantly, it preserves every write-path and security defect intact. .NET + Blazor (c) is technically equivalent to (b) and loses only on target-stack fit. Hybrid (d) is not recommended for any area even where it scores highest (Payroll): it is incompatible with a PostgreSQL target and with the decision that no PL/SQL survives in the target. The legacy packages still play a role – as the **characterization oracle on Oracle** during each module's parallel run – but never as a runtime dependency of the new system.
 
 ---
 
 ## 9. Coherent target architecture
 
-The per-area choices reconcile into one modular-monolith Spring Boot application (splittable into services later) with shared modules extracted from the reuse analysis in DEPENDENCY_MAP.md §2.7: `PKG_COMMON`/`PKG_AUDIT`/`PKG_VALIDATION`/`PKG_NOTIFICATION` are depended on by everything and become shared modules; `SALARY_RECORDS` is the one table shared by two domains and gets its own module to break ARCH-01.
+The per-area choices reconcile into one modular-monolith Spring Boot application (splittable into services later) over a **PostgreSQL** database, with shared modules extracted from the reuse analysis in DEPENDENCY_MAP.md §2.7: `PKG_COMMON`/`PKG_AUDIT`/`PKG_VALIDATION`/`PKG_NOTIFICATION` are depended on by everything and become shared modules; `SALARY_RECORDS` is the one table shared by two domains and gets its own module to break ARCH-01. The Spring Boot application talks **only** to PostgreSQL; the legacy Oracle instance exists during coexistence solely to run Forms and the `PKG_*` characterization oracle, and is reached by the new system only through the SSO bridge and the data-synchronisation path described in [CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2.
 
 ```mermaid
 graph TD
@@ -289,11 +292,16 @@ graph TD
     REPORT["reporting-service (read-only)"]
   end
 
-  subgraph "Oracle 19c"
-    DB["HRMS schema: 30 tables, VW_* views kept as reconciliation oracles"]
-    LEGACY_PKG["Legacy PKG_* (retired per phase)"]
+  subgraph "PostgreSQL (new system, database of record per migrated module)"
+    DB["HRMS schema migrated: 30 tables, SEQ_* as PostgreSQL sequences, no PL/SQL, no triggers"]
   end
 
+  subgraph "Legacy Oracle 19c (coexistence only, dropped in Phase 5)"
+    LEGACY_DB["Legacy HRMS schema: data of record for not-yet-migrated modules; VW_* views = reconciliation oracle"]
+    LEGACY_PKG["Legacy PKG_* and TRG_* = characterization oracle, dropped per module after validation"]
+  end
+
+  SYNC["Data sync / cutover migration (Oracle to PostgreSQL per module)"]
   FORMS["Oracle Forms 12c (legacy, shrinking)"]
 
   UI_SHELL --> PROXY
@@ -327,7 +335,9 @@ graph TD
   LEAVE --> DB
   PERF --> DB
   FORMS --> LEGACY_PKG
-  LEGACY_PKG --> DB
+  LEGACY_PKG --> LEGACY_DB
+  LEGACY_DB --> SYNC
+  SYNC --> DB
 ```
 
 Design rules that make the per-area decisions consistent:
@@ -337,7 +347,35 @@ Design rules that make the per-area decisions consistent:
 3. **Session context is owned by auth.** `PKG_EMPLOYEE.set_session_context` moves into `auth-service` (ARCH-03).
 4. **Configuration is read, not hard-coded.** `SYSTEM_PARAMETERS` is the source for session timeout, SMTP, fiscal-year start (VAL-06).
 5. **Validation is defined once.** `hrms-validation` is the only place a rule such as the hire-date limit exists; React consumes the exported schema (VAL-01/02/03).
-6. **Legacy views stay until Phase 5** as the independent oracle for data reconciliation ([TEST_STRATEGY.md](TEST_STRATEGY.md)).
+6. **Legacy views stay until Phase 5** on the Oracle side as the independent oracle for data reconciliation ([TEST_STRATEGY.md](TEST_STRATEGY.md)); equivalent reconciliation queries are run against PostgreSQL (§10).
+7. **No PL/SQL in the target.** The new system never calls a `PKG_*` procedure, never depends on a `TRG_*` trigger and never attaches a `.pll`. Legacy PL/SQL runs only on the legacy Oracle instance, only as the golden oracle, and is dropped module by module once the module's parallel-run gate passes.
+
+---
+
+## 10. PostgreSQL-specific migration surface
+
+Targeting PostgreSQL rather than Oracle 19c removes a set of Oracle constructs the Oracle-targeted analysis could take for granted. None of them survive into the target; each has a Java-side or PostgreSQL-side replacement.
+
+| Oracle construct in the repo | Where | PostgreSQL / Java replacement |
+|---|---|---|
+| PL/SQL packages (`PKG_*`, 11 packages, 5,169 lines) | `plsql/packages/` | No package construct exists in PostgreSQL. All logic moves to Java services (decision B). PL/pgSQL functions are **not** used as a substitute – that would re-create the split-logic problem (ARCH-02) in a new dialect. |
+| Database triggers (`TRG_EMP_*`, `TRG_SALARY_AUDIT`, `TRG_LEAVE_REQUEST_AUDIT`) | `plsql/triggers/` | Not ported. Rules become service invariants (`EmployeeService`, `SalaryService`); audit becomes `AuditService`. |
+| `PRAGMA AUTONOMOUS_TRANSACTION` (`PKG_AUDIT.log_action`, `PKG_COMMON.log_error`) | `PKG_AUDIT.pkb`, `PKG_COMMON.pkb` | PostgreSQL has no autonomous transactions. `AuditService` / `ErrorLogService` write in a `@Transactional(propagation = REQUIRES_NEW)` boundary so a logging failure never rolls back the business write (and vice versa). |
+| `DBMS_CRYPTO` + `UTL_RAW` (`encrypt_ssn`, `decrypt_ssn`, `hash_password`) | `PKG_SECURITY.pkb` | `FieldEncryptionService` (AES-GCM, vault/KMS key) and Spring Security `PasswordEncoder` (BCrypt/Argon2). `pgcrypto` is deliberately **not** used, so key material never reaches the database. |
+| `UTL_SMTP` / `UTL_TCP` (`PKG_NOTIFICATION.send_email`) | `PKG_NOTIFICATION.pkb` | `NotificationService` (Spring Mail) – ARCH-05. |
+| `UTL_FILE` + directory objects (`generate_pay_register`, `PKG_INTEGRATION.*`) | `PKG_PAYROLL.pkb`, `PKG_INTEGRATION.pkb` | `PayRegisterExporter` / `integration-service` writing to object storage or HTTP download – SEC-11, ARCH-05, PROC-02. |
+| `DBMS_SCHEDULER` jobs (accrual, carryover, calibration, notification queue – DDL not in repo) | `PKG_LEAVE.pks`, `PKG_PERFORMANCE.pks` comments | Spring `@Scheduled` / Spring Batch jobs (`LeaveAccrualJob` etc.) with `LEAVE_ACCRUAL_LOG` idempotency – PROC-02. |
+| `SYS_CONTEXT` / `DBMS_SESSION` application context (`PKG_EMPLOYEE.set_session_context`, `USERENV` lookups) | `PKG_EMPLOYEE.pkb`, `PKG_SECURITY.pkb:75` | JWT claims resolved in `auth-service` (ARCH-03). Where a DB-side value is still wanted for auditing, a `SET LOCAL app.current_user = …` session variable is set per transaction by a JPA/JDBC interceptor. |
+| `SEQ_*.NEXTVAL` syntax, `CACHE 20`, `NOORDER` (29 sequences) | `schema/sequences/hrms_sequences.sql` | `nextval('seq_employee')` / `CREATE SEQUENCE … CACHE 1`; JPA `@SequenceGenerator(allocationSize = 1)` unless a matching `INCREMENT BY` is set. Sequences are **restarted on PostgreSQL at `MAX(id)+1` from the final Oracle extract** at each module's cutover so legacy-created and new-created ids never collide ([CUTOVER_PLAN.md](CUTOVER_PLAN.md) §2 rule 4). Oracle's cached-but-unused values are lost on Oracle, not on PostgreSQL – gaps are expected and harmless. |
+| Virtual column `LEAVE_BALANCES.AVAILABLE AS (OPENING_BALANCE + ACCRUED − USED + ADJUSTMENT − PENDING)` | `schema/tables/03_leave_tables.sql` | `GENERATED ALWAYS AS (…) STORED`. PostgreSQL has no virtual (non-stored) generated columns before v18; `STORED` is used and the expression is asserted equal in the Level-3 reconciliation. VAL-05 (the view omitting `− PENDING`) is unchanged on the Oracle side and fixed on the PostgreSQL side only in Phase 5. |
+| `RAISE_APPLICATION_ERROR(-20xxx, …)` (error contract `-20001 … -20504`) | every package, `trg_employees.sql` | Java domain exceptions carrying the same numeric codes in `ApiError.code` ([COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) §11) so parallel-run diffs stay comparable. No PostgreSQL `RAISE EXCEPTION` is used because no logic lives in the database. |
+| `CONNECT BY PRIOR … START WITH`, `LEVEL`, `SYS_CONNECT_BY_PATH`, `CONNECT_BY_ISLEAF` (`VW_ORG_HIERARCHY`, `get_org_chart`) | `schema/views/hrms_views.sql`, `PKG_EMPLOYEE.pkb` | `WITH RECURSIVE` CTE producing the same `ORG_LEVEL`, `ORG_PATH` and `IS_LEAF` columns; cycle guard via a visited-path array (`NOT emp_id = ANY(path)`) replacing `NOCYCLE`/`CONNECT_BY_ISCYCLE` (DATA-02, PERF-03). |
+| `VARCHAR2` empty string ≡ `NULL` | every table; `PKG_VALIDATION`, `PKG_EMPLOYEE.validate_employee` (`IS NULL` checks on names, e-mail, phone) | PostgreSQL distinguishes `''` from `NULL`. `hrms-validation` normalises blank strings to `NULL` at the API boundary (`@NotBlank` where Oracle would have failed `IS NULL`) and the data migration trims/nulls empty strings; Level-3 reconciliation counts `'' `vs `NULL` per column. |
+| `NUMBER`, `DATE` (with time), `TIMESTAMP`, `CHAR(1)` flags (`ACTIVE_FLAG`, `HALF_DAY_FLAG`) | all DDL | `NUMERIC(p,s)` (money as `NUMERIC(12,2)`), `TIMESTAMP(0)` for Oracle `DATE` columns that carry a time (`LOGIN_TIME`, `CREATED_DATE`), `DATE` for pure dates (`HIRE_DATE`, `START_DATE`); `CHAR(1)` flags kept as `CHAR(1)` with the existing `CHECK` constraints (or `BOOLEAN` only where no legacy comparison depends on `'Y'/'N'`). `SYSDATE` → `CURRENT_TIMESTAMP`/`CURRENT_DATE`; `TRUNC(date)` → `date_trunc`/`::date`. |
+| `MERGE`, `ROWNUM`, `NVL`, `DECODE`, `TO_CHAR` masks, `LISTAGG`, `(+)` outer joins | packages and views | `INSERT … ON CONFLICT`, `LIMIT`, `COALESCE`, `CASE`, `to_char` (different mask semantics, checked per report), `string_agg`, ANSI joins – relevant only for the six `VW_*` equivalents and the `reporting-service` queries; all other SQL is regenerated by JPA. |
+| Case-insensitive identifier folding (Oracle upper-case, PostgreSQL lower-case) | all DDL | Unquoted identifiers throughout the migrated DDL so `EMPLOYEES` becomes `employees`; JPA `PhysicalNamingStrategy` maps entity names to lower case. Never quote identifiers in the PostgreSQL DDL. |
+
+These differences are the reason the parallel-run harness compares **outputs** across the two engines/databases rather than replaying SQL ([TEST_STRATEGY.md](TEST_STRATEGY.md) §2.2), and the reason the Level-3 reconciliation views need PostgreSQL equivalents ([TEST_STRATEGY.md](TEST_STRATEGY.md) §2.3). They are tracked as [RISK_REGISTER.md](RISK_REGISTER.md) R-12.
 
 ---
 
