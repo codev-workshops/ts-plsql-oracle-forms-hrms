@@ -1,0 +1,6 @@
+CDC surefire test names:
+<testcase name="checksumIsStableAndChangesWhenARowChanges" classname="com.acme.hrms.tools.cdc.HolidaysRoundTripTest"
+<testcase name="typeMappingInvertsEmptyStringsAndBooleans" classname="com.acme.hrms.tools.cdc.HolidaysRoundTripTest"
+<testcase name="everyTableInAGroupHasAPrimaryKeyAndExistsInTheSchema" classname="com.acme.hrms.tools.cdc.HolidaysRoundTripTest"
+<testcase name="reverseMergeSqlTargetsOracleUpperCaseIdentifiers" classname="com.acme.hrms.tools.cdc.HolidaysRoundTripTest"
+<testcase name="upsertIsIdempotentOnPostgres" classname="com.acme.hrms.tools.cdc.HolidaysRoundTripTest"

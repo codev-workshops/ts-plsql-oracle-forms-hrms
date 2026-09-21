@@ -1,0 +1,53 @@
+LOGIN david.martinez HTTP/200
+
+HTTP/1.1 200 
+X-Trace-Id: b6dcd4024cd72a0ec15f3c76bfe63219
+Set-Cookie: <REDACTED>
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:28:18 GMT
+
+{"accessToken": "<REDACTED>", "expiresIn": 1800, "tokenType": "Bearer", "user": {"deptId": 10, "displayName": "DAVID MARTINEZ", "email": "david.martinez@company.com", "empId": 11, "empNumber": "EMP-000011", "firstName": "DAVID", "jobTitle": "HR Specialist", "lastName": "MARTINEZ", "mustChangePassword": false, "roles": ["EMPLOYEE:VIEW", "LEAVE:CREATE", "LEAVE:VIEW"], "userId": "4"}}
+
+GET /api/auth/me with garbage bearer HTTP/401
+
+HTTP/1.1 401 
+X-Trace-Id: 8e8588c718e5fd8c766c9d94f7808efc
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:28:18 GMT
+
+{"code": "TOKEN_INVALID", "message": "Session has expired", "traceId": "8e8588c718e5fd8c766c9d94f7808efc"}
+
+POST /api/auth/refresh with saved hrms_refresh cookie HTTP/200
+
+HTTP/1.1 200 
+X-Trace-Id: b09c0aeb5c4a4b4660c8bfd885d5bf76
+Set-Cookie: <REDACTED>
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:28:18 GMT
+
+{"accessToken": "<REDACTED>", "expiresIn": 1800, "tokenType": "Bearer", "user": {"deptId": 10, "displayName": "DAVID MARTINEZ", "email": "david.martinez@company.com", "empId": 11, "empNumber": "EMP-000011", "firstName": "DAVID", "jobTitle": "HR Specialist", "lastName": "MARTINEZ", "mustChangePassword": false, "roles": ["EMPLOYEE:VIEW", "LEAVE:CREATE", "LEAVE:VIEW"], "userId": "4"}}
+
+Refresh cookie received: yes (value redacted)
+
+Access token in login/refresh bodies: redacted

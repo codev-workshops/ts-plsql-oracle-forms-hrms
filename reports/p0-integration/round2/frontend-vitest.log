@@ -1,0 +1,59 @@
+
+> hrms-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /home/ubuntu/repos/ts-plsql-oracle-forms-hrms/frontend
+
+ ✓ src/generated/__tests__/validation-schema.test.ts (4 tests) 16ms
+ ✓ src/app/__tests__/useErrorHandler.test.tsx (6 tests) 110ms
+ ✓ src/api/__tests__/http.test.ts (6 tests) 173ms
+stderr | src/pages/__tests__/LoginPage.test.tsx > LoginPage > renders username/password and validates from the generated schema before calling the API
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+stderr | src/pages/__tests__/ChangePasswordPage.test.tsx > ChangePasswordPage > lists the password policy from validation-schema.json in legacy order
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+stderr | src/components/__tests__/ReferenceDropdown.test.tsx > ReferenceDropdown > loads active departments from GET /api/reference/departments and reports selection
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+stderr | src/app/__tests__/ProtectedRoute.test.tsx > ProtectedRoute > redirects anonymous users to /login after the silent refresh fails
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/app/__tests__/ProtectedRoute.test.tsx (6 tests) 257ms
+ ✓ src/components/__tests__/ReferenceDropdown.test.tsx (5 tests) 529ms
+ ✓ src/validation/__tests__/schema.test.ts (5 tests) 18ms
+stderr | src/pages/__tests__/HomePage.test.tsx > HomePage > shows every authorised module tile for an admin, legacy ones disabled (P0-D1)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/app/__tests__/ErrorBoundary.test.tsx (2 tests) 141ms
+ ✓ src/pages/__tests__/HomePage.test.tsx (3 tests) 199ms
+ ✓ src/pages/__tests__/LoginPage.test.tsx (6 tests) 1257ms
+   ✓ LoginPage > renders username/password and validates from the generated schema before calling the API 388ms
+ ✓ src/app/__tests__/Toolbar.test.tsx (3 tests) 167ms
+ ✓ src/pages/__tests__/ChangePasswordPage.test.tsx (7 tests) 1459ms
+   ✓ ChangePasswordPage > applies the -20310 → -20311 → -20312 rules client-side, first failure only 436ms
+stderr | src/app/__tests__/AppShell.test.tsx > AppShell > renders brand, authority-filtered nav, user info and logs out via POST /api/auth/logout
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/app/__tests__/AppShell.test.tsx (1 test) 195ms
+ ✓ src/app/__tests__/format.test.ts (4 tests) 26ms
+stderr | src/pages/__tests__/ForbiddenPage.test.tsx > ForbiddenPage > renders the access-denied message with a link home
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/pages/__tests__/ForbiddenPage.test.tsx (1 test) 76ms
+
+ Test Files  14 passed (14)
+      Tests  59 passed (59)
+   Start at  09:18:59
+   Duration  3.26s (transform 472ms, setup 4.59s, collect 1.42s, tests 4.62s, environment 5.49s, prepare 947ms)
+
+
+EXIT_CODE=0
