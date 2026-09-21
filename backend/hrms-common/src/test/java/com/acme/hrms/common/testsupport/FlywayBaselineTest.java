@@ -156,6 +156,45 @@ class FlywayBaselineTest {
   }
 
   @Test
+  void transactionalSeedIsNotEmpty() {
+    Map<String, Integer> expected =
+        Map.of(
+            "leave_balances", 13,
+            "leave_requests", 5,
+            "pay_periods", 2,
+            "payroll_runs", 2,
+            "payroll_details", 30,
+            "review_cycles", 1,
+            "performance_reviews", 4,
+            "user_accounts", 5,
+            "user_roles", 5);
+    expected.forEach(
+        (table, rows) ->
+            assertThat(jdbc.queryForObject("select count(*) from " + table, Integer.class))
+                .as(table)
+                .isEqualTo(rows));
+    assertThat(
+            jdbc.queryForList(
+                "select distinct r.role_code from user_roles ur join roles r on r.role_id ="
+                    + " ur.role_id order by 1",
+                String.class))
+        .containsExactly("EXECUTIVE", "MANAGER", "STAFF");
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from payroll_runs where status = 'APPROVED'", Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from leave_requests where status = 'PENDING'", Integer.class))
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from performance_reviews where status = 'MANAGER_REVIEW'",
+                Integer.class))
+        .isEqualTo(2);
+  }
+
+  @Test
   void constraintsHold() {
     assertThatThrownBy(
             () ->

@@ -1,8 +1,0 @@
-com/acme/hrms/tools/reconcile/ReconcileMain.class
-com/acme/hrms/tools/reconcile/NamedSql.class
-com/acme/hrms/tools/reconcile/Cell.class
-com/acme/hrms/tools/reconcile/Diff$Mismatch.class
-com/acme/hrms/tools/reconcile/Diff.class
-com/acme/hrms/tools/reconcile/Baseline.class
-com/acme/hrms/tools/reconcile/Canonical.class
-com/acme/hrms/tools/reconcile/ViewQuery.class

@@ -3,9 +3,9 @@ import type { Authority, ProxyModule } from '../api/types';
 /**
  * Home tiles = HRMS_MENU buttons (COMPONENT_MAPPING.md §2). Visibility follows the
  * `has_permission` calls the menu made: PAYROLL/ADMIN/REPORTS gated, the rest granted to
- * every authenticated user. Until a module is promoted (`NEW*` proxy flag) its tile links
- * to the legacy path, which the reverse proxy resolves through `/legacy/sso/exchange`
- * into the Forms module – the SPA never calls the bridge itself.
+ * every authenticated user. Until a module is promoted (`NEW*` proxy flag) its tile is
+ * rendered disabled (P0-D1: legacy Oracle Forms are not available in this environment,
+ * so there is no legacy-tile navigation and the SPA never calls `/legacy/sso/exchange`).
  */
 export interface ModuleTile {
   id: string;

@@ -5,8 +5,22 @@ select e.emp_id, e.emp_number, e.first_name, e.last_name,
        e.first_name || ' ' || e.last_name                         as full_name,
        e.email, e.phone_work, e.phone_mobile,
        e.hire_date,
-       trunc(((extract(year from age(:as_of, e.hire_date)) * 12
-             + extract(month from age(:as_of, e.hire_date))) / 12.0)::numeric, 1) as tenure_years,
+       -- Oracle MONTHS_BETWEEN(:as_of, hire_date) / 12 truncated to one decimal: whole months
+       -- when both days-of-month match or both are month ends, otherwise the day difference
+       -- contributes (day(as_of) - day(hire_date)) / 31. age() would drop that fraction.
+       trunc(((
+           (extract(year from cast(:as_of as date)) - extract(year from e.hire_date)) * 12
+           + (extract(month from cast(:as_of as date)) - extract(month from e.hire_date))
+           + case
+               when extract(day from cast(:as_of as date)) = extract(day from e.hire_date) then 0
+               when extract(day from cast(:as_of as date))
+                      = extract(day from date_trunc('month', cast(:as_of as date)) + interval '1 month - 1 day')
+                    and extract(day from e.hire_date)
+                      = extract(day from date_trunc('month', e.hire_date) + interval '1 month - 1 day')
+                 then 0
+               else (extract(day from cast(:as_of as date)) - extract(day from e.hire_date)) / 31.0
+             end
+         ) / 12)::numeric, 1)                                       as tenure_years,
        e.employment_type, e.employment_status,
        e.dept_id, d.dept_name, d.dept_code, d.cost_center,
        e.job_id, j.job_title, j.job_code,

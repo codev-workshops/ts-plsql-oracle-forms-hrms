@@ -27,3 +27,8 @@ this file – any difference is a translation defect in `tests/reconciliation/pg
 Known limitation for the future Oracle capture: `tests/reconciliation/oracle/*.sql` select from the
 views, whose `SYSDATE` cannot be pinned by `--as-of`; `TENURE_YEARS`, the salary window and the
 current-year filter will only match if the capture is run with the same effective date.
+
+---
+Superseded: the remediation round 1 merge on `p0-foundation/integration` (`86ad8a0`) ships its own
+populated `views-baseline.csv` (MONTHS_BETWEEN-equivalent tenure, seeded fixtures). That file is kept on
+merge; the round-1 derivation described above is preserved as `reports/p0-integration/round1/views-baseline.round1.csv`.

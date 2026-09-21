@@ -61,13 +61,22 @@ public final class HrmsPostgres {
   /** Loads tools/fixtures/pg/*.sql (the frozen seed) in file order. */
   public static void loadFixtures(JdbcTemplate jdbc) {
     for (Path sql : fixtureFiles()) {
-      try {
-        for (String statement : splitStatements(Files.readString(sql))) {
-          jdbc.execute(statement);
-        }
-      } catch (IOException e) {
-        throw new UncheckedIOException(e);
+      execute(jdbc, sql);
+    }
+  }
+
+  /** Loads a single tools/fixtures/pg file, e.g. {@code 04_user_accounts.sql}. */
+  public static void loadFixture(JdbcTemplate jdbc, String fileName) {
+    execute(jdbc, repoRoot().resolve("tools/fixtures/pg").resolve(fileName));
+  }
+
+  private static void execute(JdbcTemplate jdbc, Path sql) {
+    try {
+      for (String statement : splitStatements(Files.readString(sql))) {
+        jdbc.execute(statement);
       }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 

@@ -8,8 +8,22 @@ import java.util.Objects;
 /** Markdown + exit-code report over the per-scenario legacy/target/expected outcomes. */
 public final class DiffReport {
 
+  /**
+   * @param legacySource provenance of the legacy column when no Oracle ran: {@code recorded} (from
+   *     the PL/SQL reference) or {@code untested-live} (needs a live Oracle Forms session)
+   */
   public record Row(
-      String scenario, Outcome expected, Outcome legacyExpected, Outcome legacy, Outcome target) {
+      String scenario,
+      Outcome expected,
+      Outcome legacyExpected,
+      Outcome legacy,
+      Outcome target,
+      String legacySource) {
+    public Row(
+        String scenario, Outcome expected, Outcome legacyExpected, Outcome legacy, Outcome target) {
+      this(scenario, expected, legacyExpected, legacy, target, ScenarioRegistry.RECORDED);
+    }
+
     boolean targetOk() {
       return Objects.equals(expected, target);
     }
@@ -63,7 +77,7 @@ public final class DiffReport {
           .append(" | ")
           .append(fmt(r.expected()))
           .append(" | ")
-          .append(r.legacy() == null ? "n/a" : fmt(r.legacy()))
+          .append(r.legacy() == null ? "n/a (" + r.legacySource() + ")" : fmt(r.legacy()))
           .append(
               Objects.equals(r.expected(), r.legacyExpected())
                   ? ""

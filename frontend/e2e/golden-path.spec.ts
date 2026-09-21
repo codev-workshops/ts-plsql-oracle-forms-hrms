@@ -2,12 +2,13 @@ import { expect, test } from '@playwright/test';
 
 /**
  * Phase 0 golden path (CUTOVER_PLAN.md §4 acceptance): login → home tiles → change password →
- * logout. Here it runs against the msw browser worker (VITE_MOCK_API=true); the integration
- * session re-runs the same spec against the real auth-service + proxy.
+ * logout. By default it runs against the msw browser worker (VITE_MOCK_API=true); with
+ * `E2E_REAL_STACK=1` (see playwright.config.ts) the same spec runs against the real
+ * frontend + auth-service + PostgreSQL stack.
  */
 
-test.describe('P0 golden path (mocked backend)', () => {
-  test('login, authority-filtered tiles, legacy tile links through the proxy, logout', async ({ page }) => {
+test.describe('P0 golden path', () => {
+  test('login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout', async ({ page }) => {
     await page.goto('/employees');
     await expect(page).toHaveURL(/\/login$/);
 
@@ -16,12 +17,30 @@ test.describe('P0 golden path (mocked backend)', () => {
     await page.getByLabel('Password').press('Enter');
 
     await expect(page.getByRole('heading', { name: 'Welcome, Sam Staff' })).toBeVisible();
-    await expect(page.getByTestId('tile-employees')).toHaveAttribute('href', '/employees');
-    await expect(page.getByTestId('tile-employees')).toHaveAttribute('data-legacy', 'true');
+    const employees = page.getByTestId('tile-employees');
+    await expect(employees).toHaveAttribute('data-legacy', 'true');
+    await expect(employees).toHaveAttribute('aria-disabled', 'true');
+    await expect(employees).not.toHaveAttribute('href', /.*/);
+    await expect(employees).toContainText('Not available in this environment');
+    await employees.click();
+    await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId('tile-payroll')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Logout' }).click();
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  // P0-D1 (golden-oracle mode OFF): legacy Oracle Forms are not run, so the legacy-tile
+  // navigation through the proxy SSO bridge (/employees -> /legacy/sso/exchange -> Forms)
+  // is out of scope for this phase and excluded from the P0 gate. Re-enable when a
+  // legacy-tile token carrier is designed and a Forms runtime is available.
+  test.skip('legacy tile navigates through the proxy SSO exchange into Oracle Forms (P0-D1: out of scope)', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('E-mail').fill('staff@hrms.example');
+    await page.getByLabel('Password').fill('Welcome1');
+    await page.getByLabel('Password').press('Enter');
+    await page.getByTestId('tile-employees').click();
+    await expect(page).toHaveURL(/\/employees$/);
   });
 
   test('invalid credentials show the uniform -20301 message', async ({ page }) => {
