@@ -1,0 +1,10 @@
+INSERT INTO public.user_accounts VALUES (5, 12, 'emily.johnson@company.com', '$2a$10$Xw9v1oQpVHzdxHMx3dCJLeXj3/bxIGxsslpJ3V39MHd4C5V8eL5ny', NULL, true, 0, NULL, 'ACTIVE', 'INTEGRATION', '2026-09-21 07:44:02', NULL, NULL);
+INSERT INTO public.user_accounts VALUES (4, 11, 'david.martinez@company.com', '$2a$10$Xw9v1oQpVHzdxHMx3dCJLeXj3/bxIGxsslpJ3V39MHd4C5V8eL5ny', NULL, false, 0, NULL, 'ACTIVE', 'INTEGRATION', '2026-09-21 07:44:02', NULL, NULL);
+INSERT INTO public.user_accounts VALUES (3, 21, 'jennifer.park@company.com', '$2a$12$RysZ9LZRi1mbaI8gnNNJI.4mCiTDbU3eMeToVBv09SVXzwwlnP2w6', '2026-09-21 07:48:09', false, 0, NULL, 'ACTIVE', 'INTEGRATION', '2026-09-21 07:43:51', 'jennifer.park@company.com', '2026-09-21 07:48:09');
+INSERT INTO public.user_accounts VALUES (2, 2, 'sarah.chen@company.com', '$2a$10$Xw9v1oQpVHzdxHMx3dCJLeXj3/bxIGxsslpJ3V39MHd4C5V8eL5ny', NULL, false, 0, NULL, 'ACTIVE', 'INTEGRATION', '2026-09-21 07:43:51', NULL, NULL);
+INSERT INTO public.user_accounts VALUES (1, 1, 'james.richardson@company.com', '$2a$10$Xw9v1oQpVHzdxHMx3dCJLeXj3/bxIGxsslpJ3V39MHd4C5V8eL5ny', NULL, false, 0, NULL, 'ACTIVE', 'INTEGRATION', '2026-09-21 07:43:51', NULL, NULL);
+INSERT INTO public.user_roles VALUES (1, 3, 'INTEGRATION', '2026-09-21 07:43:51');
+INSERT INTO public.user_roles VALUES (2, 1, 'INTEGRATION', '2026-09-21 07:43:51');
+INSERT INTO public.user_roles VALUES (3, 2, 'INTEGRATION', '2026-09-21 07:43:51');
+INSERT INTO public.user_roles VALUES (4, 1, 'INTEGRATION', '2026-09-21 07:44:02');
+INSERT INTO public.user_roles VALUES (5, 1, 'INTEGRATION', '2026-09-21 07:44:02');

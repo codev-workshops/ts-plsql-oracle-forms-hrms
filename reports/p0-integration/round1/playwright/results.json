@@ -1,0 +1,568 @@
+{
+  "config": {
+    "argv": [
+      "/home/ubuntu/.nvm/versions/node/v24.19.0/bin/node",
+      "/home/ubuntu/hrms-it/e2e-real/node_modules/.bin/playwright",
+      "test"
+    ],
+    "configFile": "/home/ubuntu/hrms-it/e2e-real/playwright.config.ts",
+    "rootDir": "/home/ubuntu/hrms-it/e2e-real/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/ubuntu/hrms-it/e2e-real/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/home/ubuntu/hrms-it/e2e-real/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 45000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "golden-path.real.spec.ts",
+      "file": "golden-path.real.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "login as executive -> tiles match authorities -> logout",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 5146,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24",
+                    "location": {
+                      "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                      "column": 24,
+                      "line": 45
+                    },
+                    "snippet": "  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                        "column": 24,
+                        "line": 45
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n\n  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:47:48.987Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3b570--match-authorities---logout/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3b570--match-authorities---logout/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3b570--match-authorities---logout/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                    "column": 24,
+                    "line": 45
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-807564b4833436c34b79",
+          "file": "golden-path.real.spec.ts",
+          "line": 43,
+          "column": 7
+        },
+        {
+          "title": "login as manager -> tiles match authorities -> logout",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 5133,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24",
+                    "location": {
+                      "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                      "column": 24,
+                      "line": 45
+                    },
+                    "snippet": "  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                        "column": 24,
+                        "line": 45
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n\n  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:47:54.620Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3bd70--match-authorities---logout/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3bd70--match-authorities---logout/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--3bd70--match-authorities---logout/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                    "column": 24,
+                    "line": 45
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-0a975cd23f31f8c2e951",
+          "file": "golden-path.real.spec.ts",
+          "line": 43,
+          "column": 7
+        },
+        {
+          "title": "login as staff -> tiles match authorities -> logout",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 5126,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24",
+                    "location": {
+                      "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                      "column": 24,
+                      "line": 45
+                    },
+                    "snippet": "  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                        "column": 24,
+                        "line": 45
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/login$/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:8080/employees/\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html>…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://localhost:8080/employees/\"\u001b[22m\n\n\n  43 |   test(`login as ${role} -> tiles match authorities -> logout`, async ({ page }) => {\n  44 |     await page.goto('/employees');\n> 45 |     await expect(page).toHaveURL(/\\/login$/);\n     |                        ^\n  46 |     await login(page, u.email);\n  47 |     await expect(page.getByRole('heading', { name: `Welcome, ${u.name}` })).toBeVisible();\n  48 |     for (const t of u.tiles) {\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:45:24"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:00.227Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--5d885--match-authorities---logout/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--5d885--match-authorities---logout/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-login-as--5d885--match-authorities---logout/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                    "column": 24,
+                    "line": 45
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-ee3329a4f66b5678901b",
+          "file": "golden-path.real.spec.ts",
+          "line": 43,
+          "column": 7
+        },
+        {
+          "title": "invalid credentials show the uniform -20301 message (API returns ApiError -20301)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 500,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:05.843Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-faa24d43b1965cc3f706",
+          "file": "golden-path.real.spec.ts",
+          "line": 63,
+          "column": 5
+        },
+        {
+          "title": "first-login user (must_change_password) is forced onto the set-password page",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 488,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:06.433Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-72fb9627cb3bf32501a6",
+          "file": "golden-path.real.spec.ts",
+          "line": 74,
+          "column": 5
+        },
+        {
+          "title": "change password enforces -20310/-20311/-20312 from the real API then succeeds",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2076,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:06.931Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-8712c73287c97e117a7a",
+          "file": "golden-path.real.spec.ts",
+          "line": 80,
+          "column": 5
+        },
+        {
+          "title": "401/refresh flow: reload restores the session through the HttpOnly refresh cookie; replayed cookie is rejected",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 665,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:09.017Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-3d00d0d6352aca0d6c7b",
+          "file": "golden-path.real.spec.ts",
+          "line": 102,
+          "column": 5
+        },
+        {
+          "title": "open a legacy tile through the proxy SSO bridge (Forms session)",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [
+                {
+                  "type": "observed",
+                  "description": "301 text/html http://localhost:8080/employees"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 557,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m301\u001b[39m\nReceived array: \u001b[31m[200, 502, 503]\u001b[39m",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m301\u001b[39m\nReceived array: \u001b[31m[200, 502, 503]\u001b[39m\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:143:27",
+                    "location": {
+                      "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                      "column": 27,
+                      "line": 143
+                    },
+                    "snippet": "  141 |   // With Oracle present this would be the Forms servlet launch (untested-live).\n  142 |   test.info().annotations.push({ type: 'observed', description: `${r.status()} ${r.headers()['content-type']} ${r.url()}` });\n> 143 |   expect([200, 502, 503]).toContain(r.status());\n      |                           ^\n  144 |   expect(r.headers()['content-type'] ?? '').toContain('application/json');\n  145 |   const body = await r.json();\n  146 |   expect(body.code).toBe('SSO_LEGACY_UNAVAILABLE');"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                        "column": 27,
+                        "line": 143
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m301\u001b[39m\nReceived array: \u001b[31m[200, 502, 503]\u001b[39m\n\n  141 |   // With Oracle present this would be the Forms servlet launch (untested-live).\n  142 |   test.info().annotations.push({ type: 'observed', description: `${r.status()} ${r.headers()['content-type']} ${r.url()}` });\n> 143 |   expect([200, 502, 503]).toContain(r.status());\n      |                           ^\n  144 |   expect(r.headers()['content-type'] ?? '').toContain('application/json');\n  145 |   const body = await r.json();\n  146 |   expect(body.code).toBe('SSO_LEGACY_UNAVAILABLE');\n    at /home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts:143:27"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:09.697Z",
+                  "annotations": [
+                    {
+                      "type": "observed",
+                      "description": "301 text/html http://localhost:8080/employees"
+                    }
+                  ],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-open-a-le-eab60-y-SSO-bridge-Forms-session-/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-open-a-le-eab60-y-SSO-bridge-Forms-session-/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/home/ubuntu/hrms-it/e2e-real/test-results/golden-path.real-open-a-le-eab60-y-SSO-bridge-Forms-session-/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/home/ubuntu/hrms-it/e2e-real/tests/golden-path.real.spec.ts",
+                    "column": 27,
+                    "line": 143
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-13b6ab455e3a72afd563",
+          "file": "golden-path.real.spec.ts",
+          "line": 132,
+          "column": 5
+        },
+        {
+          "title": "SSO bridge is not reachable from the browser and rejects NEW modules (via proxy internal location)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 45000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 470,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-21T07:48:10.754Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "276ac20e4216f39ee433-fc8b14e7b4aec5582c77",
+          "file": "golden-path.real.spec.ts",
+          "line": 149,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-21T07:47:48.597Z",
+    "duration": 22768.798000000003,
+    "expected": 5,
+    "skipped": 0,
+    "unexpected": 4,
+    "flaky": 0
+  }
+}
