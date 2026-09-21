@@ -351,6 +351,12 @@ Reporting is read-only – rollback is re-pointing report consumers at the previ
 | 4 | Payroll (pure Java `TaxEngine` / `PayrollRunService`, BUG-02; no hybrid façade) | Phase 3 + `TAX_BRACKETS` populated | `payroll.engine=LEGACY` shadow mode; post-promotion reverse extract | Shadow-mode gate (≥ 3 periods, 0.00 diff); `VW_PAYROLL_LATEST` to-the-cent; 3 production periods on PostgreSQL |
 | 5 | Reporting/Integration (pure Java), Forms and Oracle decommission | Phases 1–4 | Read-only re-point; 30-day zero-hit gate | Final six-view reconciliation, no PL/SQL in target |
 
+### 10.1 Phase status
+
+| Phase | Status | Promoted revision | Gate | Record |
+|---|---|---|---|---|
+| 0 | PROMOTED 2026-09-21 — no end-user traffic moved, proxy still routes all modules to Forms | `ea5925e4d8030755e53985d7d7e5b9de511fadce` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P0.security-signoff` approved | [cutover-log/p0-foundation.md](cutover-log/p0-foundation.md) |
+
 ---
 
 ## Sources
