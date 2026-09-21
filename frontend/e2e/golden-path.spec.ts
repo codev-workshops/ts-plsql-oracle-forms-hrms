@@ -9,6 +9,8 @@ import { SEED_ACCOUNTS, SEED_PASSWORD } from './seed-accounts';
  * e2e/seed-accounts.ts == tools/fixtures/pg/04_user_accounts.sql.
  */
 
+const ROTATED_PASSWORD = 'Stronger9!';
+
 test.describe('P0 golden path', () => {
   test('login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout', async ({ page }) => {
     await page.goto('/employees');
@@ -76,10 +78,25 @@ test.describe('P0 golden path', () => {
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByRole('alert')).toHaveText('Password must contain an uppercase letter');
 
-    await page.getByLabel('New password', { exact: true }).fill('Stronger9!');
-    await page.getByLabel('Confirm new password').fill('Stronger9!');
+    await page.getByLabel('New password', { exact: true }).fill(ROTATED_PASSWORD);
+    await page.getByLabel('Confirm new password').fill(ROTATED_PASSWORD);
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Password changed')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Welcome, JAMES RICHARDSON' })).toBeVisible();
+
+    // Restore the committed seed password so later real-stack specs that log in as the
+    // executive (seed-accounts.ts == tools/fixtures/pg/04_user_accounts.sql) keep working.
+    await page.getByRole('link', { name: 'Change password' }).click();
+    await page.getByLabel('Current password').fill(ROTATED_PASSWORD);
+    await page.getByLabel('New password', { exact: true }).fill(SEED_PASSWORD);
+    await page.getByLabel('Confirm new password').fill(SEED_PASSWORD);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Password changed')).toBeVisible();
+    await page.getByRole('button', { name: 'Logout' }).click();
+
+    await page.getByLabel('E-mail').fill(SEED_ACCOUNTS.executive.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
+    await page.getByRole('button', { name: 'Login' }).click();
     await expect(page.getByRole('heading', { name: 'Welcome, JAMES RICHARDSON' })).toBeVisible();
   });
 
