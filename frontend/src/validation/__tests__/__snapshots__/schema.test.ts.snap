@@ -1,0 +1,78 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the pages depend on 1`] = `
+{
+  "ChangePasswordRequest": {
+    "currentPassword": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "newPassword": {
+      "required": true,
+      "rules": [
+        "-20310",
+        "-20311",
+        "-20312",
+      ],
+      "type": "string",
+    },
+  },
+  "EmployeeSearchQuery": {
+    "fields": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "q": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "LoginRequest": {
+    "password": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "username": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SsoExchangeRequest": {
+    "clientIp": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "module": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "returnPath": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+}
+`;
