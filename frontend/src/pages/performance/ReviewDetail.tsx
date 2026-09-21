@@ -28,6 +28,8 @@ export function ReviewDetail({ reviewId }: { reviewId: number }) {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['performance', 'reviews'] });
     queryClient.invalidateQueries({ queryKey: ['performance', 'goals'] });
+    queryClient.invalidateQueries({ queryKey: ['performance', 'team'] });
+    queryClient.invalidateQueries({ queryKey: ['performance', 'distribution'] });
   };
   const submitSelf = useMutation({
     mutationFn: (body: SelfAssessmentRequest) => api.performance.submitSelfAssessment(reviewId, body),

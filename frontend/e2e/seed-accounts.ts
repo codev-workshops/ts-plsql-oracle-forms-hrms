@@ -60,6 +60,19 @@ export const SEED_ACCOUNTS = {
   },
 } as const satisfies Record<string, SeedAccount>;
 
+/**
+ * Mirrors the REVIEW_CYCLES / PERFORMANCE_REVIEWS block of tools/fixtures/pg/03_transaction_data.sql
+ * (+ 02_employee_data.sql names); keep in sync. These rows also feed VW_PENDING_APPROVALS in
+ * tests/golden/views-baseline.csv, so real-stack specs must only READ them.
+ */
+export const PG_PERFORMANCE_FIXTURES = {
+  cycle: { cycleId: 9001, cycleName: '2024 Mid-Year Review', status: 'IN_PROGRESS' },
+  reviews: [
+    { reviewId: 5001, empId: 22, employeeName: 'THOMAS BAKER', reviewerEmpId: 21, status: 'MANAGER_REVIEW' },
+    { reviewId: 5003, empId: 23, employeeName: 'LISA WONG', reviewerEmpId: 21, status: 'SELF_REVIEW' },
+  ],
+} as const;
+
 const MODULES = ['PAYROLL', 'EMPLOYEE', 'LEAVE', 'ADMIN', 'REPORTS'] as const;
 const ACTIONS = ['VIEW', 'EDIT', 'APPROVE', 'CREATE'] as const;
 
