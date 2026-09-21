@@ -3,6 +3,7 @@ package com.acme.hrms.tools.parallelrun;
 import com.acme.hrms.tools.parallelrun.Scenario.LegacyCall;
 import com.acme.hrms.tools.parallelrun.Scenario.Outcome;
 import com.acme.hrms.tools.parallelrun.Scenario.RestCall;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +45,12 @@ public final class ScenarioRegistry {
   static final Outcome SSO_LEGACY_UNAVAILABLE = Outcome.error("SSO_LEGACY_UNAVAILABLE");
 
   public static List<Scenario> all() {
+    List<Scenario> all = new ArrayList<>(phase0());
+    all.addAll(PerformanceScenarios.all());
+    return List.copyOf(all);
+  }
+
+  private static List<Scenario> phase0() {
     return List.of(
         new Scenario(
             "auth.login.ok",

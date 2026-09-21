@@ -102,18 +102,32 @@ public final class BulkLoader {
   }
 
   private void advanceSequence(String table) throws SQLException {
+    restartSequence(pg, table);
+  }
+
+  /**
+   * Restarts the table's sequence at MAX(pk) + 1 (CUTOVER_PLAN.md §2 rule 6 / §5.3) so the first
+   * Java insert after the flip cannot collide with a row loaded from Oracle. No-op for tables
+   * without a sequence. Returns the value the next {@code nextval} will yield.
+   */
+  static long restartSequence(Connection pg, String table) throws SQLException {
     String pk = TableGroup.PRIMARY_KEYS.get(table);
-    String seq = "seq_" + table;
+    String seq = TableGroup.SEQUENCES.get(table);
+    if (seq == null) {
+      return -1;
+    }
     try (PreparedStatement ps =
         pg.prepareStatement(
-            "select setval(?, greatest(coalesce((select max("
+            "select setval(?, coalesce((select max("
                 + pk
                 + ") from "
                 + table
-                + "), 0), 1), true) where exists (select 1 from pg_class where relkind = 'S' and relname = ?)")) {
+                + "), 0) + 1, false)")) {
       ps.setString(1, seq);
-      ps.setString(2, seq);
-      ps.execute();
+      try (ResultSet rs = ps.executeQuery()) {
+        rs.next();
+        return rs.getLong(1);
+      }
     }
   }
 }

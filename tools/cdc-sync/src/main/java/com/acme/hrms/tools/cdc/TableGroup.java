@@ -71,6 +71,41 @@ public enum TableGroup {
           Map.entry("notification_queue", "notification_id"),
           Map.entry("user_sessions", "session_id"));
 
+  /**
+   * PostgreSQL sequence backing each table's primary key (same names as the Oracle SEQ_*). Tables
+   * without an entry have natural keys or externally assigned ids and need no restart.
+   */
+  public static final Map<String, String> SEQUENCES =
+      Map.ofEntries(
+          Map.entry("departments", "seq_department"),
+          Map.entry("locations", "seq_location"),
+          Map.entry("job_grades", "seq_job_grade"),
+          Map.entry("job_titles", "seq_job_title"),
+          Map.entry("holidays", "seq_holiday"),
+          Map.entry("leave_types", "seq_leave_type"),
+          Map.entry("pay_elements", "seq_pay_element"),
+          Map.entry("tax_brackets", "seq_tax_bracket"),
+          Map.entry("system_parameters", "seq_system_param"),
+          Map.entry("lookup_values", "seq_lookup"),
+          Map.entry("employees", "seq_employee"),
+          Map.entry("employee_history", "seq_emp_history"),
+          Map.entry("employee_dependents", "seq_dependent"),
+          Map.entry("emergency_contacts", "seq_emergency_contact"),
+          Map.entry("salary_records", "seq_salary"),
+          Map.entry("employee_pay_elements", "seq_emp_pay_element"),
+          Map.entry("pay_periods", "seq_pay_period"),
+          Map.entry("payroll_runs", "seq_payroll_run"),
+          Map.entry("payroll_details", "seq_payroll_detail"),
+          Map.entry("leave_balances", "seq_leave_balance"),
+          Map.entry("leave_requests", "seq_leave_request"),
+          Map.entry("leave_accrual_log", "seq_leave_accrual"),
+          Map.entry("review_cycles", "seq_review_cycle"),
+          Map.entry("performance_reviews", "seq_perf_review"),
+          Map.entry("performance_goals", "seq_perf_goal"),
+          Map.entry("audit_log", "seq_audit"),
+          Map.entry("notification_queue", "seq_notification"),
+          Map.entry("user_sessions", "seq_user_session"));
+
   private final String flag;
   private final List<String> tables;
 

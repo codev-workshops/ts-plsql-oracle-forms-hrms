@@ -14,6 +14,14 @@ public enum ErrorCode {
       "-20311", HttpStatus.BAD_REQUEST, "Password must contain an uppercase letter"),
   PASSWORD_NO_DIGIT("-20312", HttpStatus.BAD_REQUEST, "Password must contain a number"),
   EMPLOYEE_NOT_FOUND("-20001", HttpStatus.NOT_FOUND, "Employee not found or not active"),
+  CYCLE_STATUS_INVALID(
+      "-20401", HttpStatus.UNPROCESSABLE_ENTITY, "Review cycle not in correct status"),
+  REVIEW_STATUS_INVALID(
+      "-20402", HttpStatus.UNPROCESSABLE_ENTITY, "Review not found or not in correct status"),
+  RATING_OUT_OF_RANGE("-20403", HttpStatus.BAD_REQUEST, "Rating must be between 1.0 and 5.0"),
+  CYCLE_NOT_FOUND("CYCLE_NOT_FOUND", HttpStatus.NOT_FOUND, "Review cycle not found"),
+  REVIEW_NOT_FOUND("REVIEW_NOT_FOUND", HttpStatus.NOT_FOUND, "Performance review not found"),
+  GOAL_NOT_FOUND("GOAL_NOT_FOUND", HttpStatus.NOT_FOUND, "Performance goal not found"),
 
   // ---- framework
   VALIDATION_FAILED("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "Request validation failed"),

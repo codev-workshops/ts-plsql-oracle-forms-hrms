@@ -27,7 +27,11 @@ public record Scenario(
       Map<String, Object> body,
       String auth,
       boolean useRefreshCookie,
-      List<RestCall> setup) {}
+      List<RestCall> setup) {
+    public RestCall withSetup(List<RestCall> newSetup) {
+      return new RestCall(method, path, body, auth, useRefreshCookie, newSetup);
+    }
+  }
 
   /**
    * Common observable: legacy error code (or {@code null} for success) and a small set of named
