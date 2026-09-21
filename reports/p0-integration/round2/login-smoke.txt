@@ -1,0 +1,44 @@
+=== valid login ===
+HTTP/1.1 200 
+X-Trace-Id: 13021395e5947a927254760f17550e03
+Set-Cookie: <REDACTED>
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:23:09 GMT
+
+{"accessToken":"<REDACTED_JWT>","tokenType":"Bearer","expiresIn":1800,"user":{"userId":"2","empId":2,"empNumber":"EMP-000002","email":"sarah.chen@company.com","firstName":"SARAH","lastName":"CHEN","displayName":"SARAH CHEN","deptId":20,"jobTitle":"Chief Financial Officer","roles":["EMPLOYEE:VIEW","LEAVE:CREATE","LEAVE:VIEW"],"mustChangePassword":false}}
+=== wrong-password login ===
+HTTP/1.1 401 
+X-Trace-Id: 9cccf9fb05ccde7cd19dfaa972fa66e6
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:23:09 GMT
+
+{"code":"-20301","message":"Invalid username or password","traceId":"9cccf9fb05ccde7cd19dfaa972fa66e6"}
+=== GET /api/auth/me without token ===
+HTTP/1.1 401 
+X-Trace-Id: d796094e3f5f3d5c70dc4e0c256bb063
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Mon, 21 Sep 2026 09:23:09 GMT
+
+{"code":"TOKEN_INVALID","message":"Session has expired","traceId":"d796094e3f5f3d5c70dc4e0c256bb063"}
+CURL_EXIT_CODES success=0 wrong=0 me=0

@@ -1,0 +1,114 @@
+PLAYWRIGHT_START=2026-09-21T09:23:46+00:00
+
+Running 5 tests using 1 worker
+
+[1/5] e2e/golden-path.spec.ts:11:3 › P0 golden path › login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout
+  1) e2e/golden-path.spec.ts:11:3 › P0 golden path › login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('heading', { name: 'Welcome, Sam Staff' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('heading', { name: 'Welcome, Sam Staff' }) with timeout 5000ms
+      - waiting for getByRole('heading', { name: 'Welcome, Sam Staff' })
+
+
+      17 |     await page.getByLabel('Password').press('Enter');
+      18 |
+    > 19 |     await expect(page.getByRole('heading', { name: 'Welcome, Sam Staff' })).toBeVisible();
+         |                                                                             ^
+      20 |     const employees = page.getByTestId('tile-employees');
+      21 |     await expect(employees).toHaveAttribute('data-legacy', 'true');
+      22 |     await expect(employees).toHaveAttribute('aria-disabled', 'true');
+        at /home/ubuntu/repos/ts-plsql-oracle-forms-hrms/frontend/e2e/golden-path.spec.ts:19:77
+
+    Error Context: test-results/golden-path-P0-golden-path-7cd16-tiles-disabled-P0-D1-logout/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/golden-path-P0-golden-path-7cd16-tiles-disabled-P0-D1-logout/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/golden-path-P0-golden-path-7cd16-tiles-disabled-P0-D1-logout/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[2/5] e2e/golden-path.spec.ts:37:8 › P0 golden path › legacy tile navigates through the proxy SSO exchange into Oracle Forms (P0-D1: out of scope)
+[3/5] e2e/golden-path.spec.ts:46:3 › P0 golden path › invalid credentials show the uniform -20301 message
+[4/5] e2e/golden-path.spec.ts:54:3 › P0 golden path › change password enforces the -20310/-20311/-20312 policy then succeeds
+  2) e2e/golden-path.spec.ts:54:3 › P0 golden path › change password enforces the -20310/-20311/-20312 policy then succeeds 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('link', { name: 'Change password' })
+
+
+      57 |     await page.getByLabel('Password').fill('Welcome1');
+      58 |     await page.getByRole('button', { name: 'Login' }).click();
+    > 59 |     await page.getByRole('link', { name: 'Change password' }).click();
+         |                                                               ^
+      60 |
+      61 |     await page.getByLabel('Current password').fill('Welcome1');
+      62 |     await page.getByLabel('New password', { exact: true }).fill('lowercase1');
+        at /home/ubuntu/repos/ts-plsql-oracle-forms-hrms/frontend/e2e/golden-path.spec.ts:59:63
+
+    Error Context: test-results/golden-path-P0-golden-path-cc9f0--20312-policy-then-succeeds/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/golden-path-P0-golden-path-cc9f0--20312-policy-then-succeeds/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/golden-path-P0-golden-path-cc9f0--20312-policy-then-succeeds/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[5/5] e2e/golden-path.spec.ts:74:3 › P0 golden path › first-login user is forced onto the set-password page
+  3) e2e/golden-path.spec.ts:74:3 › P0 golden path › first-login user is forced onto the set-password page 
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/password$/
+    Received string:  "http://localhost:5173/login"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 5000ms
+        14 × locator resolved to <html lang="en">…</html>
+           - unexpected value "http://localhost:5173/login"
+
+
+      77 |     await page.getByLabel('Password').fill('Welcome1');
+      78 |     await page.getByRole('button', { name: 'Login' }).click();
+    > 79 |     await expect(page).toHaveURL(/\/password$/);
+         |                        ^
+      80 |     await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible();
+      81 |   });
+      82 | });
+        at /home/ubuntu/repos/ts-plsql-oracle-forms-hrms/frontend/e2e/golden-path.spec.ts:79:24
+
+    Error Context: test-results/golden-path-P0-golden-path-6aadc--onto-the-set-password-page/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/golden-path-P0-golden-path-6aadc--onto-the-set-password-page/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/golden-path-P0-golden-path-6aadc--onto-the-set-password-page/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  3 failed
+    e2e/golden-path.spec.ts:11:3 › P0 golden path › login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout 
+    e2e/golden-path.spec.ts:54:3 › P0 golden path › change password enforces the -20310/-20311/-20312 policy then succeeds 
+    e2e/golden-path.spec.ts:74:3 › P0 golden path › first-login user is forced onto the set-password page 
+  1 skipped
+  1 passed (43.3s)
+PLAYWRIGHT_END=2026-09-21T09:24:30+00:00
+EXIT_CODE=1

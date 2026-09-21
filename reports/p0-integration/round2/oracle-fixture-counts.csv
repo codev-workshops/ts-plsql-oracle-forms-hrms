@@ -1,0 +1,17 @@
+departments,10
+employees,24
+holidays,10
+job_grades,10
+job_titles,26
+leave_balances,13
+leave_requests,5
+leave_types,6
+locations,3
+pay_elements,11
+pay_periods,2
+payroll_details,30
+payroll_runs,2
+performance_reviews,4
+review_cycles,1
+salary_records,23
+system_parameters,10

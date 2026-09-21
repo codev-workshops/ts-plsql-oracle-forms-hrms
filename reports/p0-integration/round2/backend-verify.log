@@ -1,0 +1,47 @@
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-common ---
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.848 s -- in com.acme.hrms.common.error.GlobalExceptionHandlerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.acme.hrms.common.error.ErrorCodeTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.14 s -- in com.acme.hrms.common.testsupport.FlywayBaselineTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.acme.hrms.common.trace.TraceContextTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-validation ---
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.223 s -- in com.acme.hrms.validation.ValidationSchemaExporterTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.acme.hrms.validation.PasswordPolicyTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-audit ---
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.396 s -- in com.acme.hrms.audit.ErrorLogServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-notification ---
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.377 s -- in com.acme.hrms.notification.NotificationServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ reference ---
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ auth ---
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.746 s -- in com.acme.hrms.auth.OpenApiContractTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 8.527 s -- in com.acme.hrms.auth.AuthFlowTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.662 s -- in com.acme.hrms.auth.SeededAccountsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.331 s -- in com.acme.hrms.auth.ReferenceAndSsoTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-tool-parallel-run ---
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.086 s -- in com.acme.hrms.tools.parallelrun.RegistryAndReportTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.341 s -- in com.acme.hrms.tools.parallelrun.SsoScenarioContractTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-tool-reconcile ---
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.101 s -- in com.acme.hrms.tools.reconcile.DiffAndCanonicalTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.529 s -- in com.acme.hrms.tools.reconcile.PgReconciliationQueriesTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.acme.hrms.tools.reconcile.QueriesRootResolutionTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0
+[INFO] --- maven-surefire-plugin:3.2.5:test (default-test) @ hrms-tool-cdc-sync ---
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.984 s -- in com.acme.hrms.tools.cdc.HolidaysRoundTripTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Reactor Summary for HRMS backend (Phase 0 - Foundation) 0.1.0-SNAPSHOT:
+[INFO] HRMS backend (Phase 0 - Foundation) ................ SUCCESS [  1.996 s]
+[INFO] hrms-common ........................................ SUCCESS [ 21.084 s]
+[INFO] hrms-validation .................................... SUCCESS [  1.072 s]
+[INFO] hrms-audit ......................................... SUCCESS [  5.252 s]
+[INFO] hrms-notification .................................. SUCCESS [  5.153 s]
+[INFO] reference .......................................... SUCCESS [  0.199 s]
+[INFO] auth ............................................... SUCCESS [ 21.488 s]
+[INFO] tools/parallel-run ................................. SUCCESS [  3.218 s]
+[INFO] tools/reconcile .................................... SUCCESS [  5.550 s]
+[INFO] tools/cdc-sync ..................................... SUCCESS [  5.902 s]
+[INFO] BUILD SUCCESS
