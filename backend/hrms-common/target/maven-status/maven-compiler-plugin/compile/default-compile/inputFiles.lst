@@ -1,0 +1,14 @@
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/ApiError.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/EmployeeNotFoundException.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/ErrorCode.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/ErrorSink.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/GlobalExceptionHandler.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/HrmsException.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/InvalidCredentialsException.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/PasswordPolicyException.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/error/RateLimitedException.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/param/SystemParameterService.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/security/CallerIdentity.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/security/CurrentCaller.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/trace/TraceContext.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/main/java/com/acme/hrms/common/trace/TraceIdFilter.java

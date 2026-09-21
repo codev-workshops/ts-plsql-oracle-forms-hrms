@@ -1,0 +1,5 @@
+com/acme/hrms/common/error/GlobalExceptionHandlerTest.class
+com/acme/hrms/common/error/ErrorCodeTest.class
+com/acme/hrms/common/testsupport/FlywayBaselineTest.class
+com/acme/hrms/common/testsupport/HrmsPostgres.class
+com/acme/hrms/common/trace/TraceContextTest.class

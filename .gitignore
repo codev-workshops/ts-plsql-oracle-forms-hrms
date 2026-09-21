@@ -32,3 +32,6 @@ Thumbs.db
 # OS files
 .DS_Store
 Desktop.ini
+
+# Rendered by proxy/render.py
+proxy/nginx.conf

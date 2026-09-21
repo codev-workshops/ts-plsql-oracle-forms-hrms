@@ -1,0 +1,10 @@
+com/acme/hrms/tools/parallelrun/Scenario$Outcome.class
+com/acme/hrms/tools/parallelrun/RestRunner.class
+com/acme/hrms/tools/parallelrun/Scenario.class
+com/acme/hrms/tools/parallelrun/DiffReport$Row.class
+com/acme/hrms/tools/parallelrun/Scenario$RestCall.class
+com/acme/hrms/tools/parallelrun/LegacyRunner.class
+com/acme/hrms/tools/parallelrun/DiffReport.class
+com/acme/hrms/tools/parallelrun/Scenario$LegacyCall.class
+com/acme/hrms/tools/parallelrun/ParallelRunMain.class
+com/acme/hrms/tools/parallelrun/ScenarioRegistry.class

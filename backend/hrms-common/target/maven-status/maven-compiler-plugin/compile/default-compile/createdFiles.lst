@@ -1,0 +1,16 @@
+com/acme/hrms/common/error/EmployeeNotFoundException.class
+com/acme/hrms/common/error/InvalidCredentialsException.class
+com/acme/hrms/common/error/GlobalExceptionHandler.class
+com/acme/hrms/common/security/CurrentCaller$NotAuthenticatedException.class
+com/acme/hrms/common/trace/TraceContext.class
+com/acme/hrms/common/param/SystemParameterService.class
+com/acme/hrms/common/error/ErrorCode.class
+com/acme/hrms/common/security/CurrentCaller.class
+com/acme/hrms/common/security/CallerIdentity.class
+com/acme/hrms/common/trace/TraceIdFilter.class
+com/acme/hrms/common/error/PasswordPolicyException.class
+com/acme/hrms/common/error/RateLimitedException.class
+com/acme/hrms/common/error/ApiError.class
+com/acme/hrms/common/error/ApiError$Detail.class
+com/acme/hrms/common/error/ErrorSink.class
+com/acme/hrms/common/error/HrmsException.class

@@ -1,0 +1,99 @@
+package com.acme.hrms.tools.cdc;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * CUTOVER_PLAN.md §2 rule 1: one owning module per table group. Tables are listed in FK order so a
+ * bulk load / reverse extract can run them top-down (load) or bottom-up (delete).
+ */
+public enum TableGroup {
+  REFERENCE(
+      "reference",
+      List.of(
+          "locations",
+          "departments",
+          "job_grades",
+          "job_titles",
+          "holidays",
+          "leave_types",
+          "pay_elements",
+          "tax_brackets",
+          "system_parameters",
+          "lookup_values")),
+  EMPLOYEE(
+      "employee",
+      List.of(
+          "employees",
+          "employee_history",
+          "employee_dependents",
+          "emergency_contacts",
+          "salary_records",
+          "employee_bank_accounts",
+          "employee_tax_info",
+          "employee_pay_elements")),
+  PAYROLL("payroll", List.of("pay_periods", "payroll_runs", "payroll_details")),
+  LEAVE("leave", List.of("leave_balances", "leave_requests", "leave_accrual_log")),
+  PERFORMANCE("performance", List.of("review_cycles", "performance_reviews", "performance_goals")),
+  CROSS_CUTTING("cross-cutting", List.of("audit_log", "notification_queue", "user_sessions"));
+
+  /** Primary keys, needed by the reverse extract for keyed MERGE. */
+  public static final Map<String, String> PRIMARY_KEYS =
+      Map.ofEntries(
+          Map.entry("locations", "location_code"),
+          Map.entry("departments", "dept_id"),
+          Map.entry("job_grades", "grade_id"),
+          Map.entry("job_titles", "job_id"),
+          Map.entry("holidays", "holiday_id"),
+          Map.entry("leave_types", "leave_type_id"),
+          Map.entry("pay_elements", "element_id"),
+          Map.entry("tax_brackets", "bracket_id"),
+          Map.entry("system_parameters", "param_id"),
+          Map.entry("lookup_values", "lookup_id"),
+          Map.entry("employees", "emp_id"),
+          Map.entry("employee_history", "hist_id"),
+          Map.entry("employee_dependents", "dependent_id"),
+          Map.entry("emergency_contacts", "contact_id"),
+          Map.entry("salary_records", "salary_id"),
+          Map.entry("employee_bank_accounts", "bank_acct_id"),
+          Map.entry("employee_tax_info", "tax_info_id"),
+          Map.entry("employee_pay_elements", "emp_element_id"),
+          Map.entry("pay_periods", "period_id"),
+          Map.entry("payroll_runs", "run_id"),
+          Map.entry("payroll_details", "detail_id"),
+          Map.entry("leave_balances", "balance_id"),
+          Map.entry("leave_requests", "request_id"),
+          Map.entry("leave_accrual_log", "accrual_id"),
+          Map.entry("review_cycles", "cycle_id"),
+          Map.entry("performance_reviews", "review_id"),
+          Map.entry("performance_goals", "goal_id"),
+          Map.entry("audit_log", "audit_id"),
+          Map.entry("notification_queue", "notification_id"),
+          Map.entry("user_sessions", "session_id"));
+
+  private final String flag;
+  private final List<String> tables;
+
+  TableGroup(String flag, List<String> tables) {
+    this.flag = flag;
+    this.tables = tables;
+  }
+
+  /** Proxy flag name that decides the database of record for this group. */
+  public String flag() {
+    return flag;
+  }
+
+  public List<String> tables() {
+    return tables;
+  }
+
+  public static TableGroup byFlag(String flag) {
+    for (TableGroup g : values()) {
+      if (g.flag.equals(flag)) {
+        return g;
+      }
+    }
+    throw new IllegalArgumentException("unknown table group: " + flag);
+  }
+}
