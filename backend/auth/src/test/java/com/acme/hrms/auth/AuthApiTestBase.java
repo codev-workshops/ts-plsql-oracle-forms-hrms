@@ -17,17 +17,21 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
- * Full Spring context against the shared Testcontainers PostgreSQL with the frozen seed plus one
- * login account per grade band (STAFF / MANAGER / EXECUTIVE).
+ * Full Spring context against the shared Testcontainers PostgreSQL with the frozen seed. Login
+ * accounts come from tools/fixtures/pg/04_user_accounts.sql (one per grade band: STAFF / MANAGER /
+ * EXECUTIVE); {@link #seedAccounts()} restores that fixture so tests that mutate passwords or lock
+ * accounts start from the committed state.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 public abstract class AuthApiTestBase {
 
-  protected static final String EXEC_EMAIL = "james.richardson@company.com"; // emp 1, grade 12
-  protected static final String STAFF_EMAIL = "sarah.chen@company.com"; // emp 2
+  protected static final String EXEC_EMAIL = "james.richardson@company.com"; // emp 1, user 1
+  protected static final String MANAGER_EMAIL = "jennifer.park@company.com"; // emp 21, user 3
+  protected static final String STAFF_EMAIL = "sarah.chen@company.com"; // emp 2, user 2
   protected static final String PASSWORD = "Welcome1!";
+  protected static final String ACCOUNTS_FIXTURE = "04_user_accounts.sql";
 
   @Autowired protected MockMvc mvc;
   @Autowired protected ObjectMapper json;
@@ -57,24 +61,9 @@ public abstract class AuthApiTestBase {
     Integer emps = jdbc.queryForObject("select count(*) from employees", Integer.class);
     if (emps == null || emps == 0) {
       HrmsPostgres.loadFixtures(jdbc);
+    } else {
+      HrmsPostgres.loadFixture(jdbc, ACCOUNTS_FIXTURE);
     }
-    String hash = encoder.encode(PASSWORD);
-    account(1, 1, EXEC_EMAIL, hash, 3);
-    account(2, 2, STAFF_EMAIL, hash, 1);
-  }
-
-  private void account(long userId, long empId, String email, String hash, int roleId) {
-    jdbc.update(
-        "insert into user_accounts (user_id, emp_id, username, password_hash, created_by)"
-            + " values (?, ?, ?, ?, 'TEST')",
-        userId,
-        empId,
-        email,
-        hash);
-    jdbc.update(
-        "insert into user_roles (user_id, role_id, granted_by) values (?, ?, 'TEST')",
-        userId,
-        roleId);
   }
 
   protected static Cookie refreshCookie(MvcResult result) {

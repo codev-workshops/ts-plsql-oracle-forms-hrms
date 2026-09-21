@@ -19,6 +19,8 @@ import java.util.Map;
  *
  * <pre>
  *   capture  --oracle URL --oracle-user U --oracle-password P --as-of YYYY-MM-DD --out views-baseline.csv
+ *   capture  --pg URL --pg-user U --pg-password P --as-of YYYY-MM-DD --out views-baseline.csv
+ *            (golden-oracle mode OFF: records the PostgreSQL pack; see tests/golden/README.md)
  *   compare  --pg URL --pg-user U --pg-password P --as-of YYYY-MM-DD --baseline views-baseline.csv --report out.md
  *   live     both sets of connection args; compares Oracle and PostgreSQL directly without a CSV
  * </pre>
@@ -35,14 +37,21 @@ public final class ReconcileMain {
       System.exit(2);
     }
     Map<String, String> o = parse(args);
-    Path root = Path.of(o.getOrDefault("--queries", "tests/reconciliation"));
+    Path root = queriesRoot(o.get("--queries"));
     LocalDate asOf = LocalDate.parse(o.getOrDefault("--as-of", LocalDate.now().toString()));
     List<ViewQuery> queries = ViewQuery.all(root);
     switch (args[0]) {
       case "capture" -> {
-        List<Cell> cells = capture(connect(o, "--oracle"), queries, asOf, true);
+        boolean oracle = o.containsKey("--oracle");
+        List<Cell> cells = capture(connect(o, oracle ? "--oracle" : "--pg"), queries, asOf, oracle);
         Baseline.write(Path.of(o.get("--out")), cells);
-        System.out.println("captured " + cells.size() + " cells");
+        System.out.println(
+            "captured "
+                + cells.size()
+                + " cells from "
+                + (oracle
+                    ? "Oracle"
+                    : "PostgreSQL (golden-oracle mode OFF; Oracle leg untested-live)"));
       }
       case "compare" -> {
         List<Cell> expected = Baseline.read(Path.of(o.get("--baseline")));
@@ -97,6 +106,48 @@ public final class ReconcileMain {
     return DriverManager.getConnection(url, o.get(prefix + "-user"), o.get(prefix + "-password"));
   }
 
+  static final String DEFAULT_QUERIES = "tests/reconciliation";
+
+  /**
+   * Locates the reconciliation query pack. An explicit {@code --queries} wins; otherwise {@code
+   * tests/reconciliation} is searched upwards from the working directory (repo root,
+   * tools/reconcile, ...) and then from the directory holding this jar, so the documented {@code
+   * java -jar target/hrms-tool-reconcile.jar} works from any checkout directory.
+   */
+  static Path queriesRoot(String explicit) {
+    if (explicit != null) {
+      return Path.of(explicit);
+    }
+    return resolveQueries(Path.of("").toAbsolutePath(), jarDirectory());
+  }
+
+  static Path resolveQueries(Path cwd, Path jarDir) {
+    for (Path start : new Path[] {cwd, jarDir}) {
+      for (Path dir = start; dir != null; dir = dir.getParent()) {
+        Path candidate = dir.resolve(DEFAULT_QUERIES);
+        if (Files.isDirectory(candidate.resolve("pg"))) {
+          return candidate;
+        }
+      }
+    }
+    throw new IllegalArgumentException(
+        DEFAULT_QUERIES
+            + " not found above "
+            + cwd
+            + (jarDir == null ? "" : " or " + jarDir)
+            + "; pass --queries <dir>");
+  }
+
+  private static Path jarDirectory() {
+    try {
+      Path location =
+          Path.of(ReconcileMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+      return Files.isDirectory(location) ? location : location.getParent();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
   static Map<String, String> parse(String[] args) {
     Map<String, String> m = new HashMap<>();
     for (int i = 1; i + 1 < args.length; i += 2) {
@@ -107,7 +158,8 @@ public final class ReconcileMain {
 
   private static void usage() {
     System.err.println(
-        "usage: reconcile (capture|compare|live) [--queries tests/reconciliation] --as-of DATE"
+        "usage: reconcile (capture|compare|live) [--queries DIR (default: tests/reconciliation found"
+            + " above the working directory or the jar)] --as-of DATE"
             + " [--oracle URL --oracle-user U --oracle-password P]"
             + " [--pg URL --pg-user U --pg-password P] [--out CSV] [--baseline CSV] [--report MD]");
   }

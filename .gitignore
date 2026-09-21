@@ -29,6 +29,12 @@ Thumbs.db
 *.jar
 *.war
 
+# Maven build output (backend/*, tools/*)
+target/
+
+# Python bytecode (proxy/, tools/fixtures/)
+__pycache__/
+
 # OS files
 .DS_Store
 Desktop.ini

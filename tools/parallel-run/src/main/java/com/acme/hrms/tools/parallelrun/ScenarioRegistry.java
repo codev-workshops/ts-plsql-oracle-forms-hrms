@@ -5,6 +5,7 @@ import com.acme.hrms.tools.parallelrun.Scenario.Outcome;
 import com.acme.hrms.tools.parallelrun.Scenario.RestCall;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Every registered scenario. Later phases append to this list only; the harness, runners and diff
@@ -19,13 +20,25 @@ public final class ScenarioRegistry {
 
   private ScenarioRegistry() {}
 
-  /**
-   * Seed user from tools/fixtures (emp 2, STAFF); the account row is created by the integration
-   * session seed step.
-   */
+  /** Seed user from tools/fixtures/pg/04_user_accounts.sql (emp 2, STAFF). */
   static final String USER = "sarah.chen@company.com";
 
   static final String PASSWORD = "Welcome1!";
+
+  /** Client address the harness reports in SSO exchanges (SsoExchangeRequest.clientIp). */
+  static final String CLIENT_IP = "127.0.0.1";
+
+  /** Legacy-side provenance when no Oracle is attached (golden-oracle mode OFF). */
+  public static final String RECORDED = "recorded";
+
+  public static final String UNTESTED_LIVE = "untested-live";
+
+  /**
+   * Scenarios whose legacy leg cannot be recorded from the PL/SQL reference alone because the
+   * observable is only produced by a live Oracle Forms session (DECISION P0-D1: legacy Forms are
+   * not run in this phase). The target side is still fully validated against the contract.
+   */
+  static final Set<String> UNTESTED_LIVE_SCENARIOS = Set.of("sso.exchange.legacy-module");
 
   public static List<Scenario> all() {
     return List.of(
@@ -108,17 +121,22 @@ public final class ScenarioRegistry {
                 "declare v_session number; begin v_session := pkg_security.create_session(:emp_id, "
                     + "'HRMS_MENU', 'PARALLEL-RUN'); :session_id := v_session; end;",
                 List.of("session_id")),
-            post("/legacy/sso/exchange", Map.of("module", "EMPLOYEE"), USER),
-            Outcome.ok(Map.of("module", "EMPLOYEE"))),
+            post("/legacy/sso/exchange", Map.of("module", "employee", "clientIp", CLIENT_IP), USER),
+            Outcome.ok(Map.of("formsModule", "HRMS_EMPLOYEE"))),
         new Scenario(
             "sso.exchange.new-module-rejected",
             "auth",
             null,
-            post("/legacy/sso/exchange", Map.of("module", "AUTH"), USER),
+            post("/legacy/sso/exchange", Map.of("module", "auth", "clientIp", CLIENT_IP), USER),
             Outcome.error("SSO_MODULE_NOT_LEGACY")));
   }
 
   /** Legacy expectations where the contract deliberately diverges (README SEC-xx). */
+  /** How the legacy column of the report was obtained when Oracle is not attached. */
+  public static String legacySource(Scenario s) {
+    return UNTESTED_LIVE_SCENARIOS.contains(s.id()) ? UNTESTED_LIVE : RECORDED;
+  }
+
   public static Outcome legacyOutcome(Scenario s) {
     return switch (s.id()) {
       case "auth.lockout.after-5-failures" -> Outcome.error("-20301"); // SEC-02: no lockout

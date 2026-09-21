@@ -4,6 +4,10 @@
 # auth={{AUTH}} employee={{EMPLOYEE}} payroll={{PAYROLL}} payroll.engine={{PAYROLL_ENGINE}}
 # leave={{LEAVE}} performance={{PERFORMANCE}} reporting={{REPORTING}}
 
+js_import sso from /etc/nginx/sso_bridge.js;
+js_var $forms_module;
+js_var $forms_otherparams;
+
 upstream spring  { server auth-service:8080; }
 upstream react   { server app-shell:3000; }
 upstream forms   { server forms-servlet:9001; }
@@ -23,7 +27,18 @@ server {
     location /api/reference/  { proxy_pass http://spring; include /etc/nginx/hrms-headers.conf; }
 
     # ---- SSO bridge: only reachable from this proxy (internal), never from clients -------------
-    location = /legacy/sso/exchange { internal; proxy_pass http://spring; include /etc/nginx/hrms-headers.conf; }
+    # sso_bridge.js reaches it with a POST subrequest carrying the JSON body (module-legacy.conf).
+    location = /legacy/sso/exchange {
+        internal;
+        proxy_pass http://spring;
+        proxy_set_header Content-Type application/json;
+        proxy_pass_request_body on;
+        include /etc/nginx/hrms-headers.conf;
+    }
+    location @forms {
+        proxy_pass http://forms/forms/frmservlet?form=$forms_module&otherparams=$forms_otherparams;
+        include /etc/nginx/hrms-headers.conf;
+    }
 
     # ---- employee={{EMPLOYEE}} ------------------------------------------------------------------
     location /api/employees/  { include /etc/nginx/module-{{EMPLOYEE_READ_UPSTREAM}}.conf; set $hrms_module EMPLOYEE; set $hrms_upstream_write {{EMPLOYEE_UPSTREAM}}; }

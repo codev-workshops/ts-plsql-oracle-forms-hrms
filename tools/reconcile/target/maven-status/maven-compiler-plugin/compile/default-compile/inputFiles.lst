@@ -1,7 +1,0 @@
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/Baseline.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/Canonical.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/Cell.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/Diff.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/NamedSql.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/ReconcileMain.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/reconcile/src/main/java/com/acme/hrms/tools/reconcile/ViewQuery.java

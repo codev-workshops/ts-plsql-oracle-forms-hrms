@@ -8,6 +8,9 @@ Repairs applied to the legacy seed (it does not load against schema/ as shipped)
 
 tools/fixtures/oracle/  = repaired Oracle seed (input for tests/utplsql and the golden baseline)
 tools/fixtures/pg/      = same rows translated to PostgreSQL (loaded by the Level-1 tests)
+
+tools/fixtures/pg/04_user_accounts.sql is hand-maintained (PostgreSQL-only login accounts for the
+Phase 0 auth tables) and is left untouched by this script.
 """
 from __future__ import annotations
 
@@ -28,10 +31,14 @@ def repair(sql: str) -> str:
     sql = sql.replace("(GRADE_ID, GRADE_NAME, GRADE_LEVEL, MIN_SALARY", "(GRADE_ID, GRADE_CODE, GRADE_NAME, MIN_SALARY")
 
     def grade_values(m: re.Match[str]) -> str:
-        gid, name, level = m.group(1), m.group(2), m.group(3)
-        return f"VALUES ({gid}, 'G{level}', {name},"
+        head, gid, name, level = m.group(1), m.group(2), m.group(3), m.group(4)
+        return f"{head}VALUES ({gid}, 'G{level}', {name},"
 
-    sql = re.sub(r"VALUES \((\d+), ('[^']*'), (\d+),", grade_values, sql)
+    sql = re.sub(
+        r"(INSERT INTO JOB_GRADES \([^)]*\)\s*)VALUES \((\d+), ('[^']*'), (\d+),",
+        grade_values,
+        sql,
+    )
     return sql
 
 

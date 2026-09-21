@@ -1,9 +1,0 @@
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/dto/ChangePasswordRequest.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/dto/EmployeeSearchQuery.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/dto/LoginRequest.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/dto/ProxyModule.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/dto/SsoExchangeRequest.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/export/ValidationSchemaExporter.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/meta/AllowedValues.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/meta/FieldMeta.java
-/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-validation/src/main/java/com/acme/hrms/validation/password/PasswordPolicy.java

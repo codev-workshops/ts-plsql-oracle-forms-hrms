@@ -79,7 +79,13 @@ public final class ParallelRunMain {
           }
         }
         report.add(
-            new DiffReport.Row(s.id(), s.expect(), ScenarioRegistry.legacyOutcome(s), leg, target));
+            new DiffReport.Row(
+                s.id(),
+                s.expect(),
+                ScenarioRegistry.legacyOutcome(s),
+                leg,
+                target,
+                ScenarioRegistry.legacySource(s)));
       }
       Path out = Path.of(o.getOrDefault("--report", "target/parallel-run.md"));
       Files.createDirectories(out.toAbsolutePath().getParent());
