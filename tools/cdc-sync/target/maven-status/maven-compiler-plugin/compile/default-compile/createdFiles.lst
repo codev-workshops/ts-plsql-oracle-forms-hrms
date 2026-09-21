@@ -1,0 +1,7 @@
+com/acme/hrms/tools/cdc/ReverseExtract.class
+com/acme/hrms/tools/cdc/Checksum.class
+com/acme/hrms/tools/cdc/Checksum$TableChecksum.class
+com/acme/hrms/tools/cdc/TypeMapping.class
+com/acme/hrms/tools/cdc/BulkLoader.class
+com/acme/hrms/tools/cdc/CdcSyncMain.class
+com/acme/hrms/tools/cdc/TableGroup.class

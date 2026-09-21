@@ -1,0 +1,50 @@
+# HRMS reverse proxy – per-module flags (contracts/p0-foundation/README.md, CUTOVER_PLAN.md §2 rule 2).
+# Rendered by proxy/render.py; do not edit nginx.conf by hand.
+#
+# auth={{AUTH}} employee={{EMPLOYEE}} payroll={{PAYROLL}} payroll.engine={{PAYROLL_ENGINE}}
+# leave={{LEAVE}} performance={{PERFORMANCE}} reporting={{REPORTING}}
+
+upstream spring  { server auth-service:8080; }
+upstream react   { server app-shell:3000; }
+upstream forms   { server forms-servlet:9001; }
+
+map $request_method $is_read { default 0; GET 1; HEAD 1; }
+
+server {
+    listen 8080;
+    server_name hrms;
+
+    # ---- auth: always NEW; legacy HRMS_LOGIN route disabled permanently ----------------------
+    location /api/auth/       { proxy_pass http://spring; include /etc/nginx/hrms-headers.conf; }
+    location = /login         { proxy_pass http://react;  include /etc/nginx/hrms-headers.conf; }
+    location ~ ^/forms/.*HRMS_LOGIN { return 410; }
+
+    # ---- reference: always Spring Boot (read-only for the UI in every phase) -------------------
+    location /api/reference/  { proxy_pass http://spring; include /etc/nginx/hrms-headers.conf; }
+
+    # ---- SSO bridge: only reachable from this proxy (internal), never from clients -------------
+    location = /legacy/sso/exchange { internal; proxy_pass http://spring; include /etc/nginx/hrms-headers.conf; }
+
+    # ---- employee={{EMPLOYEE}} ------------------------------------------------------------------
+    location /api/employees/  { include /etc/nginx/module-{{EMPLOYEE_READ_UPSTREAM}}.conf; set $hrms_module EMPLOYEE; set $hrms_upstream_write {{EMPLOYEE_UPSTREAM}}; }
+    location /employees/      { include /etc/nginx/module-{{EMPLOYEE_READ_UPSTREAM}}.conf; set $hrms_module EMPLOYEE; set $hrms_upstream_write {{EMPLOYEE_UPSTREAM}}; }
+
+    # ---- payroll={{PAYROLL}} (engine {{PAYROLL_ENGINE}} is a Spring property, not a route) -------
+    location /api/payroll/    { include /etc/nginx/module-{{PAYROLL_UPSTREAM}}.conf; set $hrms_module PAYROLL; }
+    location /payroll/        { include /etc/nginx/module-{{PAYROLL_UPSTREAM}}.conf; set $hrms_module PAYROLL; }
+
+    # ---- leave={{LEAVE}} ------------------------------------------------------------------------
+    location /api/leave/      { include /etc/nginx/module-{{LEAVE_UPSTREAM}}.conf; set $hrms_module LEAVE; }
+    location /leave/          { include /etc/nginx/module-{{LEAVE_UPSTREAM}}.conf; set $hrms_module LEAVE; }
+
+    # ---- performance={{PERFORMANCE}} ------------------------------------------------------------
+    location /api/performance/ { include /etc/nginx/module-{{PERFORMANCE_UPSTREAM}}.conf; set $hrms_module PERFORMANCE; }
+    location /performance/     { include /etc/nginx/module-{{PERFORMANCE_UPSTREAM}}.conf; set $hrms_module PERFORMANCE; }
+
+    # ---- reporting={{REPORTING}} ----------------------------------------------------------------
+    location /api/reports/    { include /etc/nginx/module-{{REPORTING_UPSTREAM}}.conf; set $hrms_module REPORTING; }
+    location /reports/        { include /etc/nginx/module-{{REPORTING_UPSTREAM}}.conf; set $hrms_module REPORTING; }
+
+    # ---- app shell (React) ----------------------------------------------------------------------
+    location /                { proxy_pass http://react; include /etc/nginx/hrms-headers.conf; }
+}

@@ -1,0 +1,5 @@
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/test/java/com/acme/hrms/common/error/ErrorCodeTest.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/test/java/com/acme/hrms/common/error/GlobalExceptionHandlerTest.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/test/java/com/acme/hrms/common/testsupport/FlywayBaselineTest.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/test/java/com/acme/hrms/common/testsupport/HrmsPostgres.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/hrms-common/src/test/java/com/acme/hrms/common/trace/TraceContextTest.java

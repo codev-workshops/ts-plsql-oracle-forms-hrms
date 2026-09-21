@@ -1,0 +1,6 @@
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/BulkLoader.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/CdcSyncMain.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/Checksum.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/ReverseExtract.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/TableGroup.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/tools/cdc-sync/src/main/java/com/acme/hrms/tools/cdc/TypeMapping.java

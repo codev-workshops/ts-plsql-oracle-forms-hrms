@@ -1,0 +1,4 @@
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/auth/src/test/java/com/acme/hrms/auth/AuthApiTestBase.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/auth/src/test/java/com/acme/hrms/auth/AuthFlowTest.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/auth/src/test/java/com/acme/hrms/auth/OpenApiContractTest.java
+/home/ubuntu/repos/ts-plsql-oracle-forms-hrms/backend/auth/src/test/java/com/acme/hrms/auth/ReferenceAndSsoTest.java
