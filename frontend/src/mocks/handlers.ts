@@ -12,6 +12,7 @@ import type {
   PageOfEmployeeSummary,
   TokenResponse,
 } from '../api/types';
+import { ROLE_AUTHORITIES, SEED_ACCOUNTS, SEED_PASSWORD } from '../../e2e/seed-accounts';
 import { evaluateRules, getDto, getParameter } from '../validation/schema';
 
 /**
@@ -24,57 +25,27 @@ import { evaluateRules, getDto, getParameter } from '../validation/schema';
 const TRACE = '3f1c2d9e8b7a4c10';
 const SESSION_TIMEOUT_MIN = Number(getParameter('SECURITY.SESSION_TIMEOUT_MIN'));
 
-export const MOCK_PASSWORD = 'Welcome1';
+export const MOCK_PASSWORD = SEED_PASSWORD;
+
+const seedUser = (account: (typeof SEED_ACCOUNTS)[keyof typeof SEED_ACCOUNTS], userId: string, deptId: number, jobTitle: string | null): CurrentUser => ({
+  userId,
+  empId: account.empId,
+  empNumber: account.empNumber,
+  email: account.email,
+  firstName: account.firstName,
+  lastName: account.lastName,
+  displayName: account.displayName,
+  deptId,
+  jobTitle,
+  roles: ROLE_AUTHORITIES[account.role],
+  mustChangePassword: account.mustChangePassword,
+});
 
 export const MOCK_USERS: Record<string, CurrentUser> = {
-  'admin@hrms.example': {
-    userId: 'ua-1',
-    empId: 1,
-    empNumber: 'EMP-000001',
-    email: 'admin@hrms.example',
-    firstName: 'Ada',
-    lastName: 'Admin',
-    displayName: 'Ada Admin',
-    deptId: 1,
-    jobTitle: 'HR Director',
-    roles: [
-      'PAYROLL:VIEW',
-      'PAYROLL:APPROVE',
-      'EMPLOYEE:VIEW',
-      'EMPLOYEE:EDIT',
-      'LEAVE:VIEW',
-      'LEAVE:CREATE',
-      'ADMIN:VIEW',
-      'REPORTS:VIEW',
-    ],
-    mustChangePassword: false,
-  },
-  'staff@hrms.example': {
-    userId: 'ua-2',
-    empId: 2,
-    empNumber: 'EMP-000002',
-    email: 'staff@hrms.example',
-    firstName: 'Sam',
-    lastName: 'Staff',
-    displayName: 'Sam Staff',
-    deptId: 2,
-    jobTitle: 'Analyst',
-    roles: ['EMPLOYEE:VIEW', 'LEAVE:VIEW', 'LEAVE:CREATE'],
-    mustChangePassword: false,
-  },
-  'newhire@hrms.example': {
-    userId: 'ua-3',
-    empId: 3,
-    empNumber: 'EMP-000003',
-    email: 'newhire@hrms.example',
-    firstName: 'Nia',
-    lastName: 'Newhire',
-    displayName: 'Nia Newhire',
-    deptId: null,
-    jobTitle: null,
-    roles: ['EMPLOYEE:VIEW', 'LEAVE:VIEW', 'LEAVE:CREATE'],
-    mustChangePassword: true,
-  },
+  [SEED_ACCOUNTS.executive.email]: seedUser(SEED_ACCOUNTS.executive, 'ua-1', 1, 'CEO'),
+  [SEED_ACCOUNTS.manager.email]: seedUser(SEED_ACCOUNTS.manager, 'ua-2', 20, 'Manager'),
+  [SEED_ACCOUNTS.staff.email]: seedUser(SEED_ACCOUNTS.staff, 'ua-3', 10, 'Analyst'),
+  [SEED_ACCOUNTS.firstLogin.email]: seedUser(SEED_ACCOUNTS.firstLogin, 'ua-4', 10, null),
 };
 
 export const MOCK_DEPARTMENTS: DepartmentRef[] = [
@@ -101,9 +72,9 @@ export const MOCK_LEAVE_TYPES: LeaveTypeRef[] = [
 ];
 
 export const MOCK_EMPLOYEES: EmployeeSummary[] = [
-  { id: 1, empNumber: 'EMP-000001', name: 'Ada Admin', jobTitle: 'HR Director' },
-  { id: 2, empNumber: 'EMP-000002', name: 'Sam Staff', jobTitle: 'Analyst' },
-  { id: 4, empNumber: 'EMP-000004', name: 'Mia Manager', jobTitle: null },
+  { id: 1, empNumber: 'EMP-000001', name: 'JAMES RICHARDSON', jobTitle: 'CEO' },
+  { id: 11, empNumber: 'EMP-000011', name: 'DAVID MARTINEZ', jobTitle: 'Analyst' },
+  { id: 4, empNumber: 'EMP-000004', name: 'MIA MANAGER', jobTitle: null },
 ];
 
 interface Session {

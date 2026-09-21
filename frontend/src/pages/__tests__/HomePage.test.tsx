@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { MOCK_USERS } from '../../mocks/handlers';
 import { renderWithProviders } from '../../test/render';
+import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { HomePage } from '../HomePage';
 
 function renderHome(email: string) {
@@ -17,8 +18,8 @@ function renderHome(email: string) {
 
 describe('HomePage', () => {
   it('shows every authorised module tile for an admin, legacy ones disabled (P0-D1)', () => {
-    renderHome('admin@hrms.example');
-    expect(screen.getByRole('heading', { name: 'Welcome, Ada Admin' })).toBeInTheDocument();
+    renderHome(SEED_ACCOUNTS.executive.email);
+    expect(screen.getByRole('heading', { name: 'Welcome, JAMES RICHARDSON' })).toBeInTheDocument();
     const tiles = screen.getAllByRole('listitem');
     expect(tiles.map((t) => t.getAttribute('data-testid'))).toEqual([
       'tile-employees',
@@ -41,14 +42,14 @@ describe('HomePage', () => {
 
   it('does not navigate when a disabled legacy tile is clicked (P0-D1)', async () => {
     const user = userEvent.setup();
-    renderHome('admin@hrms.example');
+    renderHome(SEED_ACCOUNTS.executive.email);
     await user.click(screen.getByTestId('tile-payroll'));
     expect(screen.queryByTestId('navigated-away')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Welcome, Ada Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome, JAMES RICHARDSON' })).toBeInTheDocument();
   });
 
   it('hides PAYROLL for a user without PAYROLL:VIEW', () => {
-    renderHome('staff@hrms.example');
+    renderHome(SEED_ACCOUNTS.staff.email);
     expect(screen.queryByTestId('tile-payroll')).not.toBeInTheDocument();
     expect(screen.getByTestId('tile-employees')).toBeInTheDocument();
     expect(screen.getByTestId('tile-leave')).toBeInTheDocument();

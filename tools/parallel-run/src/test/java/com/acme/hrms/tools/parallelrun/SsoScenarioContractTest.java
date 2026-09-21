@@ -81,6 +81,54 @@ class SsoScenarioContractTest {
         new DiffReport.Row(
             s.id(), s.expect(), s.expect(), null, s.expect(), ScenarioRegistry.legacySource(s)));
     assertThat(r.passed()).isTrue();
-    assertThat(r.toMarkdown()).contains("| n/a (untested-live) |").contains("| PASS |");
+    assertThat(r.toMarkdown())
+        .contains("| n/a (untested-live) |")
+        .contains("| UNTESTED-LIVE |")
+        .contains("1 untested-live");
+  }
+
+  /**
+   * Integration round-2 finding: without {@code --oracle} the auth-service answers the contracted
+   * 502 SSO_LEGACY_UNAVAILABLE, which must not be recorded as TARGET-DIFF / exit 1.
+   */
+  @Test
+  void withoutOracleTheLegacyModuleExchangeExpectsSsoLegacyUnavailableAndPasses() {
+    Scenario s = scenario("sso.exchange.legacy-module");
+    Outcome noOracle = ScenarioRegistry.targetExpect(s, false);
+    assertThat(noOracle).isEqualTo(Outcome.error("SSO_LEGACY_UNAVAILABLE"));
+    assertThat(ScenarioRegistry.targetExpect(s, true)).isEqualTo(s.expect());
+
+    DiffReport r = new DiffReport();
+    r.add(
+        new DiffReport.Row(
+            s.id(),
+            noOracle,
+            ScenarioRegistry.legacyOutcome(s),
+            null,
+            Outcome.error("SSO_LEGACY_UNAVAILABLE"),
+            ScenarioRegistry.legacySource(s)));
+    assertThat(r.rows().get(0).verdict()).isEqualTo("UNTESTED-LIVE");
+    assertThat(r.passed()).isTrue();
+
+    DiffReport wrong = new DiffReport();
+    wrong.add(
+        new DiffReport.Row(
+            s.id(),
+            noOracle,
+            ScenarioRegistry.legacyOutcome(s),
+            null,
+            s.expect(),
+            ScenarioRegistry.legacySource(s)));
+    assertThat(wrong.rows().get(0).verdict()).isEqualTo("TARGET-DIFF");
+    assertThat(wrong.passed()).isFalse();
+  }
+
+  @Test
+  void recordedScenariosKeepTheirContractExpectationWithoutOracle() {
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (ScenarioRegistry.legacySource(s).equals(ScenarioRegistry.RECORDED)) {
+        assertThat(ScenarioRegistry.targetExpect(s, false)).as(s.id()).isEqualTo(s.expect());
+      }
+    }
   }
 }

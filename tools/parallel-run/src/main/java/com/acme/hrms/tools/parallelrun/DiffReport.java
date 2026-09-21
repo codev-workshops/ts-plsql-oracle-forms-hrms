@@ -32,9 +32,13 @@ public final class DiffReport {
       return legacy == null || Objects.equals(legacyExpected, legacy);
     }
 
+    boolean untestedLive() {
+      return legacy == null && ScenarioRegistry.UNTESTED_LIVE.equals(legacySource);
+    }
+
     String verdict() {
       if (targetOk() && legacyOk()) {
-        return "PASS";
+        return untestedLive() ? "UNTESTED-LIVE" : "PASS";
       }
       if (!targetOk() && legacyOk()) {
         return "TARGET-DIFF";
@@ -68,7 +72,12 @@ public final class DiffReport {
         .append(rows.stream().filter(r -> r.verdict().equals("PASS")).count())
         .append('/')
         .append(rows.size())
-        .append(" scenarios)\n\n");
+        .append(" scenarios");
+    long untested = rows.stream().filter(r -> r.verdict().equals("UNTESTED-LIVE")).count();
+    if (untested > 0) {
+      sb.append(", ").append(untested).append(" untested-live");
+    }
+    sb.append(")\n\n");
     sb.append(
         "| scenario | expected (contract) | legacy | target | verdict |\n|---|---|---|---|---|\n");
     for (Row r : rows) {
@@ -81,7 +90,9 @@ public final class DiffReport {
           .append(
               Objects.equals(r.expected(), r.legacyExpected())
                   ? ""
-                  : " (documented divergence, expects " + fmt(r.legacyExpected()) + ")")
+                  : r.untestedLive()
+                      ? " (with Oracle attached expects " + fmt(r.legacyExpected()) + ")"
+                      : " (documented divergence, expects " + fmt(r.legacyExpected()) + ")")
           .append(" | ")
           .append(fmt(r.target()))
           .append(" | ")
