@@ -29,7 +29,7 @@ class FlywayBaselineTest {
         jdbc.queryForList(
             "select version from flyway_schema_history where success order by installed_rank",
             String.class);
-    assertThat(versions).containsExactly("1", "2");
+    assertThat(versions).containsExactly("1", "2", "3");
   }
 
   @Test
@@ -152,7 +152,7 @@ class FlywayBaselineTest {
                 String.class))
         .isEqualTo("30");
     assertThat(jdbc.queryForObject("select count(*) from role_permissions", Integer.class))
-        .isEqualTo(20 + 6 + 3);
+        .isEqualTo(20 + 6 + 3 + 5 + 1);
   }
 
   @Test

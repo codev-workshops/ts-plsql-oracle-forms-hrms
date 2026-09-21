@@ -62,7 +62,9 @@ public final class ParallelRunMain {
               "emp_id",
               2,
               "new_password",
-              "");
+              "",
+              "user",
+              PerformanceScenarios.ADMIN);
       LegacyRunner legacy = oracle == null ? null : new LegacyRunner(oracle, ctx);
       for (Scenario s : scenarios) {
         Outcome target;

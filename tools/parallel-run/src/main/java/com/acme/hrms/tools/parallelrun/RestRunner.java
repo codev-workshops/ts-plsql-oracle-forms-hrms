@@ -35,17 +35,48 @@ public final class RestRunner {
     this.password = seedPassword;
   }
 
+  /**
+   * Ids captured from setup responses; paths may reference them as {cycleId}, {reviewId}, {goalId}.
+   */
+  static final List<String> CAPTURED_IDS = List.of("cycleId", "reviewId", "goalId");
+
+  private final Map<String, String> context = new LinkedHashMap<>();
+
   public Outcome run(Scenario s) throws IOException, InterruptedException {
+    context.clear();
     for (RestCall setup : s.target().setup()) {
-      call(setup);
+      capture(call(setup));
     }
     HttpResponse<String> resp = call(s.target());
     return project(resp, s.expect().fields().keySet());
   }
 
+  private void capture(HttpResponse<String> resp) throws IOException {
+    if (resp.statusCode() >= 300 || resp.body().isBlank()) {
+      return;
+    }
+    JsonNode n = JSON.readTree(resp.body());
+    if (n.isArray() && !n.isEmpty()) {
+      n = n.get(0);
+    }
+    for (String id : CAPTURED_IDS) {
+      if (n.hasNonNull(id)) {
+        context.put(id, n.get(id).asText());
+      }
+    }
+  }
+
+  static String resolve(String path, Map<String, String> context) {
+    String out = path;
+    for (Map.Entry<String, String> e : context.entrySet()) {
+      out = out.replace("{" + e.getKey() + "}", e.getValue());
+    }
+    return out;
+  }
+
   private HttpResponse<String> call(RestCall c) throws IOException, InterruptedException {
     HttpRequest.Builder b =
-        HttpRequest.newBuilder(URI.create(baseUrl + c.path()))
+        HttpRequest.newBuilder(URI.create(baseUrl + resolve(c.path(), context)))
             .header("Content-Type", "application/json");
     if (c.auth() != null) {
       b.header("Authorization", "Bearer " + tokenFor(c.auth()));
@@ -53,8 +84,11 @@ public final class RestRunner {
     if (c.useRefreshCookie() && refreshCookie != null) {
       b.header("Cookie", refreshCookie);
     }
-    String body = c.body() == null ? "" : JSON.writeValueAsString(c.body());
-    b.method(c.method(), HttpRequest.BodyPublishers.ofString(body));
+    if (c.body() == null) {
+      b.method(c.method(), HttpRequest.BodyPublishers.noBody());
+    } else {
+      b.method(c.method(), HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(c.body())));
+    }
     HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
     resp.headers().allValues("Set-Cookie").stream()
         .filter(v -> v.startsWith("hrms_refresh="))

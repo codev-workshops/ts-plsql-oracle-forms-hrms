@@ -37,6 +37,51 @@ class RegistryAndReportTest {
   }
 
   @Test
+  void phase1RegistersThePerformanceSet() {
+    Map<String, String> codes =
+        Map.of(
+            "performance.cycle.open.not-draft", "-20401",
+            "performance.cycle.close.draft", "-20401",
+            "performance.review.self-assessment.wrong-status", "-20402",
+            "performance.review.manager-review.wrong-status", "-20402",
+            "performance.review.acknowledge.wrong-status", "-20402",
+            "performance.review.manager-review.rating-out-of-range", "-20403");
+    Map<String, Scenario> byId =
+        ScenarioRegistry.all().stream()
+            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+    assertThat(byId.keySet())
+        .containsAll(codes.keySet())
+        .contains(
+            "performance.cycle.create",
+            "performance.goal.progress-100-completes",
+            "performance.cycle.generate-reviews.row-count",
+            "performance.cycle.generate-reviews.idempotent");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("performance.goal.progress-100-completes").expect().fields())
+        .containsEntry("status", "COMPLETED");
+    assertThat(byId.get("performance.cycle.generate-reviews.row-count").expect().fields())
+        .containsEntry("generated", PerformanceScenarios.ELIGIBLE_EMPLOYEES);
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (s.module().equals("performance")) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+      }
+    }
+  }
+
+  @Test
+  void restRunnerResolvesCapturedIdsInPaths() {
+    assertThat(
+            RestRunner.resolve(
+                "/api/performance/reviews/{reviewId}/goals", Map.of("reviewId", "5001")))
+        .isEqualTo("/api/performance/reviews/5001/goals");
+    assertThat(RestRunner.resolve("/api/performance/cycles", Map.of()))
+        .isEqualTo("/api/performance/cycles");
+  }
+
+  @Test
   void lockoutIsADocumentedDivergenceFromLegacy() {
     Scenario lockout =
         ScenarioRegistry.all().stream()
