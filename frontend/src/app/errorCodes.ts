@@ -8,6 +8,9 @@ export const LegacyErrorCode = {
   PASSWORD_NO_UPPERCASE: '-20311',
   PASSWORD_NO_DIGIT: '-20312',
   EMPLOYEE_NOT_FOUND: '-20001',
+  CYCLE_STATUS_INVALID: '-20401',
+  REVIEW_STATUS_INVALID: '-20402',
+  RATING_OUT_OF_RANGE: '-20403',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -19,6 +22,9 @@ export const FrameworkErrorCode = {
   RATE_LIMITED: 'RATE_LIMITED',
   SSO_LEGACY_UNAVAILABLE: 'SSO_LEGACY_UNAVAILABLE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  CYCLE_NOT_FOUND: 'CYCLE_NOT_FOUND',
+  REVIEW_NOT_FOUND: 'REVIEW_NOT_FOUND',
+  GOAL_NOT_FOUND: 'GOAL_NOT_FOUND',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];
@@ -39,4 +45,5 @@ export const DEFAULT_FIELD_FOR_CODE: Readonly<Record<string, string>> = {
   [LegacyErrorCode.PASSWORD_NO_UPPERCASE]: 'newPassword',
   [LegacyErrorCode.PASSWORD_NO_DIGIT]: 'newPassword',
   [FrameworkErrorCode.PASSWORD_REUSED]: 'newPassword',
+  [LegacyErrorCode.RATING_OUT_OF_RANGE]: 'overallRating',
 };

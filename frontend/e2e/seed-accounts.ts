@@ -63,8 +63,16 @@ export const SEED_ACCOUNTS = {
 const MODULES = ['PAYROLL', 'EMPLOYEE', 'LEAVE', 'ADMIN', 'REPORTS'] as const;
 const ACTIONS = ['VIEW', 'EDIT', 'APPROVE', 'CREATE'] as const;
 
+/** P1 performance authorities mirror contracts/p1-performance/openapi.yaml. */
 export const ROLE_AUTHORITIES: Record<SeedAccount['role'], Authority[]> = {
   STAFF: ['EMPLOYEE:VIEW', 'LEAVE:VIEW', 'LEAVE:CREATE'],
-  MANAGER: ['PAYROLL:VIEW', 'EMPLOYEE:VIEW', 'LEAVE:VIEW', 'ADMIN:VIEW', 'REPORTS:VIEW', 'LEAVE:CREATE'],
-  EXECUTIVE: MODULES.flatMap((module) => ACTIONS.map((action) => `${module}:${action}` as Authority)),
+  MANAGER: ['PAYROLL:VIEW', 'EMPLOYEE:VIEW', 'LEAVE:VIEW', 'ADMIN:VIEW', 'REPORTS:VIEW', 'LEAVE:CREATE', 'PERFORMANCE:VIEW'],
+  EXECUTIVE: [
+    ...MODULES.flatMap((module) => ACTIONS.map((action) => `${module}:${action}` as Authority)),
+    'PERFORMANCE:VIEW',
+    'PERFORMANCE:EDIT',
+    'PERFORMANCE:APPROVE',
+    'PERFORMANCE:CREATE',
+    'PERFORMANCE:ADMIN',
+  ],
 };
