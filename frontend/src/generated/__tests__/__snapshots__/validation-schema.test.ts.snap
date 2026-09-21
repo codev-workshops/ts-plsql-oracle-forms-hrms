@@ -4,6 +4,18 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
 {
   "$schema": "https://hrms.example/schemas/validation-schema/v1",
   "dtos": {
+    "AcknowledgeRequest": {
+      "fields": {
+        "employeeComments": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p1-performance",
+    },
     "ChangePasswordRequest": {
       "fields": {
         "currentPassword": {
@@ -51,6 +63,7 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
           "type": "string",
         },
       },
+      "module": "p0-foundation",
     },
     "EmployeeSearchQuery": {
       "fields": {
@@ -93,6 +106,92 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
           ],
         },
       },
+      "module": "p0-foundation",
+    },
+    "GoalProgressRequest": {
+      "fields": {
+        "comments": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "progressPct": {
+          "max": 100,
+          "messages": {
+            "format": "Progress must be between 0 and 100",
+            "required": "Progress is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "status": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "NOT_STARTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "DEFERRED",
+            "CANCELLED",
+          ],
+        },
+      },
+      "module": "p1-performance",
+    },
+    "GoalRequest": {
+      "fields": {
+        "goalCategory": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "BUSINESS",
+            "DEVELOPMENT",
+            "LEADERSHIP",
+            "INNOVATION",
+            "COMPLIANCE",
+          ],
+        },
+        "goalDescription": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "goalTitle": {
+          "maxLength": 200,
+          "messages": {
+            "required": "Goal title is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "targetDate": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "weightPct": {
+          "max": 100,
+          "messages": {
+            "format": "Weight must be between 0 and 100",
+          },
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+      },
+      "module": "p1-performance",
     },
     "LoginRequest": {
       "fields": {
@@ -119,6 +218,143 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
           "type": "string",
         },
       },
+      "module": "p0-foundation",
+    },
+    "ManagerReviewRequest": {
+      "fields": {
+        "developmentPlan": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "improvementAreas": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "managerAssessment": {
+          "maxLength": 20000,
+          "messages": {
+            "required": "Manager assessment is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "overallRating": {
+          "max": 5,
+          "messages": {
+            "required": "Rating is required",
+          },
+          "min": 1,
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20403",
+              "id": "rating.range.min",
+              "kind": "min",
+              "message": "Rating must be between 1.0 and 5.0",
+              "value": 1,
+            },
+            {
+              "errorCode": "-20403",
+              "id": "rating.range.max",
+              "kind": "max",
+              "message": "Rating must be between 1.0 and 5.0",
+              "value": 5,
+            },
+          ],
+          "scale": 1,
+          "type": "decimal",
+        },
+        "strengths": {
+          "maxLength": 20000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p1-performance",
+    },
+    "ReviewCycleRequest": {
+      "fields": {
+        "calibrationDue": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "cycleName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Cycle name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "cycleYear": {
+          "max": 2099,
+          "messages": {
+            "required": "Cycle year is required",
+          },
+          "min": 2000,
+          "required": true,
+          "type": "integer",
+        },
+        "endDate": {
+          "format": "date",
+          "messages": {
+            "format": "End date must be on or after the start date",
+            "required": "End date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+        "managerReviewDue": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "selfReviewDue": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "startDate": {
+          "format": "date",
+          "messages": {
+            "required": "Start date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+      },
+      "module": "p1-performance",
+    },
+    "SelfAssessmentRequest": {
+      "fields": {
+        "selfAssessment": {
+          "maxLength": 20000,
+          "messages": {
+            "required": "Self-assessment is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p1-performance",
     },
     "SsoExchangeRequest": {
       "fields": {
@@ -158,16 +394,21 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
           "type": "string",
         },
       },
+      "module": "p0-foundation",
     },
   },
   "generator": "hrms-validation:exporter",
-  "generatorVersion": "0.0.0-handwritten",
-  "module": "p0-foundation",
+  "generatorVersion": "0.1.0",
+  "module": "hrms",
+  "modules": [
+    "p0-foundation",
+    "p1-performance",
+  ],
   "parameters": {
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "sourceHash": "c3eb1d50eac0549228096c389d988f3829deaa2e72f75245bd1fee651c690ebb",
 }
 `;

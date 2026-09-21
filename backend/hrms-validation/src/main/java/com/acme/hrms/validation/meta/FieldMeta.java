@@ -21,4 +21,14 @@ public @interface FieldMeta {
   String patternMessage() default "";
 
   String maxLengthMessage() default "";
+
+  /**
+   * When set on a numeric field, the min/max bounds are additionally exported as a {@code rules}
+   * entry carrying this id, the legacy {@code ApiError.code} and message (e.g. {@code -20403}).
+   */
+  String ruleId() default "";
+
+  String ruleErrorCode() default "";
+
+  String ruleMessage() default "";
 }

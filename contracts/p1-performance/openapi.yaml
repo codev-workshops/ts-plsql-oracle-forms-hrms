@@ -1,0 +1,1243 @@
+openapi: 3.1.0
+info:
+  title: HRMS Modernization - Phase 1 Performance contract
+  version: 0.1.0
+  description: |
+    Frozen API surface for Phase 1 (`performance-service` + React `performance/*` pages).
+    Governed by MODERNIZATION_BLUEPRINT.md §6, §9, COMPONENT_MAPPING.md §6, §11 and
+    CUTOVER_PLAN.md §5. Behavioural source of truth: `plsql/packages/PKG_PERFORMANCE.pkb`
+    (read-only reference, golden-oracle mode OFF) and `schema/tables/04_performance_tables.sql`.
+
+    Contract rules that apply to every operation in this file (in addition to the rules
+    inherited from `contracts/p0-foundation/openapi.yaml`):
+
+    * The target is Spring Boot on PostgreSQL + React. No endpoint calls `PKG_PERFORMANCE`;
+      no trigger, PL/SQL or PL/pgSQL exists on the target. `performance-service` is the
+      **only** module that reads or writes `review_cycles`, `performance_reviews`,
+      `performance_goals` (ARCH-01/02).
+    * Identity is always `jwt.empId`. No operation accepts a client-supplied `empId`
+      (`PKG_PERFORMANCE.add_goal(p_emp_id)` / `get_team_reviews(p_manager_id)` are derived
+      server-side). The Forms base-table `UpdateAllowed`/`InsertAllowed` writes are **not**
+      reproduced - every write goes through `ReviewCycleService` / `PerformanceReviewService`
+      / `GoalService`.
+    * Every documented failure is an `ApiError {code, message, field?, traceId}` built by the
+      single `GlobalExceptionHandler`. `code` is the legacy `-20xxx` number where one exists
+      (`-20401`, `-20402`, `-20403`, `-20001`; COMPONENT_MAPPING.md §11), otherwise a
+      framework code listed in `error-codes.md`.
+    * Authorization is the `x-preauthorize` expression exactly as it must appear in
+      `@PreAuthorize(...)`. Row-level scoping (reviewee / reviewer / direct reports) is a
+      service rule described per operation and is enforced **after** the authority check;
+      a caller who is neither reviewee, reviewer nor `PERFORMANCE:ADMIN` receives `403 FORBIDDEN`.
+    * Dates are ISO-8601 `date` (no time component - legacy `DATE` columns hold midnight).
+      Ratings and percentages travel as JSON numbers (not strings): `overallRating` has one
+      decimal (`NUMBER(2,1)`), `weightPct`/`progressPct` up to two (`NUMBER(5,2)`).
+    * Blank strings are normalised to `null` at the API boundary before validation.
+    * Every state-changing operation writes an `audit_log` row (`hrms-audit`) and, where
+      `PKG_PERFORMANCE` did, a `notification_queue` row (`hrms-notification`) with the frozen
+      subject/body strings in `x-notification`, so Level 2 diffs on `AUDIT_LOG` /
+      `NOTIFICATION_QUEUE` are empty (TEST_STRATEGY.md §5 row 1).
+
+servers:
+  - url: /
+    description: Behind the reverse proxy; `/api/performance/**` is routed to Spring Boot when the `performance` flag is `NEW` (CUTOVER_PLAN.md §2 rule 2).
+
+tags:
+  - name: cycles
+    description: "`ReviewCycleService` - `REVIEW_CYCLES` (COMPONENT_MAPPING.md §6 rows 1-2)"
+  - name: reviews
+    description: "`PerformanceReviewService` - `PERFORMANCE_REVIEWS` (COMPONENT_MAPPING.md §6 row 3)"
+  - name: goals
+    description: "`GoalService` - `PERFORMANCE_GOALS` (COMPONENT_MAPPING.md §6 row 4)"
+  - name: manager-dashboard
+    description: "`get_team_reviews` / `get_rating_distribution` ref cursors → JSON (COMPONENT_MAPPING.md §6 row 5)"
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # review cycles
+  # ---------------------------------------------------------------------------
+  /api/performance/cycles:
+    get:
+      tags: [cycles]
+      operationId: listCycles
+      summary: List review cycles (Review Cycles tab)
+      description: |
+        Replaces `HRMS_PERFORMANCE.xml` `WHEN-NEW-FORM-INSTANCE` `DEFAULT_WHERE
+        "STATUS IN ('OPEN','DRAFT') ORDER BY CYCLE_YEAR DESC"` on block `REVIEW_CYCLE`.
+        The defaults of `status` and `sort` reproduce that clause exactly; `CLOSED` cycles are
+        only returned when asked for explicitly. Not paged - the table holds a handful of
+        rows per year.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/CycleStatusFilter'
+        - $ref: '#/components/parameters/CycleSort'
+      responses:
+        '200':
+          description: Cycles matching the filter, in the requested order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReviewCycle'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [cycles]
+      operationId: createCycle
+      summary: Create a review cycle in DRAFT
+      description: |
+        Replaces `PKG_PERFORMANCE.create_review_cycle`. The new row has `status=DRAFT`,
+        `cycleId` from `seq_review_cycle`, `createdBy` = caller. `calibrationDue` is accepted
+        (column exists) although the legacy function never set it.
+        Audit: `audit_log (REVIEW_CYCLES, <cycleId>, INSERT)`.
+      x-preauthorize: hasAuthority('PERFORMANCE:ADMIN')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCycleRequest'
+      responses:
+        '201':
+          description: "Created. `Location: /api/performance/cycles/{cycleId}`."
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCycle'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/performance/cycles/{cycleId}:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    get:
+      tags: [cycles]
+      operationId: getCycle
+      summary: Read one review cycle
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: The cycle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCycle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+    put:
+      tags: [cycles]
+      operationId: updateCycle
+      summary: Edit a DRAFT review cycle
+      description: |
+        No legacy equivalent (block `REVIEW_CYCLE` is `UpdateAllowed="No"` and
+        `PKG_PERFORMANCE` has no update procedure); added so HR can correct names and dates
+        before opening. Full replacement of the editable fields (`ReviewCycleRequest`).
+        Allowed **only** while `status=DRAFT`; any other status → `422 -20401`
+        ("Cannot edit cycle - must be in DRAFT status"). `status` itself is never editable
+        here - use `open` / `close`. Audit: `audit_log (REVIEW_CYCLES, <cycleId>, UPDATE)`.
+      x-preauthorize: hasAuthority('PERFORMANCE:ADMIN')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCycleRequest'
+      responses:
+        '200':
+          description: Updated cycle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCycle'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+        '422':
+          $ref: '#/components/responses/CycleStatusInvalid'
+
+  /api/performance/cycles/{cycleId}/open:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    post:
+      tags: [cycles]
+      operationId: openCycle
+      summary: "DRAFT → OPEN"
+      description: |
+        Replaces `PKG_PERFORMANCE.open_review_cycle`: `UPDATE … SET STATUS='OPEN' WHERE
+        CYCLE_ID=:id AND STATUS='DRAFT'`; zero rows → `-20401`
+        "Cannot open cycle - must be in DRAFT status". Divergence: an unknown `cycleId` is
+        `404 CYCLE_NOT_FOUND` instead of `-20401` (see `error-codes.md` §4).
+        Audit: `audit_log (REVIEW_CYCLES, <cycleId>, UPDATE)`. No body.
+      x-preauthorize: hasAuthority('PERFORMANCE:ADMIN')
+      responses:
+        '200':
+          description: Cycle now `OPEN`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCycle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+        '422':
+          $ref: '#/components/responses/CycleStatusInvalid'
+
+  /api/performance/cycles/{cycleId}/close:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    post:
+      tags: [cycles]
+      operationId: closeCycle
+      summary: "OPEN | IN_PROGRESS | CALIBRATION → CLOSED"
+      description: |
+        Replaces `PKG_PERFORMANCE.close_review_cycle`. The legacy procedure updated
+        unconditionally (any status, silently 0 rows for an unknown id). **Not reproduced**:
+        the target accepts the transition only from `OPEN`, `IN_PROGRESS` or `CALIBRATION`;
+        `DRAFT` or `CLOSED` → `422 -20401` ("Cannot close cycle - must be OPEN, IN_PROGRESS or
+        CALIBRATION"). Reviews of a closed cycle stay readable; no review or goal write is
+        blocked by the cycle status (legacy parity - see README). Audit `UPDATE`. No body.
+      x-preauthorize: hasAuthority('PERFORMANCE:ADMIN')
+      responses:
+        '200':
+          description: Cycle now `CLOSED`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCycle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+        '422':
+          $ref: '#/components/responses/CycleStatusInvalid'
+
+  /api/performance/cycles/{cycleId}/generate-reviews:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    post:
+      tags: [cycles]
+      operationId: generateReviews
+      summary: Create one NOT_STARTED review per active employee with a manager
+      description: |
+        Replaces `PKG_PERFORMANCE.generate_reviews_for_cycle` + `create_review`, **set-based**
+        (PERF-05): one `INSERT … SELECT` over `employees WHERE employment_status='ACTIVE' AND
+        manager_emp_id IS NOT NULL`, `reviewer_emp_id = manager_emp_id`, `review_type='ANNUAL'`,
+        `status='NOT_STARTED'`, `created_by` = caller. Employees who already have a review in
+        the cycle are skipped (idempotent; the legacy `DUP_VAL_ON_INDEX` handler relied on a
+        unique index that does not exist in the DDL - the target enforces uniqueness of
+        `(cycle_id, emp_id)` in the service and may add the index, see README).
+        Allowed while the cycle is `DRAFT` or `OPEN`; otherwise `422 -20401`
+        ("Cannot generate reviews - cycle must be DRAFT or OPEN"). Runs in one transaction
+        (the legacy per-row `COMMIT` is not reproduced).
+        Audit: one `audit_log (PERFORMANCE_REVIEWS, <reviewId>, INSERT)` per created review.
+      x-notification: |
+        Per created review, to the reviewee, type EMAIL:
+        subject "Performance Review Initiated";
+        body "Your annual performance review has been initiated. Please complete your self-assessment."
+      x-preauthorize: hasAuthority('PERFORMANCE:ADMIN')
+      responses:
+        '200':
+          description: Generation summary (200 even when nothing was created).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateReviewsResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+        '422':
+          $ref: '#/components/responses/CycleStatusInvalid'
+
+  # ---------------------------------------------------------------------------
+  # reviews
+  # ---------------------------------------------------------------------------
+  /api/performance/cycles/{cycleId}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    get:
+      tags: [reviews]
+      operationId: listCycleReviews
+      summary: All reviews of a cycle (HR view)
+      description: |
+        Replaces querying block `PERFORMANCE_REVIEW` without a master restriction plus the
+        `POST-QUERY` lookups (`EMP_NAME_DISP`, `RATING_LABEL`). Sorted by employee last name,
+        then `reviewId`. Paged with the P0 `Page`/`Size` parameters.
+      x-preauthorize: hasAnyAuthority('PERFORMANCE:VIEW','PERFORMANCE:ADMIN')
+      parameters:
+        - in: query
+          name: status
+          required: false
+          description: Optional comma-separated `ReviewStatus` filter.
+          schema:
+            type: string
+            pattern: '^[A-Z_]+(,[A-Z_]+)*$'
+          example: MANAGER_REVIEW,COMPLETED
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of reviews.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageOfPerformanceReview'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+
+  /api/performance/reviews/mine:
+    get:
+      tags: [reviews]
+      operationId: listMyReviews
+      summary: Reviews where the caller is the reviewee (My Reviews tab)
+      description: |
+        `WHERE emp_id = jwt.empId`, optionally restricted to one cycle. Ordered by
+        `cycle.cycleYear DESC, reviewId DESC`. Not paged (one review per cycle per employee).
+        Never `404`: an employee with no reviews gets `[]`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - in: query
+          name: cycleId
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '200':
+          description: The caller's reviews.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReview'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/performance/reviews/{reviewId}:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    get:
+      tags: [reviews]
+      operationId: getReview
+      summary: Read one review
+      description: |
+        Visible to the reviewee (`empId == jwt.empId`), the reviewer
+        (`reviewerEmpId == jwt.empId`) and holders of `PERFORMANCE:VIEW` / `PERFORMANCE:ADMIN`;
+        anyone else → `403 FORBIDDEN` (the row's existence is confirmed before the scoping
+        check, so an unknown id is `404` for everybody).
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: The review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+
+  /api/performance/reviews/{reviewId}/self-assessment:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      tags: [reviews]
+      operationId: submitSelfAssessment
+      summary: "NOT_STARTED | SELF_REVIEW → MANAGER_REVIEW"
+      description: |
+        Replaces `PKG_PERFORMANCE.submit_self_assessment`. Caller must be the reviewee
+        (`empId == jwt.empId`), otherwise `403 FORBIDDEN`. Status must be `NOT_STARTED` or
+        `SELF_REVIEW`; otherwise `422 -20402` ("Review not found or not in correct status").
+        Sets `selfAssessment`, `status=MANAGER_REVIEW`, `modifiedBy/modifiedDate`.
+        Order of checks: existence (404) → identity (403) → status (422) → body (400).
+        Audit `UPDATE`.
+      x-notification: |
+        To the reviewer, type EMAIL:
+        subject "Self-Assessment Submitted - Ready for Manager Review";
+        body "An employee has completed their self-assessment. Please proceed with the manager review."
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfAssessmentRequest'
+      responses:
+        '200':
+          description: Review now `MANAGER_REVIEW`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReview'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+        '422':
+          $ref: '#/components/responses/ReviewStatusInvalid'
+
+  /api/performance/reviews/{reviewId}/manager-review:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      tags: [reviews]
+      operationId: submitManagerReview
+      summary: "MANAGER_REVIEW | MEETING_SCHEDULED → COMPLETED"
+      description: |
+        Replaces `PKG_PERFORMANCE.submit_manager_review`. Caller must be the reviewer
+        (`reviewerEmpId == jwt.empId`), otherwise `403 FORBIDDEN`.
+        `overallRating` outside `[1.0, 5.0]` → `400 -20403` ("Rating must be between 1.0 and
+        5.0") - evaluated **before** the status check, as in the legacy body.
+        Status must be `MANAGER_REVIEW` or `MEETING_SCHEDULED`; otherwise `422 -20402`.
+        (**Not reproduced**: the legacy procedure had no status guard and would overwrite a
+        `NOT_STARTED`, `COMPLETED` or `ACKNOWLEDGED` review.)
+        Sets `overallRating`, `ratingLabel` from the `RatingLabel` table, `managerAssessment`,
+        `strengths`, `areasForImprovement`, `developmentPlan`, `status=COMPLETED`. Audit `UPDATE`.
+      x-notification: |
+        To the reviewee, type EMAIL:
+        subject "Performance Review Completed";
+        body "Your manager has completed your performance review. Please review and acknowledge."
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManagerReviewRequest'
+      responses:
+        '200':
+          description: Review now `COMPLETED`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReview'
+        '400':
+          description: Bean Validation failure (`VALIDATION_FAILED`) or rating out of range (`-20403`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                ratingOutOfRange:
+                  value:
+                    code: "-20403"
+                    message: "Rating must be between 1.0 and 5.0"
+                    field: "overallRating"
+                    traceId: "3f1c2d9e8b7a4c10"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+        '422':
+          $ref: '#/components/responses/ReviewStatusInvalid'
+
+  /api/performance/reviews/{reviewId}/acknowledge:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      tags: [reviews]
+      operationId: acknowledgeReview
+      summary: "COMPLETED → ACKNOWLEDGED"
+      description: |
+        Replaces `PKG_PERFORMANCE.acknowledge_review`. Caller must be the reviewee, otherwise
+        `403 FORBIDDEN`. Status must be `COMPLETED`; otherwise `422 -20402` (**not
+        reproduced**: the legacy `UPDATE … AND STATUS='COMPLETED'` silently affected 0 rows).
+        Sets `employeeComments`, `employeeAckDate = today`, `status=ACKNOWLEDGED`. Terminal
+        state - no further write endpoint accepts an `ACKNOWLEDGED` review. Audit `UPDATE`.
+        Body is optional; an absent or empty body equals `{}`.
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcknowledgeRequest'
+      responses:
+        '200':
+          description: Review now `ACKNOWLEDGED`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReview'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+        '422':
+          $ref: '#/components/responses/ReviewStatusInvalid'
+
+  # ---------------------------------------------------------------------------
+  # goals
+  # ---------------------------------------------------------------------------
+  /api/performance/reviews/{reviewId}/goals:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    get:
+      tags: [goals]
+      operationId: listGoals
+      summary: Goals of a review (Goals tab, master/detail)
+      description: |
+        Replaces the `PERFORMANCE_GOAL` detail block auto-query. Same visibility rule as
+        `getReview`. Ordered by `goalId`. Not paged.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Goals of the review.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceGoal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+    post:
+      tags: [goals]
+      operationId: addGoal
+      summary: Add a goal to a review
+      description: |
+        Replaces `PKG_PERFORMANCE.add_goal` and the `InsertAllowed="Yes"` base-table insert.
+        Caller must be the reviewee or the reviewer; otherwise `403 FORBIDDEN`.
+        `empId` of the goal is **always** `review.empId` (the legacy `p_emp_id` parameter is
+        not exposed). New row: `goalId` from `seq_perf_goal`, `status=NOT_STARTED`,
+        `progressPct=0`, `goalCategory` default `BUSINESS`, `weightPct` default `0`.
+        Allowed while the review is not `COMPLETED` / `ACKNOWLEDGED`; otherwise `422 -20402`
+        (**not reproduced**: legacy had no guard). The sum of `weightPct` over a review is
+        **not** validated (legacy parity; out of contract). Audit: `audit_log
+        (PERFORMANCE_GOALS, <goalId>, INSERT)`.
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+      responses:
+        '201':
+          description: "Created. `Location: /api/performance/goals/{goalId}` (read via `listGoals`; there is no single-goal GET in this phase)."
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceGoal'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReviewNotFound'
+        '422':
+          $ref: '#/components/responses/ReviewStatusInvalid'
+
+  /api/performance/goals/{goalId}/progress:
+    parameters:
+      - $ref: '#/components/parameters/GoalId'
+    patch:
+      tags: [goals]
+      operationId: updateGoalProgress
+      summary: Update progress (auto-COMPLETED at 100)
+      description: |
+        Replaces `PKG_PERFORMANCE.update_goal_progress`. Caller must be the reviewee or the
+        reviewer of the owning review; otherwise `403 FORBIDDEN`.
+        Status derivation is exactly the legacy `NVL(p_status, CASE …)`:
+        * `status` present → stored as given (any `GoalStatus`, no transition check);
+        * else `progressPct >= 100` → `COMPLETED`;
+        * else `progressPct > 0` → `IN_PROGRESS`;
+        * else (`0`) → status unchanged.
+        `comments` absent/`null` keeps the stored value (`NVL(p_comments, COMMENTS)`); it
+        cannot be cleared through this endpoint. Allowed while the owning review is not
+        `ACKNOWLEDGED`; otherwise `422 -20402`. Audit `UPDATE`.
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalProgressRequest'
+      responses:
+        '200':
+          description: Updated goal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceGoal'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GoalNotFound'
+        '422':
+          $ref: '#/components/responses/ReviewStatusInvalid'
+
+  # ---------------------------------------------------------------------------
+  # manager dashboard
+  # ---------------------------------------------------------------------------
+  /api/performance/cycles/{cycleId}/team-reviews:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    get:
+      tags: [manager-dashboard]
+      operationId: listTeamReviews
+      summary: Reviews the caller must write in this cycle
+      description: |
+        Replaces `PKG_PERFORMANCE.get_team_reviews(p_manager_id, p_cycle_id)` with
+        `p_manager_id := jwt.empId` (never a parameter). Joins `employees`, `job_titles`,
+        `departments`; ordered by `employees.last_name`, then `reviewId`. Any authenticated
+        employee may call it - a non-manager simply gets `[]`.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Direct-report reviews.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamReviewRow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+
+  /api/performance/cycles/{cycleId}/rating-distribution:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    get:
+      tags: [manager-dashboard]
+      operationId: getRatingDistribution
+      summary: Count and percentage per rating label
+      description: |
+        Replaces `PKG_PERFORMANCE.get_rating_distribution(p_cycle_id, p_dept_id)`:
+        `SELECT rating_label, COUNT(*), ROUND(COUNT(*)*100.0/SUM(COUNT(*)) OVER (), 1)
+        … WHERE overall_rating IS NOT NULL [AND e.dept_id = :deptId] GROUP BY rating_label
+        ORDER BY MIN(overall_rating) DESC`. Labels with zero reviews are **not** emitted
+        (legacy parity). Percentages are rounded half-up to one decimal and may not sum to
+        exactly 100.0.
+      x-preauthorize: hasAnyAuthority('PERFORMANCE:VIEW','PERFORMANCE:ADMIN')
+      parameters:
+        - in: query
+          name: deptId
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '200':
+          description: Distribution rows, best label first; `[]` when no review is rated.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RatingDistributionRow'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CycleNotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Identical to `contracts/p0-foundation/openapi.yaml` `bearerAuth`. `empId` is the only
+        source of the caller's identity; `roles` carries `Authority` strings, now including
+        the `PERFORMANCE` module (see `Authority`).
+
+  parameters:
+    CycleId:
+      in: path
+      name: cycleId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    ReviewId:
+      in: path
+      name: reviewId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    GoalId:
+      in: path
+      name: goalId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    CycleStatusFilter:
+      in: query
+      name: status
+      required: false
+      description: |
+        Comma-separated `CycleStatus` values. Default `OPEN,DRAFT` = the Forms
+        `DEFAULT_WHERE`. Any token outside the enum → `400 VALIDATION_FAILED`
+        (`field: "status"`).
+      schema:
+        type: string
+        pattern: '^(DRAFT|OPEN|IN_PROGRESS|CALIBRATION|CLOSED)(,(DRAFT|OPEN|IN_PROGRESS|CALIBRATION|CLOSED))*$'
+        default: OPEN,DRAFT
+    CycleSort:
+      in: query
+      name: sort
+      required: false
+      description: "`<property>,<direction>`; only the listed combinations are accepted (`400 VALIDATION_FAILED` otherwise)."
+      schema:
+        type: string
+        enum: ['cycleYear,desc', 'cycleYear,asc', 'startDate,desc', 'startDate,asc']
+        default: 'cycleYear,desc'
+    Page:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Unauthorized:
+      description: Missing, expired or revoked access token (`TOKEN_INVALID`) - as P0.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "TOKEN_INVALID"
+            message: "Session has expired"
+            traceId: "3f1c2d9e8b7a4c10"
+    Forbidden:
+      description: |
+        `@PreAuthorize` denied **or** the row-level scoping rule failed (caller is neither
+        reviewee, reviewer nor `PERFORMANCE:ADMIN`/`PERFORMANCE:VIEW` where those are accepted). Same body for both.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "FORBIDDEN"
+            message: "You do not have permission to perform this action"
+            traceId: "3f1c2d9e8b7a4c10"
+    ValidationFailed:
+      description: Bean Validation failure or unsupported query value (`VALIDATION_FAILED`) - as P0.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "VALIDATION_FAILED"
+            message: "Request validation failed"
+            field: "weightPct"
+            traceId: "3f1c2d9e8b7a4c10"
+            details:
+              - field: "weightPct"
+                code: "DecimalMax"
+                message: "must be less than or equal to 100"
+    CycleNotFound:
+      description: No `review_cycles` row with this id (`CYCLE_NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "CYCLE_NOT_FOUND"
+            message: "Review cycle not found"
+            traceId: "3f1c2d9e8b7a4c10"
+    ReviewNotFound:
+      description: No `performance_reviews` row with this id (`REVIEW_NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "REVIEW_NOT_FOUND"
+            message: "Performance review not found"
+            traceId: "3f1c2d9e8b7a4c10"
+    GoalNotFound:
+      description: No `performance_goals` row with this id (`GOAL_NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "GOAL_NOT_FOUND"
+            message: "Performance goal not found"
+            traceId: "3f1c2d9e8b7a4c10"
+    CycleStatusInvalid:
+      description: Cycle is not in a status that permits the operation (`-20401`). Message names the operation (see `error-codes.md`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "-20401"
+            message: "Cannot open cycle - must be in DRAFT status"
+            traceId: "3f1c2d9e8b7a4c10"
+    ReviewStatusInvalid:
+      description: Review is not in a status that permits the operation (`-20402`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "-20402"
+            message: "Review not found or not in correct status"
+            traceId: "3f1c2d9e8b7a4c10"
+
+  schemas:
+    # ------------------------------------------------------------------ errors
+    ApiError:
+      type: object
+      description: Identical to `contracts/p0-foundation/openapi.yaml` `ApiError` (single `GlobalExceptionHandler`).
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          pattern: '^(-20[0-9]{3}|[A-Z][A-Z0-9_]{2,63})$'
+        message: { type: string }
+        field: { type: string }
+        traceId: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }
+
+    Authority:
+      type: string
+      description: |
+        Extends the P0 vocabulary (P0 rule: "later phases may add modules/actions but never
+        rename these") with module `PERFORMANCE` and action `ADMIN`. Seeding for the
+        `PERFORMANCE` module, derived from the `has_permission` truth table and CUTOVER_PLAN.md
+        §5.4 ("cycle admin is ADMIN-only"):
+        * `EXECUTIVE` (grade ≥ 8): `PERFORMANCE:VIEW`, `PERFORMANCE:EDIT`, `PERFORMANCE:APPROVE`,
+          `PERFORMANCE:CREATE`, `PERFORMANCE:ADMIN`
+        * `MANAGER` (grade 5-7): `PERFORMANCE:VIEW`
+        * `STAFF` (grade < 5): none - own reviews/goals and team reviews are reachable with
+          `isAuthenticated()` plus JWT scoping, exactly as the Forms module was open to every
+          valid session.
+        Only `PERFORMANCE:VIEW` and `PERFORMANCE:ADMIN` are referenced by an `x-preauthorize`
+        in this phase; `EDIT/APPROVE/CREATE` exist for vocabulary completeness.
+      pattern: '^(PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS|PERFORMANCE):(VIEW|EDIT|APPROVE|CREATE|ADMIN)$'
+      examples: [PERFORMANCE:VIEW, PERFORMANCE:ADMIN]
+
+    # ----------------------------------------------------------------- domains
+    CycleStatus:
+      type: string
+      description: |
+        `REVIEW_CYCLES.STATUS` (`CHK_CYCLE_STATUS`). Transitions exposed by this contract:
+        `DRAFT →(open) OPEN`, `{OPEN, IN_PROGRESS, CALIBRATION} →(close) CLOSED`.
+        `IN_PROGRESS` and `CALIBRATION` have no producing endpoint in this phase (legacy had
+        none either - the calibration job referenced in `PKG_PERFORMANCE.pks` has no DDL,
+        PROC-02); they are valid stored values and are accepted by `close`.
+      enum: [DRAFT, OPEN, IN_PROGRESS, CALIBRATION, CLOSED]
+
+    ReviewStatus:
+      type: string
+      description: |
+        `PERFORMANCE_REVIEWS.STATUS` (`CHK_REVIEW_STATUS`). State machine enforced by
+        `PerformanceReviewService` (`-20402` on any other transition):
+
+            NOT_STARTED ─┐
+                         ├─ self-assessment ─▶ MANAGER_REVIEW ─┐
+            SELF_REVIEW ─┘                                     ├─ manager-review ─▶ COMPLETED ─ acknowledge ─▶ ACKNOWLEDGED
+                                          MEETING_SCHEDULED ───┘
+
+        `SELF_REVIEW` and `MEETING_SCHEDULED` have no producing endpoint in this phase (nor in
+        `PKG_PERFORMANCE`); they are accepted as *source* states as shown. `ACKNOWLEDGED` is terminal.
+      enum: [NOT_STARTED, SELF_REVIEW, MANAGER_REVIEW, MEETING_SCHEDULED, COMPLETED, ACKNOWLEDGED]
+
+    ReviewType:
+      type: string
+      description: "`PERFORMANCE_REVIEWS.REVIEW_TYPE`; this phase only ever writes `ANNUAL` (legacy `create_review`). No CHECK constraint exists; other values may appear in migrated data and are passed through."
+      enum: [ANNUAL]
+
+    RatingLabel:
+      type: string
+      description: |
+        `PKG_PERFORMANCE.submit_manager_review` label table (also `get_rating_label` in
+        COMPONENT_MAPPING.md §6), derived from `overallRating` and stored in `RATING_LABEL`:
+
+        | `overallRating` | label |
+        |---|---|
+        | ≥ 4.5 | `Exceptional` |
+        | ≥ 3.5 and < 4.5 | `Exceeds Expectations` |
+        | ≥ 2.5 and < 3.5 | `Meets Expectations` |
+        | ≥ 1.5 and < 2.5 | `Needs Improvement` |
+        | < 1.5 | `Unsatisfactory` |
+      enum: [Exceptional, Exceeds Expectations, Meets Expectations, Needs Improvement, Unsatisfactory]
+
+    GoalCategory:
+      type: string
+      description: "`PERFORMANCE_GOALS.GOAL_CATEGORY` (`CHK_GOAL_CATEGORY`). Default on create: `BUSINESS`."
+      enum: [BUSINESS, DEVELOPMENT, LEADERSHIP, INNOVATION, COMPLIANCE]
+
+    GoalStatus:
+      type: string
+      description: |
+        `PERFORMANCE_GOALS.STATUS` (`CHK_GOAL_STATUS`). Derived from `progressPct` when not
+        supplied (`updateGoalProgress`); no transition matrix is enforced (legacy parity):
+        `DEFERRED`/`CANCELLED` can only be reached by supplying `status` explicitly.
+      enum: [NOT_STARTED, IN_PROGRESS, COMPLETED, DEFERRED, CANCELLED]
+
+    Rating:
+      type: number
+      description: "`NUMBER(2,1)` in `[1.0, 5.0]`, one decimal (`-20403` outside the range). JSON number, e.g. `4.5`."
+      minimum: 1.0
+      maximum: 5.0
+      multipleOf: 0.1
+
+    Percent:
+      type: number
+      description: "`NUMBER(5,2)` in `[0, 100]`, up to two decimals. JSON number."
+      minimum: 0
+      maximum: 100
+      multipleOf: 0.01
+
+    # ------------------------------------------------------------------ cycles
+    ReviewCycleRequest:
+      type: object
+      description: Body of `createCycle` and `updateCycle` (full replacement).
+      required: [cycleName, cycleYear, startDate, endDate]
+      additionalProperties: false
+      properties:
+        cycleName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: "`CYCLE_NAME VARCHAR2(100) NOT NULL`, trimmed."
+        cycleYear:
+          type: integer
+          minimum: 2000
+          maximum: 2099
+          description: "`CYCLE_YEAR NUMBER(4)`; the range is a target-side sanity bound (legacy had none)."
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          description: "Must be on or after `startDate` (`VALIDATION_FAILED`, `field: endDate`; cross-field rule added by the target, legacy had none)."
+        selfReviewDue:
+          type: [string, 'null']
+          format: date
+        managerReviewDue:
+          type: [string, 'null']
+          format: date
+        calibrationDue:
+          type: [string, 'null']
+          format: date
+
+    ReviewCycle:
+      type: object
+      required: [cycleId, cycleName, cycleYear, startDate, endDate, status, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        cycleId: { type: integer, format: int64 }
+        cycleName: { type: string, maxLength: 100 }
+        cycleYear: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        selfReviewDue: { type: [string, 'null'], format: date }
+        managerReviewDue: { type: [string, 'null'], format: date }
+        calibrationDue: { type: [string, 'null'], format: date }
+        status:
+          $ref: '#/components/schemas/CycleStatus'
+        createdBy: { type: string, description: "Caller's `user_accounts.user_id` (legacy `USER`)." }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    GenerateReviewsResult:
+      type: object
+      required: [cycleId, generated, skipped]
+      additionalProperties: false
+      properties:
+        cycleId: { type: integer, format: int64 }
+        generated:
+          type: integer
+          minimum: 0
+          description: Reviews created by this call (the legacy `DBMS_OUTPUT` count).
+        skipped:
+          type: integer
+          minimum: 0
+          description: Eligible employees that already had a review in the cycle.
+
+    # ----------------------------------------------------------------- reviews
+    PerformanceReview:
+      type: object
+      description: |
+        `PERFORMANCE_REVIEWS` row plus the `POST-QUERY` derivations of block
+        `PERFORMANCE_REVIEW` (`employeeName` = `EMP_NAME_DISP`, `reviewerName`).
+        `calibratedRating` / `calibrationNotes` are read-only pass-through columns (no
+        endpoint writes them in this phase). CLOB texts are returned in full.
+      required: [reviewId, cycleId, empId, employeeName, reviewerEmpId, reviewerName, reviewType, status, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        reviewId: { type: integer, format: int64 }
+        cycleId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string, description: "`firstName + ' ' + lastName` of the reviewee." }
+        reviewerEmpId: { type: integer, format: int64 }
+        reviewerName: { type: string }
+        reviewType:
+          $ref: '#/components/schemas/ReviewType'
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        overallRating:
+          oneOf:
+            - $ref: '#/components/schemas/Rating'
+            - type: 'null'
+        ratingLabel:
+          oneOf:
+            - $ref: '#/components/schemas/RatingLabel'
+            - type: 'null'
+        selfAssessment: { type: [string, 'null'] }
+        managerAssessment: { type: [string, 'null'] }
+        strengths: { type: [string, 'null'] }
+        areasForImprovement: { type: [string, 'null'] }
+        developmentPlan: { type: [string, 'null'] }
+        employeeComments: { type: [string, 'null'] }
+        employeeAckDate: { type: [string, 'null'], format: date }
+        calibratedRating:
+          oneOf:
+            - $ref: '#/components/schemas/Rating'
+            - type: 'null'
+        calibrationNotes: { type: [string, 'null'], maxLength: 4000 }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    PageOfPerformanceReview:
+      type: object
+      description: Spring `Page<T>` shape restricted as in P0 `PageOfEmployeeSummary`.
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerformanceReview'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    SelfAssessmentRequest:
+      type: object
+      required: [selfAssessment]
+      additionalProperties: false
+      properties:
+        selfAssessment:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: "`SELF_ASSESSMENT CLOB`; the 20 000-character cap is a target-side bound (`VALIDATION_FAILED`)."
+
+    ManagerReviewRequest:
+      type: object
+      required: [overallRating, managerAssessment]
+      additionalProperties: false
+      properties:
+        overallRating:
+          $ref: '#/components/schemas/Rating'
+        managerAssessment:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        strengths:
+          type: [string, 'null']
+          maxLength: 20000
+        improvementAreas:
+          type: [string, 'null']
+          maxLength: 20000
+          description: Stored in `AREAS_FOR_IMPROVEMENT` (legacy parameter name `p_improvement_areas` kept on the wire).
+        developmentPlan:
+          type: [string, 'null']
+          maxLength: 20000
+
+    AcknowledgeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        employeeComments:
+          type: [string, 'null']
+          maxLength: 20000
+
+    # ------------------------------------------------------------------- goals
+    GoalRequest:
+      type: object
+      required: [goalTitle]
+      additionalProperties: false
+      properties:
+        goalTitle:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: "`GOAL_TITLE VARCHAR2(200) NOT NULL`, trimmed."
+        goalDescription:
+          type: [string, 'null']
+          maxLength: 20000
+        goalCategory:
+          $ref: '#/components/schemas/GoalCategory'
+          default: BUSINESS
+        weightPct:
+          $ref: '#/components/schemas/Percent'
+          default: 0
+        targetDate:
+          type: [string, 'null']
+          format: date
+
+    GoalProgressRequest:
+      type: object
+      required: [progressPct]
+      additionalProperties: false
+      properties:
+        progressPct:
+          $ref: '#/components/schemas/Percent'
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/GoalStatus'
+            - type: 'null'
+          description: Explicit status; when `null`/absent the status is derived from `progressPct` (see operation).
+        comments:
+          type: [string, 'null']
+          maxLength: 20000
+          description: "`null`/absent keeps the stored comments."
+
+    PerformanceGoal:
+      type: object
+      description: "`PERFORMANCE_GOALS` row. `selfRating` / `managerRating` are read-only pass-through columns (no endpoint writes them in this phase)."
+      required: [goalId, reviewId, empId, goalTitle, goalCategory, weightPct, status, progressPct, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        goalId: { type: integer, format: int64 }
+        reviewId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64, description: Always equals the owning review's `empId`. }
+        goalTitle: { type: string, maxLength: 200 }
+        goalDescription: { type: [string, 'null'] }
+        goalCategory:
+          $ref: '#/components/schemas/GoalCategory'
+        weightPct:
+          $ref: '#/components/schemas/Percent'
+        targetDate: { type: [string, 'null'], format: date }
+        status:
+          $ref: '#/components/schemas/GoalStatus'
+        progressPct:
+          $ref: '#/components/schemas/Percent'
+        selfRating:
+          oneOf:
+            - $ref: '#/components/schemas/Rating'
+            - type: 'null'
+        managerRating:
+          oneOf:
+            - $ref: '#/components/schemas/Rating'
+            - type: 'null'
+        comments: { type: [string, 'null'] }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    # ------------------------------------------------------- manager dashboard
+    TeamReviewRow:
+      type: object
+      description: One row of `PKG_PERFORMANCE.get_team_reviews`.
+      required: [reviewId, empId, employeeName, jobTitle, deptName, status]
+      additionalProperties: false
+      properties:
+        reviewId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        jobTitle: { type: string }
+        deptName: { type: string }
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        overallRating:
+          oneOf:
+            - $ref: '#/components/schemas/Rating'
+            - type: 'null'
+        ratingLabel:
+          oneOf:
+            - $ref: '#/components/schemas/RatingLabel'
+            - type: 'null'
+
+    RatingDistributionRow:
+      type: object
+      description: One row of `PKG_PERFORMANCE.get_rating_distribution`.
+      required: [ratingLabel, count, percentage]
+      additionalProperties: false
+      properties:
+        ratingLabel:
+          $ref: '#/components/schemas/RatingLabel'
+        count: { type: integer, minimum: 1 }
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          multipleOf: 0.1
+          description: "`ROUND(count * 100.0 / total, 1)` - half-up, one decimal."

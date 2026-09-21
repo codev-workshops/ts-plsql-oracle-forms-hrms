@@ -12,8 +12,9 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
- * TEST_STRATEGY.md §2.1 snapshot: the exporter output differs from the frozen hand-written
- * frontend/src/generated/validation-schema.json only in generatorVersion and sourceHash.
+ * TEST_STRATEGY.md §2.1 snapshot: the exporter output differs from the frozen
+ * frontend/src/generated/validation-schema.json only in generatorVersion; the sourceHash (a hash
+ * over parameters + dtos) must match, which pins the committed file to the annotated DTOs.
  */
 class ValidationSchemaExporterTest {
 
@@ -32,15 +33,33 @@ class ValidationSchemaExporterTest {
         .isNotEqualTo(frozen.get("generatorVersion").asText());
     assertThat(generated.get("sourceHash").asText())
         .matches("[0-9a-f]{64}")
-        .isNotEqualTo(frozen.get("sourceHash").asText());
+        .isEqualTo(frozen.get("sourceHash").asText());
 
     ObjectNode f = frozen.deepCopy();
     ObjectNode g = generated.deepCopy();
-    for (String k : new String[] {"generatorVersion", "sourceHash"}) {
-      f.remove(k);
-      g.remove(k);
-    }
+    f.remove("generatorVersion");
+    g.remove("generatorVersion");
     assertThat(g).isEqualTo(f);
+  }
+
+  @Test
+  void p1PerformanceDtosPinLegacyBounds() {
+    JsonNode dtos = new ValidationSchemaExporter().export("x", 8).get("dtos");
+    JsonNode rating = dtos.get("ManagerReviewRequest").get("fields").get("overallRating");
+    assertThat(rating.get("type").asText()).isEqualTo("decimal");
+    assertThat(rating.get("min").doubleValue()).isEqualTo(1.0);
+    assertThat(rating.get("max").doubleValue()).isEqualTo(5.0);
+    assertThat(rating.get("rules").get(0).get("errorCode").asText()).isEqualTo("-20403");
+    for (String[] fp :
+        new String[][] {{"GoalRequest", "weightPct"}, {"GoalProgressRequest", "progressPct"}}) {
+      JsonNode pct = dtos.get(fp[0]).get("fields").get(fp[1]);
+      assertThat(pct.get("min").doubleValue()).isEqualTo(0.0);
+      assertThat(pct.get("max").doubleValue()).isEqualTo(100.0);
+    }
+    for (String dto : new String[] {"ReviewCycleRequest", "GoalRequest", "GoalProgressRequest"}) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p1-performance");
+    }
+    assertThat(dtos.get("LoginRequest").get("module").asText()).isEqualTo("p0-foundation");
   }
 
   @Test

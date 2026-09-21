@@ -2,15 +2,20 @@
   "$schema": "https://hrms.example/schemas/validation-schema/v1",
   "schemaVersion": 1,
   "generator": "hrms-validation:exporter",
-  "generatorVersion": "0.0.0-handwritten",
-  "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
-  "module": "p0-foundation",
+  "generatorVersion": "0.1.0",
+  "sourceHash": "c3eb1d50eac0549228096c389d988f3829deaa2e72f75245bd1fee651c690ebb",
+  "module": "hrms",
+  "modules": [
+    "p0-foundation",
+    "p1-performance"
+  ],
   "parameters": {
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
     "SECURITY.SESSION_TIMEOUT_MIN": 30
   },
   "dtos": {
     "LoginRequest": {
+      "module": "p0-foundation",
       "fields": {
         "username": {
           "type": "string",
@@ -37,6 +42,7 @@
       }
     },
     "ChangePasswordRequest": {
+      "module": "p0-foundation",
       "fields": {
         "currentPassword": {
           "type": "string",
@@ -85,11 +91,20 @@
       }
     },
     "SsoExchangeRequest": {
+      "module": "p0-foundation",
       "fields": {
         "module": {
           "type": "enum",
           "required": true,
-          "values": ["auth", "employee", "payroll", "payroll.engine", "leave", "performance", "reporting"],
+          "values": [
+            "auth",
+            "employee",
+            "payroll",
+            "payroll.engine",
+            "leave",
+            "performance",
+            "reporting"
+          ],
           "messages": {
             "required": "Module is required"
           }
@@ -116,17 +131,22 @@
       }
     },
     "EmployeeSearchQuery": {
+      "module": "p0-foundation",
       "fields": {
         "status": {
           "type": "enum",
           "required": true,
-          "values": ["ACTIVE"],
+          "values": [
+            "ACTIVE"
+          ],
           "messages": {}
         },
         "fields": {
           "type": "enum",
           "required": true,
-          "values": ["id,name,jobTitle"],
+          "values": [
+            "id,name,jobTitle"
+          ],
           "messages": {}
         },
         "q": {
@@ -149,6 +169,239 @@
           "required": false,
           "min": 1,
           "max": 100,
+          "messages": {}
+        }
+      }
+    },
+    "ReviewCycleRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "cycleName": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 100,
+          "messages": {
+            "required": "Cycle name is required"
+          }
+        },
+        "cycleYear": {
+          "type": "integer",
+          "required": true,
+          "min": 2000,
+          "max": 2099,
+          "messages": {
+            "required": "Cycle year is required"
+          }
+        },
+        "startDate": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "messages": {
+            "required": "Start date is required"
+          }
+        },
+        "endDate": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "messages": {
+            "required": "End date is required",
+            "format": "End date must be on or after the start date"
+          }
+        },
+        "selfReviewDue": {
+          "type": "date",
+          "required": false,
+          "format": "date",
+          "messages": {}
+        },
+        "managerReviewDue": {
+          "type": "date",
+          "required": false,
+          "format": "date",
+          "messages": {}
+        },
+        "calibrationDue": {
+          "type": "date",
+          "required": false,
+          "format": "date",
+          "messages": {}
+        }
+      }
+    },
+    "SelfAssessmentRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "selfAssessment": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 20000,
+          "messages": {
+            "required": "Self-assessment is required"
+          }
+        }
+      }
+    },
+    "ManagerReviewRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "overallRating": {
+          "type": "decimal",
+          "required": true,
+          "min": 1.0,
+          "max": 5.0,
+          "scale": 1,
+          "rules": [
+            {
+              "id": "rating.range.min",
+              "kind": "min",
+              "value": 1.0,
+              "errorCode": "-20403",
+              "message": "Rating must be between 1.0 and 5.0"
+            },
+            {
+              "id": "rating.range.max",
+              "kind": "max",
+              "value": 5.0,
+              "errorCode": "-20403",
+              "message": "Rating must be between 1.0 and 5.0"
+            }
+          ],
+          "messages": {
+            "required": "Rating is required"
+          }
+        },
+        "managerAssessment": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 20000,
+          "messages": {
+            "required": "Manager assessment is required"
+          }
+        },
+        "strengths": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
+          "messages": {}
+        },
+        "improvementAreas": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
+          "messages": {}
+        },
+        "developmentPlan": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
+          "messages": {}
+        }
+      }
+    },
+    "AcknowledgeRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "employeeComments": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
+          "messages": {}
+        }
+      }
+    },
+    "GoalRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "goalTitle": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 200,
+          "messages": {
+            "required": "Goal title is required"
+          }
+        },
+        "goalDescription": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
+          "messages": {}
+        },
+        "goalCategory": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "BUSINESS",
+            "DEVELOPMENT",
+            "LEADERSHIP",
+            "INNOVATION",
+            "COMPLIANCE"
+          ],
+          "messages": {}
+        },
+        "weightPct": {
+          "type": "decimal",
+          "required": false,
+          "min": 0.0,
+          "max": 100.0,
+          "scale": 2,
+          "messages": {
+            "format": "Weight must be between 0 and 100"
+          }
+        },
+        "targetDate": {
+          "type": "date",
+          "required": false,
+          "format": "date",
+          "messages": {}
+        }
+      }
+    },
+    "GoalProgressRequest": {
+      "module": "p1-performance",
+      "fields": {
+        "progressPct": {
+          "type": "decimal",
+          "required": true,
+          "min": 0.0,
+          "max": 100.0,
+          "scale": 2,
+          "messages": {
+            "required": "Progress is required",
+            "format": "Progress must be between 0 and 100"
+          }
+        },
+        "status": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "NOT_STARTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "DEFERRED",
+            "CANCELLED"
+          ],
+          "messages": {}
+        },
+        "comments": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 20000,
           "messages": {}
         }
       }

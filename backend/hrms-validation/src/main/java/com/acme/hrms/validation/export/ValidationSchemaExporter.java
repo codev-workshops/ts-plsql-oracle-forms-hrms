@@ -5,6 +5,12 @@ import com.acme.hrms.validation.dto.EmployeeSearchQuery;
 import com.acme.hrms.validation.dto.LoginRequest;
 import com.acme.hrms.validation.dto.ProxyModule;
 import com.acme.hrms.validation.dto.SsoExchangeRequest;
+import com.acme.hrms.validation.dto.performance.AcknowledgeRequest;
+import com.acme.hrms.validation.dto.performance.GoalProgressRequest;
+import com.acme.hrms.validation.dto.performance.GoalRequest;
+import com.acme.hrms.validation.dto.performance.ManagerReviewRequest;
+import com.acme.hrms.validation.dto.performance.ReviewCycleRequest;
+import com.acme.hrms.validation.dto.performance.SelfAssessmentRequest;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
 import com.acme.hrms.validation.password.PasswordPolicy;
@@ -13,6 +19,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -22,34 +31,52 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Emits {@code frontend/src/generated/validation-schema.json} (contracts/p0-foundation/README.md
- * "exporter output format") from the Bean Validation annotations of the P0 DTOs and {@link
- * PasswordPolicy}. Usage: {@code java ... ValidationSchemaExporter <output-file> [version]}.
+ * "exporter output format", extended by contracts/p1-performance/README.md) from the Bean
+ * Validation annotations of the request DTOs of every frozen phase and {@link PasswordPolicy}.
+ * Usage: {@code java ... ValidationSchemaExporter <output-file> [version]}.
  */
 public final class ValidationSchemaExporter {
 
   public static final String SCHEMA = "https://hrms.example/schemas/validation-schema/v1";
   public static final String GENERATOR = "hrms-validation:exporter";
-  public static final String MODULE = "p0-foundation";
+  public static final String MODULE = "hrms";
+  public static final String MODULE_P0 = "p0-foundation";
+  public static final String MODULE_P1 = "p1-performance";
+  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1);
   public static final int SESSION_TIMEOUT_MIN_DEFAULT = 30;
 
-  private static final Map<String, Class<?>> DTOS = new LinkedHashMap<>();
+  /** DTO name -> (owning contract module, class); insertion order is the output order. */
+  private static final Map<String, Map.Entry<String, Class<?>>> DTOS = new LinkedHashMap<>();
 
   static {
-    DTOS.put("LoginRequest", LoginRequest.class);
-    DTOS.put("ChangePasswordRequest", ChangePasswordRequest.class);
-    DTOS.put("SsoExchangeRequest", SsoExchangeRequest.class);
-    DTOS.put("EmployeeSearchQuery", EmployeeSearchQuery.class);
+    register(MODULE_P0, "LoginRequest", LoginRequest.class);
+    register(MODULE_P0, "ChangePasswordRequest", ChangePasswordRequest.class);
+    register(MODULE_P0, "SsoExchangeRequest", SsoExchangeRequest.class);
+    register(MODULE_P0, "EmployeeSearchQuery", EmployeeSearchQuery.class);
+    register(MODULE_P1, "ReviewCycleRequest", ReviewCycleRequest.class);
+    register(MODULE_P1, "SelfAssessmentRequest", SelfAssessmentRequest.class);
+    register(MODULE_P1, "ManagerReviewRequest", ManagerReviewRequest.class);
+    register(MODULE_P1, "AcknowledgeRequest", AcknowledgeRequest.class);
+    register(MODULE_P1, "GoalRequest", GoalRequest.class);
+    register(MODULE_P1, "GoalProgressRequest", GoalProgressRequest.class);
+  }
+
+  private static void register(String module, String name, Class<?> dto) {
+    DTOS.put(name, Map.entry(module, dto));
   }
 
   private final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
@@ -74,8 +101,10 @@ public final class ValidationSchemaExporter {
 
   public ObjectNode export(String generatorVersion, int passwordMinLength) {
     ObjectNode dtos = mapper.createObjectNode();
-    for (Map.Entry<String, Class<?>> e : DTOS.entrySet()) {
-      dtos.set(e.getKey(), describeDto(e.getValue(), passwordMinLength));
+    for (Map.Entry<String, Map.Entry<String, Class<?>>> e : DTOS.entrySet()) {
+      dtos.set(
+          e.getKey(),
+          describeDto(e.getValue().getKey(), e.getValue().getValue(), passwordMinLength));
     }
     ObjectNode parameters = mapper.createObjectNode();
     parameters.put("SECURITY.PASSWORD_MIN_LENGTH", passwordMinLength);
@@ -88,12 +117,14 @@ public final class ValidationSchemaExporter {
     root.put("generatorVersion", generatorVersion);
     root.put("sourceHash", sha256(parameters.toString() + dtos.toString()));
     root.put("module", MODULE);
+    ArrayNode modules = root.putArray("modules");
+    MODULES.forEach(modules::add);
     root.set("parameters", parameters);
     root.set("dtos", dtos);
     return root;
   }
 
-  private ObjectNode describeDto(Class<?> dto, int passwordMinLength) {
+  private ObjectNode describeDto(String module, Class<?> dto, int passwordMinLength) {
     ObjectNode fields = mapper.createObjectNode();
     for (Field f : dto.getDeclaredFields()) {
       if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
@@ -105,6 +136,7 @@ public final class ValidationSchemaExporter {
       fields.set(f.getName(), describeField(dto, f, passwordMinLength));
     }
     ObjectNode node = mapper.createObjectNode();
+    node.put("module", module);
     node.set("fields", fields);
     return node;
   }
@@ -145,6 +177,40 @@ public final class ValidationSchemaExporter {
       if (max != null) {
         n.put("max", (int) max.value());
       }
+    } else if (f.getType() == BigDecimal.class) {
+      n.put("type", "decimal");
+      n.put("required", required);
+      DecimalMin min = f.getAnnotation(DecimalMin.class);
+      DecimalMax max = f.getAnnotation(DecimalMax.class);
+      Digits digits = f.getAnnotation(Digits.class);
+      if (min != null) {
+        n.put("min", Double.parseDouble(min.value()));
+      }
+      if (max != null) {
+        n.put("max", Double.parseDouble(max.value()));
+      }
+      if (digits != null) {
+        n.put("scale", digits.fraction());
+      }
+      if (meta != null && !meta.ruleId().isEmpty() && min != null && max != null) {
+        ArrayNode rules = n.putArray("rules");
+        ObjectNode rmin = rules.addObject();
+        rmin.put("id", meta.ruleId() + ".min");
+        rmin.put("kind", "min");
+        rmin.put("value", Double.parseDouble(min.value()));
+        rmin.put("errorCode", meta.ruleErrorCode());
+        rmin.put("message", meta.ruleMessage());
+        ObjectNode rmax = rules.addObject();
+        rmax.put("id", meta.ruleId() + ".max");
+        rmax.put("kind", "max");
+        rmax.put("value", Double.parseDouble(max.value()));
+        rmax.put("errorCode", meta.ruleErrorCode());
+        rmax.put("message", meta.ruleMessage());
+      }
+    } else if (f.getType() == LocalDate.class) {
+      n.put("type", "date");
+      n.put("required", required);
+      n.put("format", "date");
     } else {
       n.put("type", "string");
       n.put("required", required);

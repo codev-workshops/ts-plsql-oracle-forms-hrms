@@ -1,6 +1,7 @@
 /**
  * Snapshot + format guard for the hrms-validation exporter output (VAL-03 regression guard,
- * TEST_STRATEGY.md §2.1). Contract: contracts/p0-foundation/README.md "validation-schema.json".
+ * TEST_STRATEGY.md §2.1). Contract: contracts/p0-foundation/README.md "validation-schema.json",
+ * extended by contracts/p1-performance/README.md (decimal/date fields, per-DTO `module`, `modules`).
  *
  * This test fails when:
  *   - the exporter output shape changes (schemaVersion / envelope / field rule vocabulary), or
@@ -24,7 +25,8 @@ describe('frontend/src/generated/validation-schema.json', () => {
     expect(schema.generator).toBe('hrms-validation:exporter');
     expect(schema.generatorVersion).toMatch(/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/);
     expect(schema.sourceHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(schema.module).toBe('p0-foundation');
+    expect(schema.module).toBe('hrms');
+    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance']);
     expect(Object.keys(schema.dtos).length).toBeGreaterThan(0);
   });
 
@@ -33,6 +35,7 @@ describe('frontend/src/generated/validation-schema.json', () => {
     for (const dtoName of dtoNames) {
       expect(dtoName).toMatch(/^[A-Z][A-Za-z0-9]*$/);
       const dto = schema.dtos[dtoName as keyof typeof schema.dtos];
+      expect(schema.modules).toContain(dto.module);
       for (const [fieldName, field] of Object.entries(dto.fields)) {
         expect(fieldName).toMatch(/^[a-z][A-Za-z0-9]*$/);
         expect(FIELD_TYPES).toContain(field.type);
@@ -46,6 +49,37 @@ describe('frontend/src/generated/validation-schema.json', () => {
           expect(typeof rule.message).toBe('string');
         }
       }
+    }
+  });
+
+  it('pins the P1 performance bounds to PKG_PERFORMANCE (rating 1.0–5.0 / -20403, pct 0–100)', () => {
+    const rating = schema.dtos.ManagerReviewRequest.fields.overallRating;
+    expect(rating.type).toBe('decimal');
+    expect([rating.min, rating.max, rating.scale]).toEqual([1.0, 5.0, 1]);
+    expect(rating.rules.map((r) => r.errorCode)).toEqual(['-20403', '-20403']);
+    for (const pct of [
+      schema.dtos.GoalRequest.fields.weightPct,
+      schema.dtos.GoalProgressRequest.fields.progressPct,
+    ]) {
+      expect(pct.type).toBe('decimal');
+      expect([pct.min, pct.max]).toEqual([0, 100]);
+    }
+    expect(schema.dtos.GoalRequest.fields.goalCategory.values).toEqual([
+      'BUSINESS',
+      'DEVELOPMENT',
+      'LEADERSHIP',
+      'INNOVATION',
+      'COMPLIANCE',
+    ]);
+    expect(schema.dtos.GoalProgressRequest.fields.status.values).toEqual([
+      'NOT_STARTED',
+      'IN_PROGRESS',
+      'COMPLETED',
+      'DEFERRED',
+      'CANCELLED',
+    ]);
+    for (const dto of ['ReviewCycleRequest', 'SelfAssessmentRequest', 'AcknowledgeRequest'] as const) {
+      expect(schema.dtos[dto].module).toBe('p1-performance');
     }
   });
 
