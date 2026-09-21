@@ -4,10 +4,10 @@ Implements CUTOVER_PLAN.md §2 rule 6 for every table group (one owner per group
 
 | Step | Tool | Notes |
 |---|---|---|
-| (i) bulk load | `CdcSyncMain bulk-load --group <flag>` | `AS OF SCN` snapshot → keyed upsert; sequences advanced; checksum gate |
+| (i) bulk load | `java -jar target/hrms-tool-cdc-sync.jar bulk-load --group <flag>` | `AS OF SCN` snapshot → keyed upsert; sequences advanced; checksum gate |
 | (ii) bake CDC | Debezium Oracle connector (`debezium/hrms-oracle-source.json`) + JDBC sink (`debezium/hrms-postgres-sink.json`) | LogMiner, `online_catalog`; reference tables only in P0 (rule 1) |
-| (iii) flip | proxy flag, then `CdcSyncMain checksum` | connector `table.include.list` shrinks by the flipped group |
-| (iv) reverse extract | `CdcSyncMain reverse --group <flag> --since <flip instant>` | dry-run by default (nightly rehearsal); `--apply` on rollback |
+| (iii) flip | proxy flag, then `java -jar target/hrms-tool-cdc-sync.jar checksum` | connector `table.include.list` shrinks by the flipped group |
+| (iv) reverse extract | `java -jar target/hrms-tool-cdc-sync.jar reverse --group <flag> --since <flip instant>` | dry-run by default (nightly rehearsal); `--apply` on rollback |
 
 Decision (item 0.5b): **Debezium** over GoldenGate – open source, Kafka Connect deployment already
 available to the platform team, identical `precise` decimal handling to the target's `numeric`

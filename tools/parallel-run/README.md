@@ -12,10 +12,16 @@ java -jar target/hrms-tool-parallel-run.jar \
      --report target/parallel-run.md
 ```
 
-* Without `--oracle` only the target side runs and is compared with the frozen contract.
-* Exit 0 = all PASS, 1 = differences, 2 = usage error.
-* Verdicts: `PASS`, `TARGET-DIFF` (target ≠ contract), `ORACLE-DRIFT` (legacy ≠ its expected
-  outcome – the golden oracle moved), `BOTH-DIFF`.
+* Without `--oracle` only the target side runs and is compared with the frozen contract. The
+  legacy column reads `n/a (recorded)` for scenarios whose legacy expectation was derived from the
+  PL/SQL reference and `n/a (untested-live)` for the ones that need a live Oracle Forms session
+  (DECISION P0-D1: `sso.exchange.legacy-module`). For those, `ScenarioRegistry.targetExpect`
+  swaps the target expectation to the contracted no-Oracle answer (`502 SSO_LEGACY_UNAVAILABLE`)
+  and the verdict is `UNTESTED-LIVE`, which does not fail the run.
+* Exit 0 = all PASS / UNTESTED-LIVE, 1 = differences, 2 = usage error.
+* Verdicts: `PASS`, `UNTESTED-LIVE` (no Oracle; target matched the no-Oracle contract outcome),
+  `TARGET-DIFF` (target ≠ contract), `ORACLE-DRIFT` (legacy ≠ its expected outcome – the golden
+  oracle moved), `BOTH-DIFF`.
 * Documented divergences (contracts/p0-foundation/README.md SEC-01/02/05/07/08) are encoded in
   `ScenarioRegistry.legacyOutcome`; e.g. lockout expects `-20301` from legacy and `RATE_LIMITED`
   from the target and is still `PASS`.

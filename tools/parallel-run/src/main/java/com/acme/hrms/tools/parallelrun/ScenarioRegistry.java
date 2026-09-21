@@ -40,6 +40,9 @@ public final class ScenarioRegistry {
    */
   static final Set<String> UNTESTED_LIVE_SCENARIOS = Set.of("sso.exchange.legacy-module");
 
+  /** Contract outcome of a legacy-module SSO exchange when the auth-service has no Oracle. */
+  static final Outcome SSO_LEGACY_UNAVAILABLE = Outcome.error("SSO_LEGACY_UNAVAILABLE");
+
   public static List<Scenario> all() {
     return List.of(
         new Scenario(
@@ -135,6 +138,19 @@ public final class ScenarioRegistry {
   /** How the legacy column of the report was obtained when Oracle is not attached. */
   public static String legacySource(Scenario s) {
     return UNTESTED_LIVE_SCENARIOS.contains(s.id()) ? UNTESTED_LIVE : RECORDED;
+  }
+
+  /**
+   * Target-side expectation for the run mode. With Oracle attached every scenario expects its
+   * contract outcome; without it (golden-oracle mode OFF) the untested-live SSO exchange must be
+   * answered with the contracted {@code 502 SSO_LEGACY_UNAVAILABLE}, which is what the report
+   * verifies instead of the Forms module handoff.
+   */
+  public static Outcome targetExpect(Scenario s, boolean oracleAttached) {
+    if (!oracleAttached && UNTESTED_LIVE_SCENARIOS.contains(s.id())) {
+      return SSO_LEGACY_UNAVAILABLE;
+    }
+    return s.expect();
   }
 
   public static Outcome legacyOutcome(Scenario s) {
