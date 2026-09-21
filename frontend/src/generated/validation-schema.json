@@ -1,0 +1,157 @@
+{
+  "$schema": "https://hrms.example/schemas/validation-schema/v1",
+  "schemaVersion": 1,
+  "generator": "hrms-validation:exporter",
+  "generatorVersion": "0.0.0-handwritten",
+  "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "module": "p0-foundation",
+  "parameters": {
+    "SECURITY.PASSWORD_MIN_LENGTH": 8,
+    "SECURITY.SESSION_TIMEOUT_MIN": 30
+  },
+  "dtos": {
+    "LoginRequest": {
+      "fields": {
+        "username": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 3,
+          "maxLength": 100,
+          "format": "email",
+          "messages": {
+            "required": "Username is required",
+            "format": "Enter a valid e-mail address"
+          }
+        },
+        "password": {
+          "type": "string",
+          "required": true,
+          "trim": false,
+          "minLength": 1,
+          "maxLength": 128,
+          "messages": {
+            "required": "Password is required"
+          }
+        }
+      }
+    },
+    "ChangePasswordRequest": {
+      "fields": {
+        "currentPassword": {
+          "type": "string",
+          "required": true,
+          "trim": false,
+          "minLength": 1,
+          "maxLength": 128,
+          "messages": {
+            "required": "Current password is required"
+          }
+        },
+        "newPassword": {
+          "type": "string",
+          "required": true,
+          "trim": false,
+          "minLength": 8,
+          "maxLength": 128,
+          "rules": [
+            {
+              "id": "password.minLength",
+              "kind": "minLength",
+              "value": 8,
+              "parameter": "SECURITY.PASSWORD_MIN_LENGTH",
+              "errorCode": "-20310",
+              "message": "Password must be at least 8 characters"
+            },
+            {
+              "id": "password.uppercase",
+              "kind": "pattern",
+              "value": "[A-Z]",
+              "errorCode": "-20311",
+              "message": "Password must contain an uppercase letter"
+            },
+            {
+              "id": "password.digit",
+              "kind": "pattern",
+              "value": "[0-9]",
+              "errorCode": "-20312",
+              "message": "Password must contain a number"
+            }
+          ],
+          "messages": {
+            "required": "New password is required"
+          }
+        }
+      }
+    },
+    "SsoExchangeRequest": {
+      "fields": {
+        "module": {
+          "type": "enum",
+          "required": true,
+          "values": ["auth", "employee", "payroll", "payroll.engine", "leave", "performance", "reporting"],
+          "messages": {
+            "required": "Module is required"
+          }
+        },
+        "clientIp": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "maxLength": 50,
+          "messages": {
+            "required": "Client IP is required"
+          }
+        },
+        "returnPath": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 500,
+          "pattern": "^/[^\\s]*$",
+          "messages": {
+            "pattern": "Return path must be a relative path"
+          }
+        }
+      }
+    },
+    "EmployeeSearchQuery": {
+      "fields": {
+        "status": {
+          "type": "enum",
+          "required": true,
+          "values": ["ACTIVE"],
+          "messages": {}
+        },
+        "fields": {
+          "type": "enum",
+          "required": true,
+          "values": ["id,name,jobTitle"],
+          "messages": {}
+        },
+        "q": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 100,
+          "messages": {
+            "maxLength": "Search text is too long"
+          }
+        },
+        "page": {
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "messages": {}
+        },
+        "size": {
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 100,
+          "messages": {}
+        }
+      }
+    }
+  }
+}

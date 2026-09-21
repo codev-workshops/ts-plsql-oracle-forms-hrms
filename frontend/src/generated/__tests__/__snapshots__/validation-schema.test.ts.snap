@@ -1,0 +1,173 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`frontend/src/generated/validation-schema.json > matches the committed snapshot (byte-for-byte generator output) 1`] = `
+{
+  "$schema": "https://hrms.example/schemas/validation-schema/v1",
+  "dtos": {
+    "ChangePasswordRequest": {
+      "fields": {
+        "currentPassword": {
+          "maxLength": 128,
+          "messages": {
+            "required": "Current password is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": false,
+          "type": "string",
+        },
+        "newPassword": {
+          "maxLength": 128,
+          "messages": {
+            "required": "New password is required",
+          },
+          "minLength": 8,
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20310",
+              "id": "password.minLength",
+              "kind": "minLength",
+              "message": "Password must be at least 8 characters",
+              "parameter": "SECURITY.PASSWORD_MIN_LENGTH",
+              "value": 8,
+            },
+            {
+              "errorCode": "-20311",
+              "id": "password.uppercase",
+              "kind": "pattern",
+              "message": "Password must contain an uppercase letter",
+              "value": "[A-Z]",
+            },
+            {
+              "errorCode": "-20312",
+              "id": "password.digit",
+              "kind": "pattern",
+              "message": "Password must contain a number",
+              "value": "[0-9]",
+            },
+          ],
+          "trim": false,
+          "type": "string",
+        },
+      },
+    },
+    "EmployeeSearchQuery": {
+      "fields": {
+        "fields": {
+          "messages": {},
+          "required": true,
+          "type": "enum",
+          "values": [
+            "id,name,jobTitle",
+          ],
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "q": {
+          "maxLength": 100,
+          "messages": {
+            "maxLength": "Search text is too long",
+          },
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "size": {
+          "max": 100,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "status": {
+          "messages": {},
+          "required": true,
+          "type": "enum",
+          "values": [
+            "ACTIVE",
+          ],
+        },
+      },
+    },
+    "LoginRequest": {
+      "fields": {
+        "password": {
+          "maxLength": 128,
+          "messages": {
+            "required": "Password is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": false,
+          "type": "string",
+        },
+        "username": {
+          "format": "email",
+          "maxLength": 100,
+          "messages": {
+            "format": "Enter a valid e-mail address",
+            "required": "Username is required",
+          },
+          "minLength": 3,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+    },
+    "SsoExchangeRequest": {
+      "fields": {
+        "clientIp": {
+          "maxLength": 50,
+          "messages": {
+            "required": "Client IP is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "module": {
+          "messages": {
+            "required": "Module is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "auth",
+            "employee",
+            "payroll",
+            "payroll.engine",
+            "leave",
+            "performance",
+            "reporting",
+          ],
+        },
+        "returnPath": {
+          "maxLength": 500,
+          "messages": {
+            "pattern": "Return path must be a relative path",
+          },
+          "pattern": "^/[^\\s]*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+    },
+  },
+  "generator": "hrms-validation:exporter",
+  "generatorVersion": "0.0.0-handwritten",
+  "module": "p0-foundation",
+  "parameters": {
+    "SECURITY.PASSWORD_MIN_LENGTH": 8,
+    "SECURITY.SESSION_TIMEOUT_MIN": 30,
+  },
+  "schemaVersion": 1,
+  "sourceHash": "0000000000000000000000000000000000000000000000000000000000000000",
+}
+`;

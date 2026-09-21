@@ -1,0 +1,911 @@
+openapi: 3.1.0
+info:
+  title: HRMS Modernization - Phase 0 Foundation contract
+  version: 0.1.0
+  description: |
+    Frozen API surface for Phase 0 (auth-service, reference data, manager search,
+    SSO bridge). Governed by MODERNIZATION_BLUEPRINT.md §9, COMPONENT_MAPPING.md §1, §2,
+    §3.3, §7, §11 and CUTOVER_PLAN.md §2 / §4.2.
+
+    Contract rules that apply to every operation in this file:
+
+    * The target is Spring Boot on PostgreSQL + React. No endpoint here calls a `PKG_*`
+      procedure; the single exception is the SSO bridge (`/legacy/sso/exchange`), which
+      is the only component allowed to call `PKG_SECURITY.authenticate` on Oracle
+      (CUTOVER_PLAN.md §2 rule 3).
+    * Identity comes from the JWT (`sub`, `empId`, `roles`); no operation accepts a
+      client-supplied `empId` to identify the caller (MODERNIZATION_BLUEPRINT.md §9 rule 2).
+    * Every documented failure is an `ApiError` `{code, message, field?, traceId}`.
+      `code` is the legacy `-20xxx` number where one exists (COMPONENT_MAPPING.md §11),
+      otherwise one of the framework codes listed in `error-codes.md`.
+    * Authorization is expressed as Spring Security authorities and written in the
+      `x-preauthorize` extension exactly as it must appear in `@PreAuthorize(...)`.
+    * Dates are ISO-8601 (`date` / `date-time`) on the wire; display masks
+      (`MM/DD/YYYY`) are a frontend concern (COMPONENT_MAPPING.md §7 `format_date`).
+    * Blank strings are normalised to `null` at the API boundary before validation
+      (MODERNIZATION_BLUEPRINT.md §10, `VARCHAR2 '' ≡ NULL`).
+
+servers:
+  - url: /
+    description: Behind the reverse proxy. `/api/*` is routed to Spring Boot; `/legacy/*` to the SSO bridge.
+
+tags:
+  - name: auth
+    description: auth-service (COMPONENT_MAPPING.md §1, §2)
+  - name: reference
+    description: reference-data endpoints backing `ReferenceDropdown` (COMPONENT_MAPPING.md §3.3, §5)
+  - name: employees
+    description: Phase 0 slice of employee-service - manager search only (COMPONENT_MAPPING.md §3.3 `RG_MANAGERS`)
+  - name: sso-bridge
+    description: JWT → Oracle Forms `USER_SESSIONS` exchange (CUTOVER_PLAN.md §2 rule 3, §4.2 item 0.8)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # auth-service
+  # ---------------------------------------------------------------------------
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Authenticate with e-mail + password and obtain a token pair
+      description: |
+        Replaces `HRMS_LOGIN.xml` `BTN_LOGIN` → `PKG_SECURITY.authenticate`.
+
+        Rules (COMPONENT_MAPPING.md §1):
+        * `username` is the employee e-mail, matched case-insensitively.
+        * Only `EMPLOYMENT_STATUS='ACTIVE'` employees with a `user_accounts` row may log in.
+        * The password **is** verified (BCrypt/Argon2) - SEC-05 is not reproduced.
+        * Any failure (unknown e-mail, wrong password, inactive employee, duplicate e-mail
+          SEC-10) returns the same `401` / `-20301` body and the same timing profile;
+          no user enumeration.
+        * A `user_sessions` row is written on PostgreSQL for audit / parallel-run parity
+          (`SESSION_STATUS='ACTIVE'`, `IP_ADDRESS` from the request), and an `AUDIT_LOG`
+          row (`TABLE_NAME='USER_SESSIONS'`, `ACTION='LOGIN'`).
+        * Access-token lifetime = `SYSTEM_PARAMETERS.SECURITY.SESSION_TIMEOUT_MIN` (VAL-06).
+      security: []
+      x-preauthorize: permitAll
+      x-rate-limit: "5 failed attempts per username per 15 minutes → 429 RATE_LIMITED"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          headers:
+            Set-Cookie:
+              description: |
+                `hrms_refresh=<opaque>; HttpOnly; Secure; SameSite=Strict; Path=/api/auth`.
+                The refresh token is never in the JSON body.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          description: Invalid credentials (`-20301`). Same body for every failure cause.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: "-20301"
+                message: "Invalid username or password"
+                traceId: "3f1c2d9e8b7a4c10"
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current token pair and close the session row
+      description: |
+        Replaces `HRMS_MENU.xml` `BTN_LOGOUT` → `PKG_SECURITY.logout`.
+        Revokes the access token `jti` and the refresh token, sets
+        `user_sessions.SESSION_STATUS='CLOSED'` and `LOGOUT_TIME`, writes an `AUDIT_LOG`
+        row (`ACTION='LOGOUT'`). Idempotent: a second call with an already-revoked token
+        still returns `204`. Clears the `hrms_refresh` cookie.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Exchange a valid refresh token for a new access token
+      description: |
+        Reads the `hrms_refresh` HttpOnly cookie (no body). Rotates the refresh token
+        (old one revoked) and issues a new access token with freshly resolved roles.
+        A refresh token whose session row is `CLOSED` or whose employee is no longer
+        `ACTIVE` is rejected with `401 TOKEN_INVALID`.
+      security: []
+      x-preauthorize: permitAll
+      parameters:
+        - in: cookie
+          name: hrms_refresh
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: New access token
+          headers:
+            Set-Cookie:
+              description: Rotated `hrms_refresh` cookie
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Missing, expired, revoked or reused refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: "TOKEN_INVALID"
+                message: "Session has expired"
+                traceId: "3f1c2d9e8b7a4c10"
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: me
+      summary: Current principal for `AppShell` / `HomePage`
+      description: |
+        Replaces `HRMS_MENU.xml` `WHEN-NEW-FORM-INSTANCE` (`is_session_valid` +
+        `has_permission` for `PAYROLL/ADMIN/REPORTS`). Everything is derived from the JWT
+        and the `user_accounts` / `employees` rows of `jwt.empId`; there is **no**
+        `?empId=` parameter.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: |
+            Employee behind the token is no longer found / active (`-20001`). Occurs
+            only when the employee was terminated after the token was issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: "-20001"
+                message: "Employee not found or not active"
+                traceId: "3f1c2d9e8b7a4c10"
+
+  /api/auth/password:
+    put:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change the caller's own password
+      description: |
+        Replaces `PKG_SECURITY.change_password` (a stub) and `HRMS_MENU.xml` `MI_CHANGE_PWD`.
+        Always acts on `jwt.sub`; no `empId` in the body.
+
+        Rules:
+        * `currentPassword` must verify → otherwise `401` / `-20301`.
+        * Complexity, evaluated **in this order, first failure wins**
+          (`PKG_SECURITY.pkb:218-228`):
+          1. length ≥ `SYSTEM_PARAMETERS.SECURITY.PASSWORD_MIN_LENGTH` (default 8) → `-20310`
+          2. at least one `[A-Z]` → `-20311`
+          3. at least one `[0-9]` → `-20312`
+        * `newPassword` equal to `currentPassword` → `400` / `PASSWORD_REUSED`.
+        * On success all *other* sessions of the user are revoked; the current access
+          token stays valid. `AUDIT_LOG` row `TABLE_NAME='USER_ACCOUNTS'`, `ACTION='UPDATE'`.
+        * The complexity rules are also exported in `validation-schema.json`
+          (`ChangePasswordRequest`) so the UI can pre-validate; the server is canonical.
+      x-preauthorize: isAuthenticated()
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed
+        '400':
+          description: |
+            Complexity failure (`-20310` / `-20311` / `-20312`, `field: "newPassword"`),
+            `PASSWORD_REUSED`, or Bean Validation failure (`VALIDATION_FAILED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                tooShort:
+                  value:
+                    code: "-20310"
+                    message: "Password must be at least 8 characters"
+                    field: "newPassword"
+                    traceId: "3f1c2d9e8b7a4c10"
+                noUppercase:
+                  value:
+                    code: "-20311"
+                    message: "Password must contain an uppercase letter"
+                    field: "newPassword"
+                    traceId: "3f1c2d9e8b7a4c10"
+                noDigit:
+                  value:
+                    code: "-20312"
+                    message: "Password must contain a number"
+                    field: "newPassword"
+                    traceId: "3f1c2d9e8b7a4c10"
+        '401':
+          description: Not authenticated, or `currentPassword` does not verify (`-20301`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: "-20301"
+                message: "Invalid username or password"
+                field: "currentPassword"
+                traceId: "3f1c2d9e8b7a4c10"
+
+  # ---------------------------------------------------------------------------
+  # reference data
+  # ---------------------------------------------------------------------------
+  /api/reference/departments:
+    get:
+      tags: [reference]
+      operationId: listDepartments
+      summary: Departments for `ReferenceDropdown source="departments"`
+      description: |
+        Replaces `RG_DEPARTMENTS` (`HRMS_EMPLOYEE.xml:465`). Sorted by `deptName`.
+        `Cache-Control: private, max-age=300`; ETag supported.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Departments
+          headers:
+            Cache-Control: { schema: { type: string }, description: "private, max-age=300" }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DepartmentRef'
+        '304':
+          description: Not modified (ETag match)
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reference/job-titles:
+    get:
+      tags: [reference]
+      operationId: listJobTitles
+      summary: Job titles joined to their grade
+      description: |
+        Replaces `RG_JOB_TITLES` (`HRMS_EMPLOYEE.xml:475`, `JOB_TITLES JOIN JOB_GRADES`).
+        `gradeMinSalary` / `gradeMaxSalary` are returned for UI pre-warning only; the
+        salary band is enforced server-side by `SalaryService` in Phase 3
+        (COMPONENT_MAPPING.md §8 `validate_salary_range`). Sorted by `jobTitle`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Job titles
+          headers:
+            Cache-Control: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobTitleRef'
+        '304':
+          description: Not modified
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reference/locations:
+    get:
+      tags: [reference]
+      operationId: listLocations
+      summary: Locations for `ReferenceDropdown source="locations"`
+      description: Replaces `RG_LOCATIONS` (`HRMS_EMPLOYEE.xml:499`). Sorted by `locationName`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Locations
+          headers:
+            Cache-Control: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationRef'
+        '304':
+          description: Not modified
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reference/leave-types:
+    get:
+      tags: [reference]
+      operationId: listLeaveTypes
+      summary: Leave types for `ReferenceDropdown source="leave-types"`
+      description: |
+        Replaces `RG_LEAVE_TYPES` (`HRMS_LEAVE.xml:193+`). Returns the policy flags the UI
+        needs to pre-warn (`accrual`, `minTenureDays`, `requiresApproval`,
+        `requiresDocument`) per COMPONENT_MAPPING.md §5. Sorted by `leaveTypeName`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Leave types
+          headers:
+            Cache-Control: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveTypeRef'
+        '304':
+          description: Not modified
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # employees (Phase 0 slice: manager search only)
+  # ---------------------------------------------------------------------------
+  /api/employees:
+    get:
+      tags: [employees]
+      operationId: searchEmployees
+      summary: Paged, searchable active-employee list (manager LOV)
+      description: |
+        Phase 0 implements **only** the projection needed by the searchable
+        `ReferenceDropdown` that replaces `RG_MANAGERS` / `LOV_MANAGERS`
+        (`HRMS_EMPLOYEE.xml:487`): `fields=id,name,jobTitle`. The full employee search
+        (`lastName=`, `deptId=`, `hireDateFrom=` …, COMPONENT_MAPPING.md §3.1) is a
+        **Phase 3** contract; the parameter names reserved here must be reused there
+        unchanged.
+
+        Rules:
+        * Only `EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` rows when `status=ACTIVE`
+          (the only value accepted in Phase 0).
+        * `q` matches `firstName`, `lastName`, `firstName || ' ' || lastName` and
+          `empNumber`, case-insensitive prefix/contains; at most 3 tokens.
+        * `excludeSelf=true` removes `jwt.empId` from the result (the Forms LOV did not;
+          `-20004` catches it later - COMPONENT_MAPPING.md §3.3).
+        * Sorted `lastName, firstName`; page size default 20, max 100.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      parameters:
+        - in: query
+          name: status
+          required: true
+          description: Phase 0 accepts only `ACTIVE`.
+          schema:
+            type: string
+            enum: [ACTIVE]
+        - in: query
+          name: fields
+          required: true
+          description: Comma-separated projection. Phase 0 accepts exactly `id,name,jobTitle`.
+          schema:
+            type: string
+            enum: ["id,name,jobTitle"]
+        - in: query
+          name: q
+          required: false
+          description: Free-text search over name / employee number.
+          schema:
+            type: string
+            maxLength: 100
+        - in: query
+          name: excludeSelf
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of employee summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageOfEmployeeSummary'
+        '400':
+          description: Unsupported `status` / `fields` value, `q` too long, bad paging (`VALIDATION_FAILED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ---------------------------------------------------------------------------
+  # SSO bridge
+  # ---------------------------------------------------------------------------
+  /legacy/sso/exchange:
+    post:
+      tags: [sso-bridge]
+      operationId: exchangeJwtForFormsSession
+      summary: Exchange a valid HRMS JWT for an Oracle Forms session
+      description: |
+        Called **only by the reverse proxy** when a module path is flagged `LEGACY`
+        (CUTOVER_PLAN.md §2 rules 2-3). Never exposed to the browser; the proxy reaches
+        it on an internal network and passes the user's bearer token through.
+
+        Behaviour:
+        1. Validate the JWT (signature, expiry, `jti` not revoked) exactly as the API does.
+        2. Look up the employee e-mail for `jwt.empId` on **Oracle** (read-only).
+        3. Call `PKG_SECURITY.authenticate(email, '<ignored>', clientIp)` on Oracle - the
+           one and only permitted caller of that procedure (SEC-05). The returned
+           `SESSION_ID` (`SEQ_USER_SESSION`) is the Forms session.
+        4. Write-through: stamp the Oracle `USER_SESSIONS` row with `FORMS_MODULE=<module>`
+           and the JWT `jti` in the Phase 0 additive column (`CUTOVER_PLAN.md` §4.2 item 0.6)
+           so logout on the API side can close it.
+        5. Return the `otherparams` string the proxy must pass to the Forms servlet so
+           `:GLOBAL.session_id`, `:GLOBAL.current_user`, `:GLOBAL.current_emp_id` are set,
+           and the Forms module name to open.
+
+        The bridge never verifies a password (there is none to verify) and never
+        exposes the Oracle `SESSION_ID` to the browser other than inside the Forms URL.
+      x-preauthorize: isAuthenticated() and hasIpAddress('<internal proxy CIDR>')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SsoExchangeRequest'
+      responses:
+        '200':
+          description: Forms session established
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SsoExchangeResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Caller is not the proxy, or module is flagged `NEW` (no Forms session needed):
+            `SSO_MODULE_NOT_LEGACY`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Employee behind the token not found / inactive on Oracle (`-20001`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: "-20001"
+                message: "Employee not found or not active"
+                traceId: "3f1c2d9e8b7a4c10"
+        '502':
+          description: |
+            Oracle / `PKG_SECURITY.authenticate` unreachable or returned `-1`
+            (`SSO_LEGACY_UNAVAILABLE`). The proxy shows the module maintenance page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token issued by `/api/auth/login` / `/api/auth/refresh`.
+        Claims (all required): `sub` (user account id, string), `empId` (integer),
+        `roles` (array of authority strings, see `Authority`), `jti` (random UUID, SEC-08),
+        `iat`, `exp` (= `iat` + `SESSION_TIMEOUT_MIN`). Signature: RS256 / ES256; key from
+        vault. `empId` in the token is the **only** source of the caller's identity.
+
+  parameters:
+    ActiveFilter:
+      in: query
+      name: active
+      required: false
+      description: |
+        `true` (default) → `ACTIVE_FLAG='Y'` only. `false` → all rows (admin/history use).
+      schema:
+        type: boolean
+        default: true
+    Page:
+      in: query
+      name: page
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      in: query
+      name: size
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: |
+        Missing, expired or revoked access token (`TOKEN_INVALID`). Client behaviour →
+        `useErrorHandler`: try `/api/auth/refresh` once, else redirect to `/login`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "TOKEN_INVALID"
+            message: "Session has expired"
+            traceId: "3f1c2d9e8b7a4c10"
+    Forbidden:
+      description: Authenticated but lacks the required authority (`FORBIDDEN`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "FORBIDDEN"
+            message: "You do not have permission to perform this action"
+            traceId: "3f1c2d9e8b7a4c10"
+    ValidationFailed:
+      description: |
+        Bean Validation failure on request body or parameters (`VALIDATION_FAILED`).
+        `field` names the first failing property; `details` lists all.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: "VALIDATION_FAILED"
+            message: "Request validation failed"
+            field: "username"
+            traceId: "3f1c2d9e8b7a4c10"
+            details:
+              - field: "username"
+                code: "NotBlank"
+                message: "must not be blank"
+    RateLimited:
+      description: Too many failed attempts (`RATE_LIMITED`).
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    # ------------------------------------------------------------------ errors
+    ApiError:
+      type: object
+      description: |
+        Error envelope produced by `common/ApiError.java` via the single `@ControllerAdvice`
+        (`GlobalExceptionHandler`) - COMPONENT_MAPPING.md §7 `handle_error` row.
+        `code` is a **string**: legacy numeric codes are carried verbatim including the
+        leading minus (`"-20301"`) so parallel-run diffs compare with `SQLCODE`; framework
+        codes are UPPER_SNAKE_CASE. Every error is also written to `error_log`
+        (`REQUIRES_NEW`) with the same `traceId`.
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          pattern: '^(-20[0-9]{3}|[A-Z][A-Z0-9_]{2,63})$'
+          description: Legacy `-20xxx` code or framework code (see `error-codes.md`).
+        message:
+          type: string
+          description: Human-readable, safe to show in a toast. Never contains stack traces, SQL or PII.
+        field:
+          type: string
+          description: Request property the error applies to (JSON path, e.g. `newPassword`, `dependents[0].ssn`). Present only for field-level errors.
+        traceId:
+          type: string
+          description: Correlation id (W3C `trace-id`, 16 or 32 hex chars) shared with server logs and `error_log`.
+        details:
+          type: array
+          description: "Only for `VALIDATION_FAILED`: every failing constraint."
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: { type: string }
+              code: { type: string, description: "Bean Validation constraint simple name (e.g. `NotBlank`, `Size`, `Pattern`) or a custom constraint name." }
+              message: { type: string }
+
+    # -------------------------------------------------------------------- auth
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 100
+          description: Employee e-mail (`EMPLOYEES.EMAIL`), case-insensitive. Max 100 - the legacy `USERNAME VARCHAR2(30)` overflow (DATA-04) is not reproduced.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          format: password
+
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+          description: JWT (see `bearerAuth`).
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          description: Seconds until `exp`; equals `SESSION_TIMEOUT_MIN * 60`.
+        user:
+          $ref: '#/components/schemas/CurrentUser'
+
+    CurrentUser:
+      type: object
+      description: Returned by `/api/auth/me` and embedded in `TokenResponse`; source of `AuthContext.user`.
+      required: [userId, empId, empNumber, email, firstName, lastName, displayName, roles, mustChangePassword]
+      additionalProperties: false
+      properties:
+        userId:
+          type: string
+          description: "`user_accounts.user_id` (= JWT `sub`)."
+        empId:
+          type: integer
+          format: int64
+          description: "`employees.emp_id` (= JWT `empId`)."
+        empNumber:
+          type: string
+          pattern: '^EMP-[0-9]{6}$'
+        email:
+          type: string
+          format: email
+        firstName: { type: string }
+        lastName: { type: string }
+        displayName:
+          type: string
+          description: "`firstName + ' ' + lastName` - what `HRMS_MENU.USER_INFO` showed."
+        deptId:
+          type: [integer, 'null']
+          format: int64
+        jobTitle:
+          type: [string, 'null']
+        roles:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Authority'
+          description: Resolved at login from `user_roles → role_permissions`; identical to the JWT `roles` claim.
+        mustChangePassword:
+          type: boolean
+          description: True for the forced first-login set-password flow (no legacy hashes exist to migrate - COMPONENT_MAPPING.md §1).
+
+    Authority:
+      type: string
+      description: |
+        Spring Security authority, `MODULE:ACTION`. The vocabulary is the
+        `PKG_SECURITY.has_permission` truth table (TEST_STRATEGY.md §5 row 0:
+        `PAYROLL/EMPLOYEE/LEAVE/ADMIN/REPORTS` × `VIEW/EDIT/APPROVE/CREATE`); role seeding
+        must reproduce it grade by grade. Later phases may add modules/actions but never
+        rename these.
+      pattern: '^(PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS):(VIEW|EDIT|APPROVE|CREATE)$'
+      examples: [PAYROLL:VIEW, PAYROLL:APPROVE, EMPLOYEE:EDIT, ADMIN:VIEW, REPORTS:VIEW, LEAVE:CREATE]
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 128
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: |
+            Complexity: length ≥ `SECURITY.PASSWORD_MIN_LENGTH` (`-20310`), contains
+            `[A-Z]` (`-20311`), contains `[0-9]` (`-20312`). `minLength: 8` here is the
+            parameter's default; the effective value is in `validation-schema.json`
+            (`ChangePasswordRequest.newPassword.minLength`, regenerated when the
+            parameter changes).
+
+    # --------------------------------------------------------------- reference
+    DepartmentRef:
+      type: object
+      required: [deptId, deptCode, deptName, active]
+      additionalProperties: false
+      properties:
+        deptId: { type: integer, format: int64 }
+        deptCode: { type: string, maxLength: 20 }
+        deptName: { type: string, maxLength: 100 }
+        parentDeptId: { type: [integer, 'null'], format: int64 }
+        locationCode: { type: [string, 'null'], maxLength: 10 }
+        active: { type: boolean, description: "`ACTIVE_FLAG='Y'`" }
+
+    JobTitleRef:
+      type: object
+      required: [jobId, jobCode, jobTitle, gradeId, gradeCode, gradeName, gradeMinSalary, gradeMaxSalary, active]
+      additionalProperties: false
+      properties:
+        jobId: { type: integer, format: int64 }
+        jobCode: { type: string, maxLength: 20 }
+        jobTitle: { type: string, maxLength: 100 }
+        jobFamily: { type: [string, 'null'], maxLength: 50 }
+        gradeId: { type: integer }
+        gradeCode: { type: string, maxLength: 10 }
+        gradeName: { type: string, maxLength: 50 }
+        gradeMinSalary:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: Money as a decimal string with 2 dp (never a float). Pre-warning only.
+        gradeMaxSalary:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+        active: { type: boolean }
+
+    LocationRef:
+      type: object
+      required: [locationCode, locationName, active]
+      additionalProperties: false
+      properties:
+        locationCode: { type: string, maxLength: 10, description: "Seed: `HQ`, `SF`, `CHI`" }
+        locationName: { type: string, maxLength: 100 }
+        city: { type: [string, 'null'] }
+        stateProvince: { type: [string, 'null'] }
+        countryCode: { type: [string, 'null'], maxLength: 3 }
+        timezone: { type: string, description: "IANA zone, default `America/New_York`" }
+        active: { type: boolean }
+
+    LeaveTypeRef:
+      type: object
+      required: [leaveTypeId, leaveTypeCode, leaveTypeName, paid, accrual, minTenureDays, requiresApproval, requiresDocument, active]
+      additionalProperties: false
+      properties:
+        leaveTypeId: { type: integer }
+        leaveTypeCode:
+          type: string
+          maxLength: 20
+          description: "Seed: `PTO`, `SICK`, `COMP`, `FMLA`, `JURY`, `BEREAVE`"
+        leaveTypeName: { type: string, maxLength: 50 }
+        paid: { type: boolean }
+        accrual: { type: boolean, description: "`ACCRUAL_FLAG='Y'` → balance is checked on submit (`-20201`)" }
+        accrualRate: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        maxBalance: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        carryoverMax: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        minTenureDays: { type: integer, minimum: 0 }
+        requiresApproval: { type: boolean }
+        requiresDocument: { type: boolean }
+        active: { type: boolean }
+
+    # --------------------------------------------------------------- employees
+    EmployeeSummary:
+      type: object
+      description: Projection `fields=id,name,jobTitle`.
+      required: [id, empNumber, name, jobTitle]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        empNumber: { type: string, pattern: '^EMP-[0-9]{6}$' }
+        name: { type: string, description: "`firstName + ' ' + lastName`" }
+        jobTitle: { type: [string, 'null'] }
+
+    PageOfEmployeeSummary:
+      type: object
+      description: Spring `Page<T>` shape, restricted to the fields the UI may rely on.
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeSummary'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    # -------------------------------------------------------------- sso bridge
+    SsoExchangeRequest:
+      type: object
+      required: [module, clientIp]
+      additionalProperties: false
+      properties:
+        module:
+          $ref: '#/components/schemas/ProxyModule'
+        clientIp:
+          type: string
+          description: End-user IP as seen by the proxy (`X-Forwarded-For` first hop); recorded in `USER_SESSIONS.IP_ADDRESS`.
+        returnPath:
+          type: string
+          description: Optional path to return to after Forms exits (proxy use only).
+
+    SsoExchangeResponse:
+      type: object
+      required: [formsModule, otherparams, legacySessionId, expiresAt]
+      additionalProperties: false
+      properties:
+        formsModule:
+          type: string
+          enum: [HRMS_EMPLOYEE, HRMS_PAYROLL, HRMS_LEAVE, HRMS_PERFORMANCE, HRMS_MENU]
+          description: Forms module to open; `HRMS_LOGIN` is never returned (route disabled from Phase 0).
+        otherparams:
+          type: string
+          description: |
+            URL-encoded `otherparams` for the Forms servlet, exactly
+            `session_id=<SESSION_ID>&current_user=<email>&current_emp_id=<empId>`.
+            The proxy appends it verbatim; it never edits or logs it.
+        legacySessionId:
+          type: integer
+          format: int64
+          description: Oracle `USER_SESSIONS.SESSION_ID`; for audit correlation only.
+        expiresAt:
+          type: string
+          format: date-time
+          description: JWT `exp` - the Forms session is not valid longer than the token.
+
+    # ------------------------------------------------------------- proxy flags
+    ProxyModule:
+      type: string
+      description: |
+        Module names used as proxy feature-flag keys (CUTOVER_PLAN.md §2 rule 2). Frozen
+        vocabulary - see `README.md` "Reverse-proxy module flags".
+      enum: [auth, employee, payroll, payroll.engine, leave, performance, reporting]
