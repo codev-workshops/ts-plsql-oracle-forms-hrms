@@ -53,3 +53,9 @@ zeros (`5.00` → `5`) to match Oracle's `NUMBER` `getString`.
   year (balance 9001, `LeaveScenarios.P5_CONTRACT`). Their `/api/leave/admin/*` routes are declared in the contract but mounted
   in P5, so until then the target must answer `404` and the row is `DEFERRED` (does not fail the
   run; the legacy leg stays `recorded`).
+
+## Phase 3 – salary (`SalaryScenarios`)
+
+Salary scenarios use the employee module flag; set `HRMS_FLAG_EMPLOYEE=NEW` on the target before
+running the harness. The REST side exercises the salary-module routes while the legacy side records
+`PKG_PAYROLL.create_salary_record` and the `TRG_SALARY_AUDIT` replacement.

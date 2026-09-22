@@ -127,12 +127,22 @@ public final class RestRunner {
       return Outcome.error(n.path("code").asText("HTTP_" + resp.statusCode()));
     }
     if (n.isArray()) {
-      // list endpoints (e.g. /api/leave/balances/mine?year=) project their single/first element
-      n = n.isEmpty() ? JSON.createObjectNode() : n.get(0);
+      // List endpoints project their first element unless a wanted field explicitly selects an
+      // array index (salary history uses [1].endDate to inspect the closed prior row).
+      boolean indexed = wanted.stream().anyMatch(w -> w.matches("\\[\\d+\\]\\..+"));
+      if (!indexed) {
+        n = n.isEmpty() ? JSON.createObjectNode() : n.get(0);
+      }
     }
     Map<String, String> fields = new LinkedHashMap<>();
     for (String w : wanted) {
       JsonNode v = n.path(w);
+      if (w.matches("\\[\\d+\\]\\..+")) {
+        int dot = w.indexOf('.');
+        int index = Integer.parseInt(w.substring(1, dot - 1));
+        String key = w.substring(dot + 1);
+        v = n.isArray() && index < n.size() ? n.get(index).path(key) : JSON.missingNode();
+      }
       if (v.isMissingNode() && w.equals("emp_id")) {
         v = n.path("user").path("empId");
       }

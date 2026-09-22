@@ -11,7 +11,8 @@ mvn spotless:apply    # format
 
 Modules: `hrms-common` (errors, trace, Flyway migrations, test support), `hrms-validation`
 (DTO constraints + `frontend/src/generated/validation-schema.json` exporter), `hrms-audit`
-(`error_log`, `audit_log`), `hrms-notification`, `reference`, `auth` (Spring Security, JWT,
+(`error_log`, `audit_log`), `hrms-notification`, `reference`, `salary` (SALARY_RECORDS owner),
+`auth` (Spring Security, JWT,
 SSO bridge, application entry point). Tooling reactors: `../tools/parallel-run`,
 `../tools/reconcile`, `../tools/cdc-sync`.
 
