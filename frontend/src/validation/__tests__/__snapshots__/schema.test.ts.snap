@@ -9,6 +9,20 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
   },
+  "BusinessDaysQuery": {
+    "end": {
+      "required": true,
+      "rules": [
+        "-20210",
+      ],
+      "type": "date",
+    },
+    "start": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+  },
   "ChangePasswordRequest": {
     "currentPassword": {
       "required": true,
@@ -94,6 +108,63 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "decimal",
+    },
+  },
+  "LeaveApproveRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveCancelRequest": {
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveRejectRequest": {
+    "comments": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveRequestCreateRequest": {
+    "endDate": {
+      "required": true,
+      "rules": [
+        "-20210",
+      ],
+      "type": "date",
+    },
+    "halfDay": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "halfDayPeriod": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "leaveTypeId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "startDate": {
+      "required": true,
+      "rules": [
+        "-20211",
+      ],
+      "type": "date",
     },
   },
   "LoginRequest": {

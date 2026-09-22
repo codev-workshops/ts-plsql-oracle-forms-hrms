@@ -36,6 +36,37 @@ describe('validation-schema adapter', () => {
     if (!r.success) expect(fieldErrors(r.error)).toEqual({ newPassword: 'Password must contain an uppercase letter' });
   });
 
+  it('evaluates the P2 cross-field custom rules from the JSON operands (leave.dateOrder / leave.pastLimit)', () => {
+    const schema = zodFor('LeaveRequestCreateRequest');
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const dto = getDto('LeaveRequestCreateRequest').fields;
+
+    const order = schema.safeParse({ leaveTypeId: 1, startDate: day(10), endDate: day(9) });
+    expect(order.success).toBe(false);
+    if (!order.success) {
+      expect(fieldErrors(order.error)).toEqual({ endDate: dto.endDate.rules![0].message });
+      expect(order.error.issues[0].path).toEqual(['endDate']);
+    }
+
+    const limit = Number(dto.startDate.rules![0].value);
+    const past = schema.safeParse({ leaveTypeId: 1, startDate: day(-(limit + 2)), endDate: day(1) });
+    expect(past.success).toBe(false);
+    if (!past.success) expect(fieldErrors(past.error)).toEqual({ startDate: dto.startDate.rules![0].message });
+
+    expect(schema.safeParse({ leaveTypeId: 1, startDate: day(-limit), endDate: day(1) }).success).toBe(true);
+    expect(schema.safeParse({ leaveTypeId: '', startDate: day(1), endDate: day(1) }).success).toBe(false);
+    const missingType = schema.safeParse({ leaveTypeId: '', startDate: day(1), endDate: day(1) });
+    if (!missingType.success) expect(fieldErrors(missingType.error).leaveTypeId).toBe(dto.leaveTypeId.messages.required);
+
+    const half = schema.safeParse({ leaveTypeId: 1, startDate: day(1), endDate: day(2), halfDay: true });
+    expect(half.success).toBe(false);
+    if (!half.success) expect(fieldErrors(half.error)).toEqual({ endDate: dto.halfDay.messages.format, halfDayPeriod: dto.halfDayPeriod.messages.required });
+    expect(schema.safeParse({ leaveTypeId: 1, startDate: day(1), endDate: day(1), halfDay: true, halfDayPeriod: 'PM' }).success).toBe(true);
+
+    expect(zodFor('LeaveRejectRequest').safeParse({ comments: '  ' }).success).toBe(false);
+    expect(zodFor('LeaveApproveRequest').safeParse({}).success).toBe(true);
+  });
+
   it('snapshot: the DTO/field vocabulary the pages depend on', () => {
     const shape = Object.fromEntries(
       Object.entries(validationSchema.dtos).map(([dto, spec]) => [

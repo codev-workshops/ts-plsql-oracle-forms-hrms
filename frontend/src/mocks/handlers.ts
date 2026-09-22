@@ -16,6 +16,8 @@ import { ROLE_AUTHORITIES, SEED_ACCOUNTS, SEED_PASSWORD } from '../../e2e/seed-a
 import { evaluateRules, getDto, getParameter } from '../validation/schema';
 import { createPerformanceHandlers } from './performanceHandlers';
 import { resetPerformanceState } from './performanceStore';
+import { createLeaveHandlers } from './leaveHandlers';
+import { resetLeaveState } from './leaveStore';
 
 /**
  * msw implementation of contracts/p0-foundation/openapi.yaml, shared by Vitest (node) and
@@ -99,6 +101,7 @@ export function resetMockState() {
   seq = 0;
   refreshCookieForTests = null;
   resetPerformanceState();
+  resetLeaveState(MOCK_LEAVE_TYPES);
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -288,3 +291,16 @@ export const performanceHandlers = createPerformanceHandlers((request) => {
 });
 
 handlers.push(...performanceHandlers);
+
+export const leaveHandlers = createLeaveHandlers(
+  (request) => {
+    const session = authenticate(request);
+    if (!session) return null;
+    const user = MOCK_USERS[session.email];
+    return user ? { userId: user.userId, empId: user.empId, roles: user.roles } : null;
+  },
+  () => MOCK_LEAVE_TYPES,
+);
+
+handlers.push(...leaveHandlers);
+resetLeaveState(MOCK_LEAVE_TYPES);
