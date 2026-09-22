@@ -59,3 +59,30 @@ zeros (`5.00` → `5`) to match Oracle's `NUMBER` `getString`.
 Salary scenarios use the employee module flag; set `HRMS_FLAG_EMPLOYEE=NEW` on the target before
 running the harness. The REST side exercises the salary-module routes while the legacy side records
 `PKG_PAYROLL.create_salary_record` and the `TRG_SALARY_AUDIT` replacement.
+
+## Phase 4 – payroll (`PayrollScenarios`)
+
+Set `HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=SHADOW` on the target and apply
+`fixtures/payroll.sql` (idempotent; adds OPEN period 200001 that predates every seed salary). The
+legacy leg is `recorded` from `plsql/packages/PKG_PAYROLL.pkb` over the seed; the per-employee,
+per-element amounts are in `tests/golden/payroll/202406.json` (see `generate_recorded.py`) and are
+what `PayrollShadowRunner` diffs.
+
+Calculation is asynchronous (`POST …/calculate` → 202, Spring Batch): setup steps ending in
+`/status` are re-polled by `RestRunner` until the run leaves `CALCULATING`; `runId` is captured
+from the create response. Projections may use dotted / indexed selectors (`summary.matched`,
+`content[0].errorCode`).
+
+* `payroll.run.create.closed-period` – run on CLOSED 202405 → `-20102`.
+* `payroll.run.calculate.seed-period` – fresh run on 202406: `CALCULATED`, 23 employees, 0 errors,
+  gross/taxes/net to the cent (`300833.32 / 82259.64 / 218573.68`).
+* `payroll.shadow.seed-period` – `GET /api/payroll/shadow/runs/{runId}/diff`: 92 `MATCH`, 0
+  unexplained (the gate of CUTOVER_PLAN.md §8.3).
+* `payroll.run.approve.not-calculated` – approve a PENDING run → `-20103`.
+* `payroll.calculate.no-active-salary` – run on 200001: emp 43 has exactly one sentinel row
+  (element 0, `ERROR`, `0.00`, `-20104`) and the run still completes.
+* `payroll.payslip.ytd` – approve the fresh 202406 run, then emp 2's payslip as `sarah.chen`:
+  gross `31666.67`, YTD gross `52500.00` (= approved MAY run 9001 `20833.33` + JUN).
+
+Run the scenarios in registry order: `payroll.payslip.ytd` approves a 202406 run last.
+

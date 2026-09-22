@@ -50,6 +50,7 @@ public final class ScenarioRegistry {
     all.addAll(LeaveScenarios.all());
     all.addAll(SalaryScenarios.all());
     all.addAll(EmployeeScenarios.all());
+    all.addAll(PayrollScenarios.all());
     return List.copyOf(all);
   }
 
@@ -173,6 +174,9 @@ public final class ScenarioRegistry {
     }
     if (s.id().startsWith("employee.")) {
       return EmployeeScenarios.legacyOutcome(s);
+    }
+    if (PayrollScenarios.MODULE.equals(s.module())) {
+      return PayrollScenarios.legacyOutcome(s);
     }
     return switch (s.id()) {
       case "auth.lockout.after-5-failures" -> Outcome.error("-20301"); // SEC-02: no lockout

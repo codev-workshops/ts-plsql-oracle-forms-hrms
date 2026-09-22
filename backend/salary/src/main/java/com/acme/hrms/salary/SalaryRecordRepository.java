@@ -56,6 +56,27 @@ public class SalaryRecordRepository {
         .findFirst();
   }
 
+  /**
+   * Salary in force on {@code asOf} (PKG_PAYROLL.get_salary_as_of): latest effective_date not after
+   * the date whose end_date is null or not before it. The payroll module's only way to read
+   * SALARY_RECORDS.
+   */
+  public Optional<SalaryRecord> findEffectiveOn(long empId, LocalDate asOf) {
+    return jdbc
+        .query(
+            "select "
+                + COLUMNS
+                + " from salary_records where emp_id = ? and effective_date <= ?"
+                + " and (end_date is null or end_date >= ?)"
+                + " order by effective_date desc, salary_id desc limit 1",
+            SalaryRecordRepository::map,
+            empId,
+            asOf,
+            asOf)
+        .stream()
+        .findFirst();
+  }
+
   public int closeActive(long empId, LocalDate endDate, String user) {
     return jdbc.update(
         "update salary_records set end_date = ?, active_flag = 'N', modified_by = ?,"

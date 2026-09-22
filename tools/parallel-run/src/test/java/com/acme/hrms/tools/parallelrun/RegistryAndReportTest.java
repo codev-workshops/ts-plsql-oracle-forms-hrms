@@ -280,4 +280,62 @@ class RegistryAndReportTest {
         .contains("documented divergence, expects `-20301`")
         .contains("| c |");
   }
+
+  @Test
+  void phase4RegistersThePayrollSet() {
+    Map<String, String> codes =
+        Map.of(
+            "payroll.run.create.closed-period", "-20102",
+            "payroll.run.approve.not-calculated", "-20103");
+    Map<String, Scenario> byId =
+        ScenarioRegistry.all().stream()
+            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+    assertThat(byId.keySet())
+        .containsAll(codes.keySet())
+        .contains(
+            "payroll.run.calculate.seed-period",
+            "payroll.shadow.seed-period",
+            "payroll.calculate.no-active-salary",
+            "payroll.payslip.ytd");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("payroll.run.calculate.seed-period").expect().fields())
+        .containsEntry("totalGross", PayrollScenarios.SEED_GROSS)
+        .containsEntry("employeeCount", PayrollScenarios.SEED_EMPLOYEES)
+        .containsEntry("errorCount", "0");
+    assertThat(byId.get("payroll.calculate.no-active-salary").expect().fields())
+        .containsEntry("content[0].errorCode", "-20104")
+        .containsEntry("content[0].elementId", "0");
+    assertThat(byId.get("payroll.payslip.ytd").expect().fields())
+        .containsEntry("ytdGross", "52500.00");
+    // every calculate flow ends its setup with a /status poll so the 202 job has settled
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (PayrollScenarios.MODULE.equals(s.module())) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+        assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(s.expect());
+        boolean calculates =
+            s.target().setup().stream().anyMatch(c -> c.path().endsWith("/calculate"));
+        if (calculates) {
+          assertThat(s.target().setup().stream().map(Scenario.RestCall::path))
+              .as(s.id())
+              .anyMatch(path -> path.endsWith(RestRunner.ASYNC_STATUS_SUFFIX));
+        }
+      }
+    }
+  }
+
+  @Test
+  void selectorWalksDottedAndIndexedPaths() throws Exception {
+    com.fasterxml.jackson.databind.JsonNode n =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(
+                "{\"summary\":{\"matched\":92},\"content\":[{\"errorCode\":\"-20104\"}],"
+                    + "\"totalElements\":1}");
+    assertThat(RestRunner.select(n, "summary.matched").asInt()).isEqualTo(92);
+    assertThat(RestRunner.select(n, "content[0].errorCode").asText()).isEqualTo("-20104");
+    assertThat(RestRunner.select(n, "content[3].errorCode").isMissingNode()).isTrue();
+    assertThat(RestRunner.select(n, "totalElements").asInt()).isEqualTo(1);
+  }
 }

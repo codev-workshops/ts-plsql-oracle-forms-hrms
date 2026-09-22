@@ -82,3 +82,24 @@ or above the jar, so the command works from the repo root or from `tools/reconci
 Format: `view,row_no,column,value` (long form, one cell per line, `\N` for NULL, numbers in
 canonical scale, dates ISO-8601). `--as-of` fixes `SYSDATE` so that `TENURE_YEARS`,
 the current-year filter and the salary effective-window are evaluated identically on both sides.
+
+## Phase 4 – payroll (`tests/golden/payroll/`)
+
+Golden-oracle mode OFF: the legacy leg of the payroll gate is *recorded*, not captured.
+
+* `202406.json` – every `(EMP_ID, ELEMENT_ID, AMOUNT)` `PKG_PAYROLL.calculate_payroll` would write
+  for JUN-2024 over `tools/fixtures/pg/*.sql` (23 active employees, MONTHLY, 2024 rules incl. the
+  `ELSE 0.05` state default), produced by `generate_recorded.py` – a line-by-line transcription of
+  `plsql/packages/PKG_PAYROLL.pkb` in `Decimal`/`ROUND_HALF_UP`. Consumed by `PayrollShadowRunner`
+  (`legacySource=recorded`), `backend/auth …/PayrollApiTest` and the `payroll.*` scenarios of
+  `tools/parallel-run`. Signs follow `PAYROLL_DETAILS.AMOUNT` (earnings +, taxes/deductions −).
+* `vw_payroll_latest-202406-approved.csv` – Level 3 expectation for
+  `tests/reconciliation/pg/vw_payroll_latest.sql` once the Java JUN-2024 run is APPROVED (same long
+  form as `views-baseline.csv`; ERROR rows excluded, `TOTAL_*` positive, `NET_PAY` signed sum).
+  Derived from `202406.json` by the same script and asserted against PostgreSQL in
+  `PayrollApiTest.calculatesSeedPeriodToTheCentAgainstRecordedLegacyPack`. `views-baseline.csv`
+  keeps the seed's MAY-2024 run 9001 as latest and still reconciles after `V7__p4_payroll.sql`.
+
+Regenerate both with `python3 tests/golden/payroll/generate_recorded.py 202406`; when an Oracle
+instance becomes available, run the legacy package and diff its `PAYROLL_DETAILS` against
+`202406.json` – any difference is a finding against the transcription.

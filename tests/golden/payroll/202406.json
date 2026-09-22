@@ -1,0 +1,834 @@
+{
+  "periodId": 202406,
+  "derivedFrom": "PKG_PAYROLL.calculate_payroll transcribed by tests/golden/payroll/generate_recorded.py over tools/fixtures/pg/*.sql (JUN-2024, MONTHLY, 23 employees)",
+  "rows": [
+    {
+      "empId": 1,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "37500.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 1,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-10230.40",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 1,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-2325.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 1,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-543.75",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 2,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "31666.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 2,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-8188.73",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 2,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1963.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 2,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-459.17",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 3,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "30833.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 3,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-7897.06",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 3,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1911.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 3,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-447.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 10,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "20000.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 10,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-4151.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 10,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1240.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 10,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-290.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 11,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "6500.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 11,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-750.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 11,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-403.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 11,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-94.25",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 12,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "4333.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 12,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-354.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 12,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-268.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 12,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-62.83",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 20,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "21666.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 20,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-4688.73",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 20,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1343.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 20,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-314.17",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 21,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "11250.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 21,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1828.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 21,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-697.50",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 21,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-163.13",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 22,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "7916.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 22,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1061.75",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 22,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-490.83",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 22,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-114.79",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 23,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "6000.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 23,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-640.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 23,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-372.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 23,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-87.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 24,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "4000.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 24,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-314.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 24,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-248.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 24,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-58.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 30,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "16250.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 30,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-3028.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 30,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1007.50",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 30,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-235.63",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 31,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "12083.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 31,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-2028.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 31,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-749.17",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 31,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-175.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 32,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "9583.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 32,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1428.42",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 32,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-594.17",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 32,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-138.96",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 33,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "9166.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 33,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1336.75",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 33,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-568.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 33,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-132.92",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 34,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "6833.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 34,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-823.42",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 34,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-423.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 34,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-99.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 35,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "6500.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 35,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-750.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 35,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-403.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 35,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-94.25",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 36,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "5833.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 36,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-603.42",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 36,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-361.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 36,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-84.58",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 37,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "4583.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 37,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-384.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 37,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-284.17",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 37,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-66.46",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 40,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "23333.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 40,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-5272.06",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 40,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-1446.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 40,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-338.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 41,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "10833.33",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 41,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1728.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 41,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-671.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 41,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-157.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 42,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "8750.00",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 42,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-1245.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 42,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-542.50",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 42,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-126.88",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 43,
+      "elementId": 1,
+      "elementType": "EARNING",
+      "amount": "5416.67",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 43,
+      "elementId": 100,
+      "elementType": "TAX",
+      "amount": "-511.75",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 43,
+      "elementId": 102,
+      "elementType": "TAX",
+      "amount": "-335.83",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 43,
+      "elementId": 103,
+      "elementType": "TAX",
+      "amount": "-78.54",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    }
+  ]
+}

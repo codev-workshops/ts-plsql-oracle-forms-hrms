@@ -10,3 +10,5 @@ hrms:
 spring:
   flyway:
     enabled: false
+hrms.payroll:
+  validate-pay-elements: false
