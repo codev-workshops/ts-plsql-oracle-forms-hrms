@@ -11,6 +11,13 @@ export const LegacyErrorCode = {
   CYCLE_STATUS_INVALID: '-20401',
   REVIEW_STATUS_INVALID: '-20402',
   RATING_OUT_OF_RANGE: '-20403',
+  LEAVE_INSUFFICIENT_BALANCE: '-20201',
+  LEAVE_OVERLAP: '-20202',
+  LEAVE_INVALID_TYPE_OR_TENURE: '-20203',
+  LEAVE_STATUS_INVALID: '-20204',
+  LEAVE_DATE_ORDER: '-20210',
+  LEAVE_TOO_FAR_IN_PAST: '-20211',
+  LEAVE_NO_BUSINESS_DAYS: '-20212',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -25,6 +32,7 @@ export const FrameworkErrorCode = {
   CYCLE_NOT_FOUND: 'CYCLE_NOT_FOUND',
   REVIEW_NOT_FOUND: 'REVIEW_NOT_FOUND',
   GOAL_NOT_FOUND: 'GOAL_NOT_FOUND',
+  LEAVE_REQUEST_NOT_FOUND: 'LEAVE_REQUEST_NOT_FOUND',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];
@@ -46,4 +54,10 @@ export const DEFAULT_FIELD_FOR_CODE: Readonly<Record<string, string>> = {
   [LegacyErrorCode.PASSWORD_NO_DIGIT]: 'newPassword',
   [FrameworkErrorCode.PASSWORD_REUSED]: 'newPassword',
   [LegacyErrorCode.RATING_OUT_OF_RANGE]: 'overallRating',
+  [LegacyErrorCode.LEAVE_INSUFFICIENT_BALANCE]: 'leaveTypeId',
+  [LegacyErrorCode.LEAVE_OVERLAP]: 'startDate',
+  [LegacyErrorCode.LEAVE_INVALID_TYPE_OR_TENURE]: 'leaveTypeId',
+  [LegacyErrorCode.LEAVE_DATE_ORDER]: 'endDate',
+  [LegacyErrorCode.LEAVE_TOO_FAR_IN_PAST]: 'startDate',
+  [LegacyErrorCode.LEAVE_NO_BUSINESS_DAYS]: 'startDate',
 };

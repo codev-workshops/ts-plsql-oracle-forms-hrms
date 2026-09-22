@@ -105,7 +105,7 @@ export function evaluateRules(field: FieldSpec, value: string): RuleFailure | nu
         ok = Number(value) <= Number(rule.value);
         break;
       case 'custom':
-        // Not evaluable client-side: server remains canonical.
+        // Cross-field / clock-relative rules are evaluated by `evaluateCustomRule` at object level.
         ok = true;
         break;
     }
@@ -115,6 +115,41 @@ export function evaluateRules(field: FieldSpec, value: string): RuleFailure | nu
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const DAY_MS = 86_400_000;
+
+function utcDay(iso: string): number | null {
+  const t = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isNaN(t) ? null : Math.floor(t / DAY_MS);
+}
+
+function todayUtcDay(): number {
+  const now = new Date();
+  return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS);
+}
+
+/**
+ * Object-level evaluation of the exported `custom` rules whose operands live outside the field
+ * itself. The rule id names the semantics, `rule.value` carries the operand (a sibling field for
+ * `leave.dateOrder`, a day count for `leave.pastLimit`); nothing here is a constant of its own.
+ * Unknown ids are left to the server. Returns `false` when the rule fails.
+ */
+export function evaluateCustomRule(rule: FieldRule, value: unknown, values: Record<string, unknown>): boolean {
+  if (typeof value !== 'string' || value === '') return true;
+  const day = utcDay(value);
+  if (day === null) return true;
+  switch (rule.id) {
+    case 'leave.dateOrder': {
+      const other = values[String(rule.value)];
+      const otherDay = typeof other === 'string' ? utcDay(other) : null;
+      return otherDay === null || otherDay <= day;
+    }
+    case 'leave.pastLimit':
+      return day >= todayUtcDay() - Number(rule.value);
+    default:
+      return true;
+  }
+}
 
 function stringField(spec: FieldSpec): z.ZodTypeAny {
   const m = spec.messages;
@@ -141,7 +176,8 @@ function stringField(spec: FieldSpec): z.ZodTypeAny {
 
 function numberField(spec: FieldSpec): z.ZodTypeAny {
   const m = spec.messages;
-  let n = spec.type === 'integer' ? z.number().int() : z.number();
+  const base = z.number({ required_error: m.required ?? 'Required', invalid_type_error: m.format ?? m.required ?? 'Invalid number' });
+  let n = spec.type === 'integer' ? base.int() : base;
   if (spec.min !== undefined) n = n.min(Number(spec.min), m.min);
   if (spec.max !== undefined) n = n.max(Number(spec.max), m.max);
   const coerced = z.preprocess((v) => (v === '' || v === null ? undefined : typeof v === 'string' ? Number(v) : v), n);
@@ -178,7 +214,27 @@ export function zodFor(name: DtoName): z.ZodObject<Record<string, z.ZodTypeAny>>
   const dto = getDto(name);
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [field, spec] of Object.entries(dto.fields)) shape[field] = fieldToZod(spec);
-  const obj = z.object(shape);
+  const obj = z.object(shape).superRefine((values, ctx) => {
+    for (const [field, spec] of Object.entries(dto.fields)) {
+      for (const rule of spec.rules ?? []) {
+        if (rule.kind !== 'custom') continue;
+        if (!evaluateCustomRule(rule, values[field], values)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: rule.message, params: { errorCode: rule.errorCode } });
+          break;
+        }
+      }
+    }
+    const half = dto.fields.halfDay;
+    const period = dto.fields.halfDayPeriod;
+    if (half?.type === 'boolean' && period?.type === 'enum' && values.halfDay === true) {
+      if (values.startDate && values.endDate && values.startDate !== values.endDate) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: half.messages.format ?? 'Invalid half day' });
+      }
+      if (!values.halfDayPeriod) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['halfDayPeriod'], message: period.messages.required ?? 'Required' });
+      }
+    }
+  }) as unknown as z.ZodObject<Record<string, z.ZodTypeAny>>;
   cache.set(name, obj);
   return obj;
 }

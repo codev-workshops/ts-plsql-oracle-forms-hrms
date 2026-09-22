@@ -26,11 +26,24 @@ import type {
   ManagerReviewRequest,
   ReferenceQuery,
   TokenResponse,
+  BusinessDays,
+  LeaveApproveRequest,
+  LeaveBalance,
+  LeaveCancelRequest,
+  LeaveRejectRequest,
+  LeaveRequest,
+  LeaveRequestCreateRequest,
+  LeaveRequestFilter,
+  LeaveRequestsForEmployeeQuery,
+  PageOfLeaveRequest,
+  PendingLeaveApproval,
+  TeamCalendarEntry,
 } from './types';
 
 /**
- * One function per operationId in contracts/p0-foundation/openapi.yaml and
- * contracts/p1-performance/openapi.yaml.
+ * One function per operationId in contracts/p0-foundation/openapi.yaml,
+ * contracts/p1-performance/openapi.yaml and contracts/p2-leave/openapi.yaml (the
+ * `x-deferred` P5 admin routes are not mounted and have no client).
  * `exchangeJwtForFormsSession` is proxy-only and intentionally has no browser client.
  */
 export const api = {
@@ -155,6 +168,52 @@ export const api = {
     },
     async getRatingDistribution(cycleId: number, params: { deptId?: number } = {}): Promise<RatingDistributionRow[]> {
       const { data } = await http.get<RatingDistributionRow[]>(`/api/performance/cycles/${cycleId}/rating-distribution`, { params });
+      return data;
+    },
+  },
+  leave: {
+    async listMyLeaveRequests(params: LeaveRequestFilter = {}): Promise<LeaveRequest[]> {
+      const { data } = await http.get<LeaveRequest[]>('/api/leave/requests/mine', { params });
+      return data;
+    },
+    async listLeaveRequestsForEmployee(params: LeaveRequestsForEmployeeQuery): Promise<PageOfLeaveRequest> {
+      const { data } = await http.get<PageOfLeaveRequest>('/api/leave/requests', { params });
+      return data;
+    },
+    async submitLeaveRequest(body: LeaveRequestCreateRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>('/api/leave/requests', body);
+      return data;
+    },
+    async getLeaveRequest(id: number): Promise<LeaveRequest> {
+      const { data } = await http.get<LeaveRequest>(`/api/leave/requests/${id}`);
+      return data;
+    },
+    async cancelLeaveRequest(id: number, body?: LeaveCancelRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/cancel`, body);
+      return data;
+    },
+    async approveLeaveRequest(id: number, body?: LeaveApproveRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/approve`, body);
+      return data;
+    },
+    async rejectLeaveRequest(id: number, body: LeaveRejectRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/reject`, body);
+      return data;
+    },
+    async getMyLeaveBalances(params: { year?: number } = {}): Promise<LeaveBalance[]> {
+      const { data } = await http.get<LeaveBalance[]>('/api/leave/balances/mine', { params });
+      return data;
+    },
+    async getBusinessDays(params: { start: string; end: string }): Promise<BusinessDays> {
+      const { data } = await http.get<BusinessDays>('/api/leave/business-days', { params });
+      return data;
+    },
+    async listPendingLeaveApprovals(): Promise<PendingLeaveApproval[]> {
+      const { data } = await http.get<PendingLeaveApproval[]>('/api/leave/approvals/pending');
+      return data;
+    },
+    async getTeamLeaveCalendar(params: { from: string; to: string }): Promise<TeamCalendarEntry[]> {
+      const { data } = await http.get<TeamCalendarEntry[]>('/api/leave/team-calendar', { params });
       return data;
     },
   },
