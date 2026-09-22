@@ -356,6 +356,7 @@ Reporting is read-only – rollback is re-pointing report consumers at the previ
 | Phase | Status | Promoted revision | Gate | Record |
 |---|---|---|---|---|
 | 0 | PROMOTED 2026-09-21 — no end-user traffic moved, proxy still routes all modules to Forms | `ea5925e4d8030755e53985d7d7e5b9de511fadce` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P0.security-signoff` approved | [cutover-log/p0-foundation.md](cutover-log/p0-foundation.md) |
+| 1 | PROMOTED 2026-09-22 — proxy flag `performance=NEW` flip, Forms `HRMS_PERFORMANCE` retirement and `PKG_PERFORMANCE` drop (after bake) unblocked for humans; not yet executed | `3bae336d587884f15dee4689538f3a1b99759dae` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P1.bake-4-weeks` approved | [cutover-log/p1-performance.md](cutover-log/p1-performance.md) |
 
 ---
 
