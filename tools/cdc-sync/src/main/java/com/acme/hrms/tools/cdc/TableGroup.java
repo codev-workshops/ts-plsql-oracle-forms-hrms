@@ -81,6 +81,14 @@ public enum TableGroup {
   public static final Map<String, Set<String>> GENERATED_COLUMNS =
       Map.of("leave_balances", Set.of("available"));
 
+  /** Columns deliberately present only in PostgreSQL and ignored by Level 3 reconciliation. */
+  public static final Map<String, Set<String>> PG_ONLY_COLUMNS =
+      Map.of("salary_records", Set.of("out_of_grade_band"));
+
+  public static boolean isPgOnly(String table, String column) {
+    return PG_ONLY_COLUMNS.getOrDefault(table, Set.of()).contains(column.toLowerCase());
+  }
+
   public static boolean isGenerated(String table, String column) {
     return GENERATED_COLUMNS.getOrDefault(table, Set.of()).contains(column.toLowerCase());
   }
