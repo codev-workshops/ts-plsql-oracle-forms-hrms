@@ -14,6 +14,29 @@ public enum ErrorCode {
       "-20311", HttpStatus.BAD_REQUEST, "Password must contain an uppercase letter"),
   PASSWORD_NO_DIGIT("-20312", HttpStatus.BAD_REQUEST, "Password must contain a number"),
   EMPLOYEE_NOT_FOUND("-20001", HttpStatus.NOT_FOUND, "Employee not found or not active"),
+  DUPLICATE_EMPLOYEE_NUMBER(
+      "-20002", HttpStatus.CONFLICT, "Duplicate employee number generated. Please retry."),
+  INVALID_DEPARTMENT("-20003", HttpStatus.BAD_REQUEST, "Invalid or inactive department: %s"),
+  INVALID_MANAGER("-20004", HttpStatus.BAD_REQUEST, "Invalid or inactive manager: %s"),
+  EMPLOYEE_ALREADY_TERMINATED(
+      "-20005", HttpStatus.UNPROCESSABLE_ENTITY, "Employee %s is already terminated"),
+  NAMES_REQUIRED("-20010", HttpStatus.BAD_REQUEST, "First name and last name are required"),
+  INVALID_JOB("-20011", HttpStatus.BAD_REQUEST, "Invalid or inactive job: %s"),
+  EMPLOYEE_NOT_ACTIVE(
+      "-20012", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot transfer non-active employee. Status: %s"),
+  SALARY_NOT_POSITIVE("-20101", HttpStatus.BAD_REQUEST, "Salary must be positive: %s"),
+  NO_ACTIVE_SALARY("-20104", HttpStatus.BAD_REQUEST, "No active salary record for employee %s"),
+  HIRE_DATE_TOO_FAR(
+      "-20501", HttpStatus.BAD_REQUEST, "Hire date cannot be more than 90 days in the future"),
+  EMAIL_IN_USE("-20502", HttpStatus.CONFLICT, "Email address already in use: %s"),
+  TERMINATED_REACTIVATION(
+      "-20503",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "Cannot directly reactivate a terminated employee. Use the rehire process."),
+  DIRECT_DELETION_NOT_ALLOWED(
+      "-20504",
+      HttpStatus.METHOD_NOT_ALLOWED,
+      "Direct deletion not allowed. Use termination process or set ACTIVE_FLAG to N."),
   CYCLE_STATUS_INVALID(
       "-20401", HttpStatus.UNPROCESSABLE_ENTITY, "Review cycle not in correct status"),
   REVIEW_STATUS_INVALID(
@@ -47,6 +70,13 @@ public enum ErrorCode {
       "PASSWORD_REUSED", HttpStatus.BAD_REQUEST, "New password must differ from the current one"),
   TOKEN_INVALID("TOKEN_INVALID", HttpStatus.UNAUTHORIZED, "Session has expired"),
   FORBIDDEN("FORBIDDEN", HttpStatus.FORBIDDEN, "You do not have permission to perform this action"),
+  DEPENDENT_NOT_FOUND("DEPENDENT_NOT_FOUND", HttpStatus.NOT_FOUND, "Dependent not found"),
+  CONTACT_NOT_FOUND("CONTACT_NOT_FOUND", HttpStatus.NOT_FOUND, "Emergency contact not found"),
+  CONFLICT("CONFLICT", HttpStatus.CONFLICT, "Record was changed by another user"),
+  PRECONDITION_REQUIRED(
+      "PRECONDITION_REQUIRED", HttpStatus.PRECONDITION_REQUIRED, "If-Match header is required"),
+  MODULE_READ_ONLY(
+      "MODULE_READ_ONLY", HttpStatus.CONFLICT, "Employee module is read-only during cutover"),
   SSO_MODULE_NOT_LEGACY(
       "SSO_MODULE_NOT_LEGACY", HttpStatus.FORBIDDEN, "Module is not served by Oracle Forms"),
   RATE_LIMITED("RATE_LIMITED", HttpStatus.TOO_MANY_REQUESTS, "Too many failed login attempts"),
