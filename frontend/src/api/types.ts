@@ -1,7 +1,7 @@
 /**
- * Hand-written 1:1 TypeScript projection of contracts/p0-foundation/openapi.yaml
- * and contracts/p1-performance/openapi.yaml (components.schemas). Do not add fields
- * that are not in the contract.
+ * Hand-written 1:1 TypeScript projection of contracts/p0-foundation/openapi.yaml,
+ * contracts/p1-performance/openapi.yaml and contracts/p2-leave/openapi.yaml
+ * (components.schemas). Do not add fields that are not in the contract.
  */
 
 export interface ApiErrorDetail {
@@ -25,7 +25,7 @@ export interface LoginRequest {
 }
 
 export type Authority =
-  `${'PAYROLL' | 'EMPLOYEE' | 'LEAVE' | 'ADMIN' | 'REPORTS' | 'PERFORMANCE'}:${'VIEW' | 'EDIT' | 'APPROVE' | 'CREATE' | 'ADMIN'}`;
+  `${'PAYROLL' | 'EMPLOYEE' | 'LEAVE' | 'ADMIN' | 'REPORTS' | 'PERFORMANCE'}:${'VIEW' | 'EDIT' | 'APPROVE' | 'CREATE' | 'ADMIN' | 'VIEW_ALL'}`;
 
 export interface CurrentUser {
   userId: string;
@@ -299,4 +299,166 @@ export interface ListCycleReviewsQuery {
   status?: string;
   page?: number;
   size?: number;
+}
+
+// ---------------------------------------------------------------- P2 leave
+
+export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'TAKEN';
+export type HalfDayPeriod = 'AM' | 'PM';
+
+export interface LeaveRequestCreateRequest {
+  leaveTypeId: number;
+  startDate: string;
+  endDate: string;
+  halfDay?: boolean;
+  halfDayPeriod?: HalfDayPeriod | null;
+  reason?: string | null;
+}
+
+export interface LeaveCancelRequest {
+  reason?: string | null;
+}
+
+export interface LeaveApproveRequest {
+  comments?: string | null;
+}
+
+export interface LeaveRejectRequest {
+  comments: string;
+}
+
+export interface LeaveRequest {
+  requestId: number;
+  empId: number;
+  empName: string;
+  leaveTypeId: number;
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  halfDay: boolean;
+  halfDayPeriod: HalfDayPeriod | null;
+  status: LeaveRequestStatus;
+  reason: string | null;
+  approverEmpId: number | null;
+  approverName: string | null;
+  approvalDate: string | null;
+  approvalComments: string | null;
+  createdDate: string;
+  modifiedDate: string | null;
+}
+
+export interface PageOfLeaveRequest {
+  content: LeaveRequest[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface LeaveBalance {
+  balanceId: number;
+  leaveTypeId: number;
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  calendarYear: number;
+  openingBalance: number;
+  accrued: number;
+  used: number;
+  adjustment: number;
+  pending: number;
+  carryoverFromPrev: number;
+  available: number;
+}
+
+export interface BusinessDaysHoliday {
+  holidayName: string;
+  holidayDate: string;
+  observedDate: string;
+}
+
+export interface BusinessDays {
+  start: string;
+  end: string;
+  businessDays: number;
+  holidays: BusinessDaysHoliday[];
+}
+
+export interface PendingLeaveApproval {
+  requestId: number;
+  empId: number;
+  empNumber: string;
+  empName: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  halfDay: boolean;
+  halfDayPeriod: HalfDayPeriod | null;
+  reason: string | null;
+  createdDate: string;
+}
+
+export interface TeamCalendarEntry {
+  requestId: number;
+  empId: number;
+  empName: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  halfDay: boolean;
+  halfDayPeriod: HalfDayPeriod | null;
+  status: 'APPROVED' | 'TAKEN';
+}
+
+export interface LeaveRequestFilterQuery {
+  /** Comma-separated subset of LeaveRequestStatus. */
+  status?: string;
+  year?: number;
+}
+
+export interface LeaveRequestsForEmployeeQuery extends LeaveRequestFilterQuery {
+  empId: number;
+  page?: number;
+  size?: number;
+}
+
+export interface DateRangeQuery {
+  start: string;
+  end: string;
+}
+
+export interface TeamCalendarQuery {
+  from: string;
+  to: string;
+}
+
+// P5 (deferred) – declared in the contract, not mounted in Phase 2.
+export interface AccrualRunRequest {
+  accrualDate?: string;
+}
+
+export interface CarryoverRunRequest {
+  year: number;
+}
+
+export interface CarryoverExpireRequest {
+  asOf?: string;
+}
+
+export interface LeaveBalanceAdjustRequest {
+  empId: number;
+  leaveTypeId: number;
+  calendarYear?: number;
+  adjustment: number;
+  reason: string;
+}
+
+export interface BatchRunResult {
+  runId: string;
+  processed: number;
+  skipped: number;
+  startedAt: string;
 }

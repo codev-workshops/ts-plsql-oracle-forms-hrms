@@ -13,6 +13,7 @@ import { ForbiddenPage } from './pages/ForbiddenPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage';
+import { LeavePage } from './pages/leave/LeavePage';
 import { PerformancePage } from './pages/performance/PerformancePage';
 
 export function createQueryClient() {
@@ -21,6 +22,7 @@ export function createQueryClient() {
 
 export function AppRoutes() {
   const promoted = MODULE_TILES.filter((t) => isModulePromoted(t, MODULE_FLAGS));
+  const pages: Record<string, ReactNode> = { performance: <PerformancePage />, leave: <LeavePage /> };
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -35,7 +37,7 @@ export function AppRoutes() {
           <Route path="/forbidden" element={<ForbiddenPage />} />
           {promoted.map((t) => (
             <Route key={t.id} element={<ProtectedRoute anyOf={t.anyOf} />}>
-              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : <ModulePlaceholderPage />} />
+              <Route path={`${t.path}/*`} element={pages[t.id] ?? <ModulePlaceholderPage />} />
             </Route>
           ))}
         </Route>

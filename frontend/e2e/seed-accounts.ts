@@ -76,12 +76,17 @@ export const PG_PERFORMANCE_FIXTURES = {
 const MODULES = ['PAYROLL', 'EMPLOYEE', 'LEAVE', 'ADMIN', 'REPORTS'] as const;
 const ACTIONS = ['VIEW', 'EDIT', 'APPROVE', 'CREATE'] as const;
 
-/** P1 performance authorities mirror contracts/p1-performance/openapi.yaml. */
+/**
+ * P1 performance authorities mirror contracts/p1-performance/openapi.yaml; the P2 additions
+ * `LEAVE:VIEW_ALL` / `LEAVE:ADMIN` (EXECUTIVE only) mirror contracts/p2-leave/openapi.yaml `Authority`.
+ */
 export const ROLE_AUTHORITIES: Record<SeedAccount['role'], Authority[]> = {
   STAFF: ['EMPLOYEE:VIEW', 'LEAVE:VIEW', 'LEAVE:CREATE'],
   MANAGER: ['PAYROLL:VIEW', 'EMPLOYEE:VIEW', 'LEAVE:VIEW', 'ADMIN:VIEW', 'REPORTS:VIEW', 'LEAVE:CREATE', 'PERFORMANCE:VIEW'],
   EXECUTIVE: [
     ...MODULES.flatMap((module) => ACTIONS.map((action) => `${module}:${action}` as Authority)),
+    'LEAVE:VIEW_ALL',
+    'LEAVE:ADMIN',
     'PERFORMANCE:VIEW',
     'PERFORMANCE:EDIT',
     'PERFORMANCE:APPROVE',

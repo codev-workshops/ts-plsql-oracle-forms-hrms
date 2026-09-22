@@ -74,6 +74,36 @@ describe('useErrorHandler', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Review cycle not found');
   });
 
+  it.each([
+    ['-20201', 'leaveTypeId', 'Insufficient leave balance. Available: 2, Requested: 3'],
+    ['-20202', 'startDate', 'Leave request overlaps with existing request'],
+    ['-20203', 'leaveTypeId', 'Invalid leave type: 99'],
+    ['-20210', 'endDate', 'Start date must be before or equal to end date'],
+    ['-20211', 'startDate', 'Cannot submit leave requests more than 5 days in the past'],
+    ['-20212', 'startDate', 'Leave request must include at least one business day'],
+  ])('maps unfielded leave code %s to %s (contracts/p2-leave/error-codes.md)', (code, field, message) => {
+    const { result } = renderHook(() => useErrorHandler(), { wrapper });
+    let h!: ReturnType<typeof result.current.handleError>;
+    act(() => {
+      h = result.current.handleError(apiErr(422, { code, message, traceId: 't8' }));
+    });
+    expect(h.fieldErrors).toEqual({ [field]: message });
+    expect(h.toasted).toBe(false);
+  });
+
+  it.each([
+    ['-20204', 'Cannot approve request in status: APPROVED'],
+    ['LEAVE_REQUEST_NOT_FOUND', 'Leave request not found'],
+  ])('toasts leave code %s which has no default field', (code, message) => {
+    const { result } = renderHook(() => useErrorHandler(), { wrapper });
+    let h!: ReturnType<typeof result.current.handleError>;
+    act(() => {
+      h = result.current.handleError(apiErr(422, { code, message, traceId: 't9' }));
+    });
+    expect(h.toasted).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+  });
+
   it('collects VALIDATION_FAILED details per field', () => {
     const { result } = renderHook(() => useErrorHandler(), { wrapper });
     let h!: ReturnType<typeof result.current.handleError>;

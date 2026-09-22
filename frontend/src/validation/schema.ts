@@ -105,7 +105,7 @@ export function evaluateRules(field: FieldSpec, value: string): RuleFailure | nu
         ok = Number(value) <= Number(rule.value);
         break;
       case 'custom':
-        // Not evaluable client-side: server remains canonical.
+        // Cross-field / clock-dependent: see evaluateCustomRules. Server remains canonical.
         ok = true;
         break;
     }
@@ -141,7 +141,8 @@ function stringField(spec: FieldSpec): z.ZodTypeAny {
 
 function numberField(spec: FieldSpec): z.ZodTypeAny {
   const m = spec.messages;
-  let n = spec.type === 'integer' ? z.number().int() : z.number();
+  const opts = { required_error: m.required ?? 'Required', invalid_type_error: m.format ?? m.required ?? 'Enter a number' };
+  let n = spec.type === 'integer' ? z.number(opts).int() : z.number(opts);
   if (spec.min !== undefined) n = n.min(Number(spec.min), m.min);
   if (spec.max !== undefined) n = n.max(Number(spec.max), m.max);
   const coerced = z.preprocess((v) => (v === '' || v === null ? undefined : typeof v === 'string' ? Number(v) : v), n);
@@ -169,6 +170,59 @@ function fieldToZod(spec: FieldSpec): z.ZodTypeAny {
   }
 }
 
+type Values = Record<string, unknown>;
+
+export interface CustomRuleContext {
+  /** ISO business date used for clock-dependent rules; defaults to today (local). */
+  today?: string;
+}
+
+export function isoToday(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * Client-side evaluators for the exporter's `kind: custom` rules that are cheap to
+ * mirror. The rule's parameters (`value`), code and message all come from the JSON;
+ * only the comparison operator lives here. Unknown ids are left to the server.
+ */
+const CUSTOM_EVALUATORS: Record<string, (value: string, rule: FieldRule, values: Values, ctx: CustomRuleContext) => boolean> = {
+  'leave.dateOrder': (value, rule, values) => {
+    const other = values[String(rule.value)];
+    return typeof other !== 'string' || !other || !value || other <= value;
+  },
+  'leave.pastLimit': (value, rule, _values, ctx) => !value || daysBetween(value, ctx.today ?? isoToday()) <= Number(rule.value),
+};
+
+export interface CrossFieldFailure extends RuleFailure {
+  field: string;
+}
+
+/** Evaluate every evaluable `custom` rule of a DTO against the whole form value (first failure per field). */
+export function evaluateCustomRules(dto: DtoSpec, values: Values, ctx: CustomRuleContext = {}): CrossFieldFailure[] {
+  const out: CrossFieldFailure[] = [];
+  for (const [field, spec] of Object.entries(dto.fields)) {
+    const value = values[field];
+    if (typeof value !== 'string') continue;
+    for (const rule of spec.rules ?? []) {
+      if (rule.kind !== 'custom') continue;
+      const evaluate = CUSTOM_EVALUATORS[rule.id];
+      if (evaluate && !evaluate(value, rule, values, ctx)) {
+        out.push({ field, errorCode: rule.errorCode, message: rule.message, ruleId: rule.id });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 const cache = new Map<string, z.ZodObject<Record<string, z.ZodTypeAny>>>();
 
 /** Build (and memoise) a Zod object schema for a DTO from the generated JSON. */
@@ -181,6 +235,19 @@ export function zodFor(name: DtoName): z.ZodObject<Record<string, z.ZodTypeAny>>
   const obj = z.object(shape);
   cache.set(name, obj);
   return obj;
+}
+
+/**
+ * `zodFor` plus the DTO's evaluable cross-field `custom` rules, reported on the field
+ * that carries the rule in the JSON (e.g. LeaveRequestCreateRequest.endDate → -20210).
+ */
+export function zodFormFor(name: DtoName, ctx: CustomRuleContext = {}): z.ZodTypeAny {
+  const dto = getDto(name);
+  return zodFor(name).superRefine((values, zctx) => {
+    for (const failure of evaluateCustomRules(dto, values, ctx)) {
+      zctx.addIssue({ code: z.ZodIssueCode.custom, path: [failure.field], message: failure.message, params: { errorCode: failure.errorCode } });
+    }
+  });
 }
 
 /** Flatten a Zod error into `{ field: firstMessage }` for inline display. */

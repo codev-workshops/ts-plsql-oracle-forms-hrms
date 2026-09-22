@@ -16,6 +16,8 @@ import { ROLE_AUTHORITIES, SEED_ACCOUNTS, SEED_PASSWORD } from '../../e2e/seed-a
 import { evaluateRules, getDto, getParameter } from '../validation/schema';
 import { createPerformanceHandlers } from './performanceHandlers';
 import { resetPerformanceState } from './performanceStore';
+import { createLeaveHandlers } from './leaveHandlers';
+import { resetLeaveState } from './leaveStore';
 
 /**
  * msw implementation of contracts/p0-foundation/openapi.yaml, shared by Vitest (node) and
@@ -71,6 +73,10 @@ export const MOCK_LOCATIONS: LocationRef[] = [
 export const MOCK_LEAVE_TYPES: LeaveTypeRef[] = [
   { leaveTypeId: 1, leaveTypeCode: 'PTO', leaveTypeName: 'Paid Time Off', paid: true, accrual: true, accrualRate: '1.25', maxBalance: '30.00', carryoverMax: '5.00', minTenureDays: 0, requiresApproval: true, requiresDocument: false, active: true },
   { leaveTypeId: 2, leaveTypeCode: 'SICK', leaveTypeName: 'Sick Leave', paid: true, accrual: true, accrualRate: '0.83', maxBalance: '10.00', carryoverMax: null, minTenureDays: 0, requiresApproval: false, requiresDocument: true, active: true },
+  { leaveTypeId: 3, leaveTypeCode: 'COMP', leaveTypeName: 'Compensatory Time', paid: true, accrual: false, accrualRate: null, maxBalance: null, carryoverMax: '0.00', minTenureDays: 90, requiresApproval: true, requiresDocument: false, active: true },
+  { leaveTypeId: 4, leaveTypeCode: 'FMLA', leaveTypeName: 'Family Medical Leave', paid: false, accrual: false, accrualRate: null, maxBalance: null, carryoverMax: '0.00', minTenureDays: 365, requiresApproval: true, requiresDocument: true, active: true },
+  { leaveTypeId: 5, leaveTypeCode: 'JURY', leaveTypeName: 'Jury Duty', paid: true, accrual: false, accrualRate: null, maxBalance: null, carryoverMax: '0.00', minTenureDays: 0, requiresApproval: false, requiresDocument: false, active: true },
+  { leaveTypeId: 6, leaveTypeCode: 'BEREAVE', leaveTypeName: 'Bereavement', paid: true, accrual: false, accrualRate: null, maxBalance: null, carryoverMax: '0.00', minTenureDays: 0, requiresApproval: false, requiresDocument: false, active: false },
 ];
 
 export const MOCK_EMPLOYEES: EmployeeSummary[] = [
@@ -99,6 +105,7 @@ export function resetMockState() {
   seq = 0;
   refreshCookieForTests = null;
   resetPerformanceState();
+  resetLeaveState(MOCK_LEAVE_TYPES);
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -288,3 +295,16 @@ export const performanceHandlers = createPerformanceHandlers((request) => {
 });
 
 handlers.push(...performanceHandlers);
+
+export const leaveHandlers = createLeaveHandlers(
+  (request) => {
+    const session = authenticate(request);
+    if (!session) return null;
+    const user = MOCK_USERS[session.email];
+    return user ? { userId: user.userId, empId: user.empId, roles: user.roles } : null;
+  },
+  () => MOCK_LEAVE_TYPES,
+);
+
+handlers.push(...leaveHandlers);
+resetLeaveState(MOCK_LEAVE_TYPES);

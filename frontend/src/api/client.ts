@@ -26,6 +26,25 @@ import type {
   ManagerReviewRequest,
   ReferenceQuery,
   TokenResponse,
+  AccrualRunRequest,
+  BatchRunResult,
+  BusinessDays,
+  CarryoverExpireRequest,
+  CarryoverRunRequest,
+  DateRangeQuery,
+  LeaveApproveRequest,
+  LeaveBalance,
+  LeaveBalanceAdjustRequest,
+  LeaveCancelRequest,
+  LeaveRejectRequest,
+  LeaveRequest,
+  LeaveRequestCreateRequest,
+  LeaveRequestFilterQuery,
+  LeaveRequestsForEmployeeQuery,
+  PageOfLeaveRequest,
+  PendingLeaveApproval,
+  TeamCalendarEntry,
+  TeamCalendarQuery,
 } from './types';
 
 /**
@@ -155,6 +174,73 @@ export const api = {
     },
     async getRatingDistribution(cycleId: number, params: { deptId?: number } = {}): Promise<RatingDistributionRow[]> {
       const { data } = await http.get<RatingDistributionRow[]>(`/api/performance/cycles/${cycleId}/rating-distribution`, { params });
+      return data;
+    },
+  },
+  /**
+   * contracts/p2-leave/openapi.yaml, one method per operationId. Identity-bound
+   * operations (`/mine`, cancel) never take an empId: the server reads the JWT claim.
+   */
+  leave: {
+    async listMyLeaveRequests(params: LeaveRequestFilterQuery = {}): Promise<LeaveRequest[]> {
+      const { data } = await http.get<LeaveRequest[]>('/api/leave/requests/mine', { params });
+      return data;
+    },
+    async listLeaveRequestsForEmployee(params: LeaveRequestsForEmployeeQuery): Promise<PageOfLeaveRequest> {
+      const { data } = await http.get<PageOfLeaveRequest>('/api/leave/requests', { params });
+      return data;
+    },
+    async submitLeaveRequest(body: LeaveRequestCreateRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>('/api/leave/requests', body);
+      return data;
+    },
+    async getLeaveRequest(id: number): Promise<LeaveRequest> {
+      const { data } = await http.get<LeaveRequest>(`/api/leave/requests/${id}`);
+      return data;
+    },
+    async cancelLeaveRequest(id: number, body: LeaveCancelRequest = {}): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/cancel`, body);
+      return data;
+    },
+    async approveLeaveRequest(id: number, body: LeaveApproveRequest = {}): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/approve`, body);
+      return data;
+    },
+    async rejectLeaveRequest(id: number, body: LeaveRejectRequest): Promise<LeaveRequest> {
+      const { data } = await http.post<LeaveRequest>(`/api/leave/requests/${id}/reject`, body);
+      return data;
+    },
+    async getMyLeaveBalances(params: { year?: number } = {}): Promise<LeaveBalance[]> {
+      const { data } = await http.get<LeaveBalance[]>('/api/leave/balances/mine', { params });
+      return data;
+    },
+    async getBusinessDays(params: DateRangeQuery): Promise<BusinessDays> {
+      const { data } = await http.get<BusinessDays>('/api/leave/business-days', { params });
+      return data;
+    },
+    async listPendingLeaveApprovals(): Promise<PendingLeaveApproval[]> {
+      const { data } = await http.get<PendingLeaveApproval[]>('/api/leave/approvals/pending');
+      return data;
+    },
+    async getTeamLeaveCalendar(params: TeamCalendarQuery): Promise<TeamCalendarEntry[]> {
+      const { data } = await http.get<TeamCalendarEntry[]>('/api/leave/team-calendar', { params });
+      return data;
+    },
+    // P5 (deferred) admin operations – declared in the contract, not mounted in Phase 2.
+    async runLeaveAccrual(body: AccrualRunRequest = {}): Promise<BatchRunResult> {
+      const { data } = await http.post<BatchRunResult>('/api/leave/admin/accrual/run', body);
+      return data;
+    },
+    async runLeaveCarryover(body: CarryoverRunRequest): Promise<BatchRunResult> {
+      const { data } = await http.post<BatchRunResult>('/api/leave/admin/carryover/run', body);
+      return data;
+    },
+    async expireLeaveCarryover(body: CarryoverExpireRequest = {}): Promise<BatchRunResult> {
+      const { data } = await http.post<BatchRunResult>('/api/leave/admin/carryover/expire', body);
+      return data;
+    },
+    async adjustLeaveBalance(body: LeaveBalanceAdjustRequest): Promise<LeaveBalance> {
+      const { data } = await http.post<LeaveBalance>('/api/leave/admin/balances/adjust', body);
       return data;
     },
   },
