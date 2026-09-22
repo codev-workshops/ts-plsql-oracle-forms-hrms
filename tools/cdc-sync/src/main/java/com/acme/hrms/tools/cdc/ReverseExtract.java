@@ -59,7 +59,7 @@ public final class ReverseExtract {
       }
       try (ResultSet rs = sel.executeQuery()) {
         ResultSetMetaData md = rs.getMetaData();
-        List<Integer> idx = BulkLoader.writableColumns(table, md);
+        List<Integer> idx = oracleWritableColumns(table, md);
         List<String> oracleCols = new ArrayList<>();
         for (int i : idx) {
           oracleCols.add(TypeMapping.oracleIdentifier(md.getColumnLabel(i)));
@@ -84,6 +84,18 @@ public final class ReverseExtract {
       }
     }
     return n;
+  }
+
+  /** Writable columns minus the PostgreSQL-only ones, which have no Oracle counterpart. */
+  static List<Integer> oracleWritableColumns(String table, ResultSetMetaData md)
+      throws SQLException {
+    List<Integer> idx = new ArrayList<>();
+    for (int i : BulkLoader.writableColumns(table, md)) {
+      if (!TableGroup.isPgOnly(table, md.getColumnLabel(i))) {
+        idx.add(i);
+      }
+    }
+    return idx;
   }
 
   private String changedSincePredicate(String table) throws SQLException {

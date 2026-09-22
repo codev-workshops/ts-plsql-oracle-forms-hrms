@@ -54,3 +54,11 @@ recognised (`pattern` / `kind: custom` rule with `parameter: HR.MAX_FUTURE_HIRE_
 parameter's default in the top-level `parameters` map); string `@Pattern` on non-P0 fields.
 Un-annotated boolean flags (`active`) are, as in P0, not exported. Regenerate with
 `ValidationSchemaExporter <path> <version>` and reformat with 2-space JSON, as for P1/P2.
+
+Stored-form normalisation (not a contract change – request DTOs and validation are unchanged):
+`employee-service` persists `firstName` / `lastName` as `UPPER(TRIM(value))` on create and update,
+exactly as `PKG_EMPLOYEE.create_employee` / `update_employee` do, so `FULL_NAME` / `EMP_NAME` /
+`ORG_PATH` / `MANAGER_NAME` cells reconcile with the legacy views without any name normalisation
+on the Level 3 side; responses return the stored (upper-cased) form. Pinned by
+`EmployeeServiceTest.namesAreStoredUpperTrimmedLikePkgEmployee` and the Level 2 scenario
+`employee.create.names-upper-trimmed`.

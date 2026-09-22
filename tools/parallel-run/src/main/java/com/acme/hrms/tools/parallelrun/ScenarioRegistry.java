@@ -49,6 +49,7 @@ public final class ScenarioRegistry {
     all.addAll(PerformanceScenarios.all());
     all.addAll(LeaveScenarios.all());
     all.addAll(SalaryScenarios.all());
+    all.addAll(EmployeeScenarios.all());
     return List.copyOf(all);
   }
 
@@ -133,8 +134,9 @@ public final class ScenarioRegistry {
                 "declare v_session number; begin v_session := pkg_security.create_session(:emp_id, "
                     + "'HRMS_MENU', 'PARALLEL-RUN'); :session_id := v_session; end;",
                 List.of("session_id")),
-            post("/legacy/sso/exchange", Map.of("module", "employee", "clientIp", CLIENT_IP), USER),
-            Outcome.ok(Map.of("formsModule", "HRMS_EMPLOYEE"))),
+            // Must target a module that is still LEGACY in the current phase (payroll until P4).
+            post("/legacy/sso/exchange", Map.of("module", "payroll", "clientIp", CLIENT_IP), USER),
+            Outcome.ok(Map.of("formsModule", "HRMS_PAYROLL"))),
         new Scenario(
             "sso.exchange.new-module-rejected",
             "auth",
@@ -156,7 +158,7 @@ public final class ScenarioRegistry {
    * verifies instead of the Forms module handoff.
    */
   public static Outcome targetExpect(Scenario s, boolean oracleAttached) {
-    if (!oracleAttached && UNTESTED_LIVE_SCENARIOS.contains(s.id())) {
+    if (!oracleAttached && "sso.exchange.legacy-module".equals(s.id())) {
       return SSO_LEGACY_UNAVAILABLE;
     }
     return s.expect();
@@ -166,8 +168,11 @@ public final class ScenarioRegistry {
     if (LeaveScenarios.MODULE.equals(s.module())) {
       return LeaveScenarios.legacyOutcome(s);
     }
-    if (SalaryScenarios.MODULE.equals(s.module())) {
+    if (s.id().startsWith("salary.")) {
       return SalaryScenarios.legacyOutcome(s);
+    }
+    if (s.id().startsWith("employee.")) {
+      return EmployeeScenarios.legacyOutcome(s);
     }
     return switch (s.id()) {
       case "auth.lockout.after-5-failures" -> Outcome.error("-20301"); // SEC-02: no lockout

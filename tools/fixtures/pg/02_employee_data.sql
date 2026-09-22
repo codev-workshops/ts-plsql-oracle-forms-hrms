@@ -168,3 +168,9 @@ UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 30 WHERE DEPT_ID = 30;  -- Dir IT manage
 UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 31 WHERE DEPT_ID = 31;
 UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 40 WHERE DEPT_ID = 40;
 UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 1 WHERE DEPT_ID = 1;
+
+-- Advance the sequences past the explicit primary keys inserted above.
+select setval('seq_employee', max(emp_id)) from employees
+  having max(emp_id) >= (select last_value from seq_employee);
+select setval('seq_salary', max(salary_id)) from salary_records
+  having max(salary_id) >= (select last_value from seq_salary);

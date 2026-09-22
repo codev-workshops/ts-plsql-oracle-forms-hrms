@@ -72,6 +72,73 @@ class RegistryAndReportTest {
   }
 
   @Test
+  void phase3RegistersTheEmployeeSet() {
+    Map<String, String> codes = new java.util.HashMap<>();
+    codes.put("employee.terminate.already-terminated", "-20005");
+    codes.put("employee.terminate.session-revoked", "TOKEN_INVALID");
+    codes.put("employee.transfer.not-active", "-20012");
+    codes.put("employee.validate.names-required", "-20010");
+    codes.put("employee.validate.invalid-department", "-20003");
+    codes.put("employee.validate.invalid-job", "-20011");
+    codes.put("employee.validate.invalid-manager", "-20004");
+    codes.put("employee.validate.manager-cycle", "-20004");
+    codes.put("employee.validate.salary-not-positive", "-20101");
+    codes.put("employee.trigger.hire-date-too-far", "-20501");
+    codes.put("employee.trigger.email-in-use", "-20502");
+    codes.put("employee.trigger.no-reactivation", "-20503");
+    codes.put("employee.trigger.no-physical-delete", "-20504");
+    Map<String, Scenario> byId =
+        ScenarioRegistry.all().stream()
+            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+    assertThat(byId.keySet())
+        .containsAll(codes.keySet())
+        .contains(
+            "employee.create.number-from-sequence",
+            "employee.create.names-upper-trimmed",
+            "employee.update.ok",
+            "employee.terminate.ok",
+            "employee.transfer.ok-same-dept-writes-history");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("employee.create.number-from-sequence").expect().fields())
+        .containsEntry("employmentStatus", "ACTIVE");
+    assertThat(byId.get("employee.update.ok").target().method()).isEqualTo("PUT");
+    assertThat(byId.get("employee.update.ok").target().setup()).hasSize(1);
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (s.id().startsWith("employee.")) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+        assertThat(ScenarioRegistry.targetExpect(s, false)).as(s.id()).isEqualTo(s.expect());
+        Outcome legacy =
+            s.id().equals(EmployeeScenarios.SESSION_REVOKED)
+                ? EmployeeScenarios.LEGACY_SESSION_STILL_VALID
+                : s.expect();
+        assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(legacy);
+      }
+    }
+  }
+
+  @Test
+  void transferHistoryScenarioTransfersAfterTheHireRow() {
+    Scenario s =
+        ScenarioRegistry.all().stream()
+            .filter(x -> x.id().equals("employee.transfer.ok-same-dept-writes-history"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(s.expect().fields()).containsEntry("[0].changeType", "TRANSFER");
+    List<Scenario.RestCall> setup = s.target().setup();
+    assertThat(setup).hasSize(2);
+    java.time.LocalDate hire =
+        java.time.LocalDate.parse((String) setup.get(0).body().get("hireDate"));
+    java.time.LocalDate transfer =
+        java.time.LocalDate.parse((String) setup.get(1).body().get("effectiveDate"));
+    // history is ORDER BY effective_date DESC, hist_id DESC: [0] is TRANSFER only if it is later
+    assertThat(transfer).isAfter(hire);
+    assertThat(s.legacy().plsql()).contains("date '" + transfer + "'");
+  }
+
+  @Test
   void restRunnerResolvesCapturedIdsInPaths() {
     assertThat(
             RestRunner.resolve(

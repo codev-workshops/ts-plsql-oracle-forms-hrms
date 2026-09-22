@@ -32,6 +32,30 @@ Level-1 tests in `tools/reconcile` (`PgReconciliationQueriesTest`):
 * every view returns rows for the seed (leave, payroll and pending-approval views included, from
   `data/seed/03_transaction_data.sql`), so no view reconciles vacuously.
 
+* `VW_ORG_HIERARCHY` walks **all** employees and filters `EMPLOYMENT_STATUS = 'ACTIVE'` only in
+  the outer select, because Oracle applies the view `WHERE` after `CONNECT BY`: active reports of a
+  terminated manager stay in the view (their `ORG_LEVEL` counts the terminated node and `ORG_PATH`
+  names it) and `CONNECT_BY_ISLEAF` counts terminated children. The pristine seed has no such
+  manager, so `views-baseline.csv` cannot detect a regression here; see the scenario below.
+
+## Scenario golden: `views-terminated-mid-manager.csv`
+
+`scenarios/terminated-mid-manager.sql` terminates emp 21 (JENNIFER PARK – the only report of
+emp 20 and the manager of emps 22/23/24) on top of the pristine seed. The CSV was produced the same
+way as the baseline (never hand-edited): load migrations + `tools/fixtures/pg/*.sql`, apply the
+scenario with `psql -f tests/golden/scenarios/terminated-mid-manager.sql`, then
+
+```bash
+java -jar target/hrms-tool-reconcile.jar capture \
+     --pg jdbc:postgresql://localhost:5432/hrms --pg-user hrms --pg-password "$PG_PWD" \
+     --as-of 2024-06-30 --out ../../tests/golden/views-terminated-mid-manager.csv
+```
+
+`PgReconciliationQueriesTest.orgHierarchyKeepsActiveReportsOfTerminatedManagerLikeOracle` replays
+the scenario in the Level-1 suite, asserts the Oracle semantics explicitly (22/23/24 present at
+`ORG_LEVEL` 5 under `... > JENNIFER PARK`, 21 absent, 20 keeps `IS_LEAF = 0`) and reconciles all
+six views against this file.
+
 The Oracle leg itself (`capture --oracle ...`, `live`) is `untested-live` in this phase. When an
 Oracle instance becomes available, re-capture with
 
