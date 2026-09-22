@@ -117,6 +117,18 @@ class SalaryApiTest extends AuthApiTestBase {
   }
 
   @Test
+  void omittedBaseSalaryUsesBeanValidation() throws Exception {
+    mvc.perform(
+            json(
+                post("/api/employees/1/salary"),
+                exec,
+                Map.of("effectiveDate", "2025-01-01", "changeReason", "MERIT")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("baseSalary"));
+  }
+
+  @Test
   void rejectsDateStatusAndOtherBodyErrors() throws Exception {
     mvc.perform(
             json(

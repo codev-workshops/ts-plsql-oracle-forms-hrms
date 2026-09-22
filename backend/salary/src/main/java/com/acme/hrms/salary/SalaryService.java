@@ -43,29 +43,10 @@ public class SalaryService {
   }
 
   @Transactional(readOnly = true)
-  public SalaryRecord current(long empId) {
-    requireEmployee(empId);
-    return records
-        .findActive(empId)
-        .orElseThrow(
-            () ->
-                new HrmsException(
-                    ErrorCode.NO_ACTIVE_SALARY,
-                    "No active salary record for employee " + empId,
-                    null));
-  }
-
-  @Transactional(readOnly = true)
   public SalaryRecord current(long empId, CallerIdentity caller) {
     requireEmployee(empId);
     access.requireReadable(empId, caller);
     return findCurrent(empId);
-  }
-
-  @Transactional(readOnly = true)
-  public List<SalaryRecord> history(long empId) {
-    requireEmployee(empId);
-    return records.history(empId);
   }
 
   @Transactional(readOnly = true)
@@ -77,10 +58,6 @@ public class SalaryService {
 
   @Transactional
   public SalaryRecord change(long empId, SalaryChangeRequest request, String actor) {
-    return changeInternal(empId, request, actor);
-  }
-
-  private SalaryRecord changeInternal(long empId, SalaryChangeRequest request, String actor) {
     access.requireWritable();
     SalaryChangeRequest req = access.validate(request);
     EmployeeRef employee = requireActive(empId);
@@ -91,16 +68,7 @@ public class SalaryService {
     BigDecimal oldSalary = previous == null ? null : money(previous.baseSalary());
     boolean outOfBand = assertWithinGrade(newSalary, employee.gradeMin(), employee.gradeMax());
     if (previous != null) {
-      records.closeActive(empId, req.getEffectiveDate(), actor);
-      audit.log(
-          TABLE,
-          previous.salaryId(),
-          Action.UPDATE,
-          "{\"salary\":" + OracleNumber.render(oldSalary) + ",\"active\":\"Y\"}",
-          "{\"salary\":" + OracleNumber.render(oldSalary) + ",\"active\":\"N\"}",
-          actor,
-          null,
-          null);
+      closeWithAudit(previous, req.getEffectiveDate(), actor);
     }
     long id =
         records.insert(
@@ -117,37 +85,21 @@ public class SalaryService {
                 outOfBand,
                 actor));
     SalaryRecord created = records.findById(id).orElseThrow();
-    for (SalaryChangeListener listener : listeners) {
-      listener.onSalaryChanged(
-          new SalaryChangeEvent(
-              empId, req.getEffectiveDate(), oldSalary, newSalary, req.getChangeReason(), actor));
-    }
-    audit.log(
-        TABLE,
-        id,
-        Action.INSERT,
-        null,
-        "{\"emp_id\":"
-            + empId
-            + ",\"salary\":"
-            + OracleNumber.render(newSalary)
-            + ",\"effective\":\""
-            + req.getEffectiveDate()
-            + "\"}",
-        actor,
-        null,
-        null);
+    publish(empId, req.getEffectiveDate(), oldSalary, newSalary, req.getChangeReason(), actor);
+    auditInsert(id, empId, newSalary, req.getEffectiveDate(), actor);
     return created;
   }
 
   @Transactional
   public SalaryRecord createInitial(
       long empId, BigDecimal baseSalary, LocalDate effectiveDate, String actor) {
-    if (baseSalary == null || baseSalary.signum() <= 0) {
+    if (baseSalary == null) {
+      throw new HrmsException(ErrorCode.VALIDATION_FAILED, "Salary is required", "baseSalary");
+    }
+    if (baseSalary.signum() <= 0) {
       throw new HrmsException(
           ErrorCode.SALARY_NOT_POSITIVE,
-          "Salary must be positive: "
-              + (baseSalary == null ? "null" : OracleNumber.render(baseSalary)),
+          "Salary must be positive: " + OracleNumber.render(baseSalary),
           "baseSalary");
     }
     EmployeeRef employee = requireActive(empId);
@@ -178,7 +130,11 @@ public class SalaryService {
     if (previous == null) {
       return;
     }
-    records.closeActive(empId, endDate, actor);
+    closeWithAudit(previous, endDate, actor);
+  }
+
+  private void closeWithAudit(SalaryRecord previous, LocalDate endDate, String actor) {
+    records.closeActive(previous.empId(), endDate, actor);
     BigDecimal salary = money(previous.baseSalary());
     audit.log(
         TABLE,

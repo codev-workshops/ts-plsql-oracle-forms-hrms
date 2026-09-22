@@ -13,6 +13,10 @@ import java.util.Map;
  *
  * <p>Run these scenarios with {@code HRMS_FLAG_EMPLOYEE=NEW} on the target. Audit row contents are
  * gated at Level 1 by SalaryApiTest because the REST surface has no audit endpoint.
+ *
+ * <p>Legacy divergences (SALARY-03): legacy does not reject inactive employees, and closes only
+ * rows with {@code effective_date < p_effective_date}; a same-day change can therefore leave two
+ * active rows, while the contract closes the current row unconditionally.
  */
 final class SalaryScenarios {
 

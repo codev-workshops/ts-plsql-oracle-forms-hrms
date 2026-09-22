@@ -2,6 +2,7 @@ package com.acme.hrms.salary;
 
 import com.acme.hrms.common.error.ErrorCode;
 import com.acme.hrms.common.error.HrmsException;
+import com.acme.hrms.common.format.OracleNumber;
 import com.acme.hrms.common.security.CallerIdentity;
 import com.acme.hrms.validation.dto.employee.SalaryChangeRequest;
 import jakarta.validation.ConstraintViolation;
@@ -41,10 +42,10 @@ public class SalaryAccess {
 
   public SalaryChangeRequest validate(SalaryChangeRequest body) {
     BigDecimal salary = body == null ? null : body.getBaseSalary();
-    if (salary == null || salary.signum() <= 0) {
+    if (salary != null && salary.signum() <= 0) {
       throw new HrmsException(
           ErrorCode.SALARY_NOT_POSITIVE,
-          "Salary must be positive: " + (salary == null ? "null" : format(salary)),
+          "Salary must be positive: " + format(salary),
           "baseSalary");
     }
     Set<ConstraintViolation<SalaryChangeRequest>> violations = validator.validate(body);
@@ -55,6 +56,6 @@ public class SalaryAccess {
   }
 
   private static String format(BigDecimal value) {
-    return com.acme.hrms.common.format.OracleNumber.render(value);
+    return OracleNumber.render(value);
   }
 }
