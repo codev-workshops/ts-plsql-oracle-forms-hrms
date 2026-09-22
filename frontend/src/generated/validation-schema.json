@@ -3,11 +3,12 @@
   "schemaVersion": 1,
   "generator": "hrms-validation:exporter",
   "generatorVersion": "0.1.0",
-  "sourceHash": "c3eb1d50eac0549228096c389d988f3829deaa2e72f75245bd1fee651c690ebb",
+  "sourceHash": "599ea87923ee571149bbd951e3d060a8b639b654984a5fe11ea0d9adff4faf96",
   "module": "hrms",
   "modules": [
     "p0-foundation",
-    "p1-performance"
+    "p1-performance",
+    "p2-leave"
   ],
   "parameters": {
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
@@ -403,6 +404,149 @@
           "trim": true,
           "maxLength": 20000,
           "messages": {}
+        }
+      }
+    },
+    "LeaveRequestCreateRequest": {
+      "module": "p2-leave",
+      "fields": {
+        "leaveTypeId": {
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "messages": {
+            "required": "Leave type is required"
+          }
+        },
+        "startDate": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "rules": [
+            {
+              "id": "leave.pastLimit",
+              "kind": "custom",
+              "value": "5",
+              "errorCode": "-20211",
+              "message": "Cannot submit leave requests more than 5 days in the past"
+            }
+          ],
+          "messages": {
+            "required": "Start date is required"
+          }
+        },
+        "endDate": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "rules": [
+            {
+              "id": "leave.dateOrder",
+              "kind": "custom",
+              "value": "startDate",
+              "errorCode": "-20210",
+              "message": "Start date must be before or equal to end date"
+            }
+          ],
+          "messages": {
+            "required": "End date is required",
+            "format": "Start date must be before or equal to end date"
+          }
+        },
+        "halfDay": {
+          "type": "boolean",
+          "required": false,
+          "messages": {
+            "format": "A half day must start and end on the same date"
+          }
+        },
+        "halfDayPeriod": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "AM",
+            "PM"
+          ],
+          "messages": {
+            "required": "Select AM or PM for a half day"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 4000,
+          "messages": {}
+        }
+      }
+    },
+    "LeaveCancelRequest": {
+      "module": "p2-leave",
+      "fields": {
+        "reason": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 4000,
+          "messages": {}
+        }
+      }
+    },
+    "LeaveApproveRequest": {
+      "module": "p2-leave",
+      "fields": {
+        "comments": {
+          "type": "string",
+          "required": false,
+          "trim": true,
+          "maxLength": 4000,
+          "messages": {}
+        }
+      }
+    },
+    "LeaveRejectRequest": {
+      "module": "p2-leave",
+      "fields": {
+        "comments": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 4000,
+          "messages": {
+            "required": "A rejection reason is required"
+          }
+        }
+      }
+    },
+    "BusinessDaysQuery": {
+      "module": "p2-leave",
+      "fields": {
+        "start": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "messages": {
+            "required": "Start date is required"
+          }
+        },
+        "end": {
+          "type": "date",
+          "required": true,
+          "format": "date",
+          "rules": [
+            {
+              "id": "leave.dateOrder",
+              "kind": "custom",
+              "value": "start",
+              "errorCode": "-20210",
+              "message": "Start date must be before or equal to end date"
+            }
+          ],
+          "messages": {
+            "required": "End date is required",
+            "format": "Start date must be before or equal to end date"
+          }
         }
       }
     }

@@ -16,6 +16,37 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p1-performance",
     },
+    "BusinessDaysQuery": {
+      "fields": {
+        "end": {
+          "format": "date",
+          "messages": {
+            "format": "Start date must be before or equal to end date",
+            "required": "End date is required",
+          },
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20210",
+              "id": "leave.dateOrder",
+              "kind": "custom",
+              "message": "Start date must be before or equal to end date",
+              "value": "start",
+            },
+          ],
+          "type": "date",
+        },
+        "start": {
+          "format": "date",
+          "messages": {
+            "required": "Start date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+      },
+      "module": "p2-leave",
+    },
     "ChangePasswordRequest": {
       "fields": {
         "currentPassword": {
@@ -192,6 +223,118 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p1-performance",
+    },
+    "LeaveApproveRequest": {
+      "fields": {
+        "comments": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p2-leave",
+    },
+    "LeaveCancelRequest": {
+      "fields": {
+        "reason": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p2-leave",
+    },
+    "LeaveRejectRequest": {
+      "fields": {
+        "comments": {
+          "maxLength": 4000,
+          "messages": {
+            "required": "A rejection reason is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p2-leave",
+    },
+    "LeaveRequestCreateRequest": {
+      "fields": {
+        "endDate": {
+          "format": "date",
+          "messages": {
+            "format": "Start date must be before or equal to end date",
+            "required": "End date is required",
+          },
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20210",
+              "id": "leave.dateOrder",
+              "kind": "custom",
+              "message": "Start date must be before or equal to end date",
+              "value": "startDate",
+            },
+          ],
+          "type": "date",
+        },
+        "halfDay": {
+          "messages": {
+            "format": "A half day must start and end on the same date",
+          },
+          "required": false,
+          "type": "boolean",
+        },
+        "halfDayPeriod": {
+          "messages": {
+            "required": "Select AM or PM for a half day",
+          },
+          "required": false,
+          "type": "enum",
+          "values": [
+            "AM",
+            "PM",
+          ],
+        },
+        "leaveTypeId": {
+          "messages": {
+            "required": "Leave type is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "reason": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "startDate": {
+          "format": "date",
+          "messages": {
+            "required": "Start date is required",
+          },
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20211",
+              "id": "leave.pastLimit",
+              "kind": "custom",
+              "message": "Cannot submit leave requests more than 5 days in the past",
+              "value": "5",
+            },
+          ],
+          "type": "date",
+        },
+      },
+      "module": "p2-leave",
     },
     "LoginRequest": {
       "fields": {
@@ -403,12 +546,13 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
   "modules": [
     "p0-foundation",
     "p1-performance",
+    "p2-leave",
   ],
   "parameters": {
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "c3eb1d50eac0549228096c389d988f3829deaa2e72f75245bd1fee651c690ebb",
+  "sourceHash": "599ea87923ee571149bbd951e3d060a8b639b654984a5fe11ea0d9adff4faf96",
 }
 `;

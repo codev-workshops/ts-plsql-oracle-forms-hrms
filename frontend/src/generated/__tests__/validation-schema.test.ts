@@ -26,7 +26,7 @@ describe('frontend/src/generated/validation-schema.json', () => {
     expect(schema.generatorVersion).toMatch(/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/);
     expect(schema.sourceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(schema.module).toBe('hrms');
-    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance']);
+    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance', 'p2-leave']);
     expect(Object.keys(schema.dtos).length).toBeGreaterThan(0);
   });
 
@@ -80,6 +80,32 @@ describe('frontend/src/generated/validation-schema.json', () => {
     ]);
     for (const dto of ['ReviewCycleRequest', 'SelfAssessmentRequest', 'AcknowledgeRequest'] as const) {
       expect(schema.dtos[dto].module).toBe('p1-performance');
+    }
+  });
+
+  it('pins the P2 leave rules to PKG_LEAVE (-20210 date order, -20211 5-day past limit, AM/PM)', () => {
+    const create = schema.dtos.LeaveRequestCreateRequest.fields;
+    expect(create.startDate.type).toBe('date');
+    expect(create.startDate.rules.map((r) => [r.kind, r.value, r.errorCode])).toEqual([
+      ['custom', '5', '-20211'],
+    ]);
+    expect(create.endDate.rules.map((r) => [r.kind, r.value, r.errorCode])).toEqual([
+      ['custom', 'startDate', '-20210'],
+    ]);
+    expect(create.halfDay.type).toBe('boolean');
+    expect(create.halfDayPeriod.values).toEqual(['AM', 'PM']);
+    expect(create.reason.maxLength).toBe(4000);
+    expect(schema.dtos.LeaveRejectRequest.fields.comments.required).toBe(true);
+    expect(schema.dtos.LeaveApproveRequest.fields.comments.required).toBe(false);
+    expect(schema.dtos.BusinessDaysQuery.fields.end.rules[0].errorCode).toBe('-20210');
+    for (const dto of [
+      'LeaveRequestCreateRequest',
+      'LeaveCancelRequest',
+      'LeaveApproveRequest',
+      'LeaveRejectRequest',
+      'BusinessDaysQuery',
+    ] as const) {
+      expect(schema.dtos[dto].module).toBe('p2-leave');
     }
   });
 

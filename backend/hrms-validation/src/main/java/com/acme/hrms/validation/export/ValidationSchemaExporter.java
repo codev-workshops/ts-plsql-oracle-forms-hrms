@@ -5,6 +5,11 @@ import com.acme.hrms.validation.dto.EmployeeSearchQuery;
 import com.acme.hrms.validation.dto.LoginRequest;
 import com.acme.hrms.validation.dto.ProxyModule;
 import com.acme.hrms.validation.dto.SsoExchangeRequest;
+import com.acme.hrms.validation.dto.leave.BusinessDaysQuery;
+import com.acme.hrms.validation.dto.leave.LeaveApproveRequest;
+import com.acme.hrms.validation.dto.leave.LeaveCancelRequest;
+import com.acme.hrms.validation.dto.leave.LeaveRejectRequest;
+import com.acme.hrms.validation.dto.leave.LeaveRequestCreateRequest;
 import com.acme.hrms.validation.dto.performance.AcknowledgeRequest;
 import com.acme.hrms.validation.dto.performance.GoalProgressRequest;
 import com.acme.hrms.validation.dto.performance.GoalRequest;
@@ -46,8 +51,9 @@ import java.util.Map;
 /**
  * Emits {@code frontend/src/generated/validation-schema.json} (contracts/p0-foundation/README.md
  * "exporter output format", extended by contracts/p1-performance/README.md) from the Bean
- * Validation annotations of the request DTOs of every frozen phase and {@link PasswordPolicy}.
- * Usage: {@code java ... ValidationSchemaExporter <output-file> [version]}.
+ * Validation annotations of the request DTOs of every frozen phase (contracts/p2-leave/README.md
+ * adds boolean fields and {@code custom} date rules) and {@link PasswordPolicy}. Usage: {@code java
+ * ... ValidationSchemaExporter <output-file> [version]}.
  */
 public final class ValidationSchemaExporter {
 
@@ -56,7 +62,8 @@ public final class ValidationSchemaExporter {
   public static final String MODULE = "hrms";
   public static final String MODULE_P0 = "p0-foundation";
   public static final String MODULE_P1 = "p1-performance";
-  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1);
+  public static final String MODULE_P2 = "p2-leave";
+  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1, MODULE_P2);
   public static final int SESSION_TIMEOUT_MIN_DEFAULT = 30;
 
   /** DTO name -> (owning contract module, class); insertion order is the output order. */
@@ -73,6 +80,11 @@ public final class ValidationSchemaExporter {
     register(MODULE_P1, "AcknowledgeRequest", AcknowledgeRequest.class);
     register(MODULE_P1, "GoalRequest", GoalRequest.class);
     register(MODULE_P1, "GoalProgressRequest", GoalProgressRequest.class);
+    register(MODULE_P2, "LeaveRequestCreateRequest", LeaveRequestCreateRequest.class);
+    register(MODULE_P2, "LeaveCancelRequest", LeaveCancelRequest.class);
+    register(MODULE_P2, "LeaveApproveRequest", LeaveApproveRequest.class);
+    register(MODULE_P2, "LeaveRejectRequest", LeaveRejectRequest.class);
+    register(MODULE_P2, "BusinessDaysQuery", BusinessDaysQuery.class);
   }
 
   private static void register(String module, String name, Class<?> dto) {
@@ -211,6 +223,17 @@ public final class ValidationSchemaExporter {
       n.put("type", "date");
       n.put("required", required);
       n.put("format", "date");
+      if (meta != null && !meta.ruleId().isEmpty()) {
+        ObjectNode rule = n.putArray("rules").addObject();
+        rule.put("id", meta.ruleId());
+        rule.put("kind", "custom");
+        rule.put("value", meta.ruleValue());
+        rule.put("errorCode", meta.ruleErrorCode());
+        rule.put("message", meta.ruleMessage());
+      }
+    } else if (f.getType() == Boolean.class || f.getType() == boolean.class) {
+      n.put("type", "boolean");
+      n.put("required", required);
     } else {
       n.put("type", "string");
       n.put("required", required);

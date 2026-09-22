@@ -63,6 +63,50 @@ class ValidationSchemaExporterTest {
   }
 
   @Test
+  void p2LeaveDtosPinLegacyDateRules() {
+    ObjectNode root = new ValidationSchemaExporter().export("x", 8);
+    assertThat(root.get("modules").get(2).asText()).isEqualTo("p2-leave");
+    JsonNode dtos = root.get("dtos");
+    for (String dto :
+        new String[] {
+          "LeaveRequestCreateRequest",
+          "LeaveCancelRequest",
+          "LeaveApproveRequest",
+          "LeaveRejectRequest",
+          "BusinessDaysQuery"
+        }) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p2-leave");
+    }
+    JsonNode create = dtos.get("LeaveRequestCreateRequest").get("fields");
+    assertThat(create.get("halfDay").get("type").asText()).isEqualTo("boolean");
+    assertThat(create.get("halfDayPeriod").get("values")).hasSize(2);
+    JsonNode start = create.get("startDate").get("rules").get(0);
+    assertThat(start.get("kind").asText()).isEqualTo("custom");
+    assertThat(start.get("value").asText()).isEqualTo("5");
+    assertThat(start.get("errorCode").asText()).isEqualTo("-20211");
+    JsonNode end = create.get("endDate").get("rules").get(0);
+    assertThat(end.get("value").asText()).isEqualTo("startDate");
+    assertThat(end.get("errorCode").asText()).isEqualTo("-20210");
+    assertThat(
+            dtos.get("BusinessDaysQuery")
+                .get("fields")
+                .get("end")
+                .get("rules")
+                .get(0)
+                .get("errorCode")
+                .asText())
+        .isEqualTo("-20210");
+    assertThat(create.get("reason").get("maxLength").asInt()).isEqualTo(4000);
+    assertThat(
+            dtos.get("LeaveRejectRequest")
+                .get("fields")
+                .get("comments")
+                .get("required")
+                .asBoolean())
+        .isTrue();
+  }
+
+  @Test
   void hashIsStable() {
     ValidationSchemaExporter e = new ValidationSchemaExporter();
     assertThat(e.export("a", 8).get("sourceHash")).isEqualTo(e.export("b", 8).get("sourceHash"));
