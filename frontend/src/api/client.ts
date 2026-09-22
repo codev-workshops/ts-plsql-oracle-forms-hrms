@@ -3,7 +3,22 @@ import type {
   ChangePasswordRequest,
   CurrentUser,
   DepartmentRef,
+  Dependent,
+  DependentRequest,
+  EmergencyContact,
+  EmergencyContactRequest,
+  EmployeeCreateRequest,
+  EmployeeDetail,
+  EmployeeDetailWithEtag,
+  EmployeeHistoryEntry,
+  EmployeeListQuery,
   EmployeeSearchQuery,
+  EmployeeTerminateRequest,
+  EmployeeTransferRequest,
+  EmployeeUpdateRequest,
+  PageOfEmployeeListItem,
+  SalaryChangeRequest,
+  SalaryRecord,
   JobTitleRef,
   LeaveTypeRef,
   LocationRef,
@@ -94,6 +109,76 @@ export const api = {
   employees: {
     async searchEmployees(params: EmployeeSearchQuery): Promise<PageOfEmployeeSummary> {
       const { data } = await http.get<PageOfEmployeeSummary>('/api/employees', { params });
+      return data;
+    },
+    // --- contracts/p3-employee/openapi.yaml, employee-service ---------------------------
+    async listEmployees(params: EmployeeListQuery = {}): Promise<PageOfEmployeeListItem> {
+      const { data } = await http.get<PageOfEmployeeListItem>('/api/employees', { params });
+      return data;
+    },
+    async createEmployee(body: EmployeeCreateRequest): Promise<EmployeeDetail> {
+      const { data } = await http.post<EmployeeDetail>('/api/employees', body);
+      return data;
+    },
+    async getEmployee(id: number): Promise<EmployeeDetailWithEtag> {
+      const res = await http.get<EmployeeDetail>(`/api/employees/${id}`);
+      const etag = (res.headers as Record<string, string | undefined>).etag ?? `"${res.data.version}"`;
+      return { employee: res.data, etag };
+    },
+    async updateEmployee(id: number, etag: string, body: EmployeeUpdateRequest): Promise<EmployeeDetailWithEtag> {
+      const res = await http.put<EmployeeDetail>(`/api/employees/${id}`, body, { headers: { 'If-Match': etag } });
+      const next = (res.headers as Record<string, string | undefined>).etag ?? `"${res.data.version}"`;
+      return { employee: res.data, etag: next };
+    },
+    async terminateEmployee(id: number, body: EmployeeTerminateRequest): Promise<EmployeeDetail> {
+      const { data } = await http.post<EmployeeDetail>(`/api/employees/${id}/terminate`, body);
+      return data;
+    },
+    async transferEmployee(id: number, body: EmployeeTransferRequest): Promise<EmployeeDetail> {
+      const { data } = await http.post<EmployeeDetail>(`/api/employees/${id}/transfer`, body);
+      return data;
+    },
+    async listEmployeeHistory(id: number): Promise<EmployeeHistoryEntry[]> {
+      const { data } = await http.get<EmployeeHistoryEntry[]>(`/api/employees/${id}/history`);
+      return data;
+    },
+    async listDependents(id: number): Promise<Dependent[]> {
+      const { data } = await http.get<Dependent[]>(`/api/employees/${id}/dependents`);
+      return data;
+    },
+    async addDependent(id: number, body: DependentRequest): Promise<Dependent> {
+      const { data } = await http.post<Dependent>(`/api/employees/${id}/dependents`, body);
+      return data;
+    },
+    async updateDependent(id: number, dependentId: number, body: DependentRequest): Promise<Dependent> {
+      const { data } = await http.put<Dependent>(`/api/employees/${id}/dependents/${dependentId}`, body);
+      return data;
+    },
+    async listEmergencyContacts(id: number): Promise<EmergencyContact[]> {
+      const { data } = await http.get<EmergencyContact[]>(`/api/employees/${id}/contacts`);
+      return data;
+    },
+    async addEmergencyContact(id: number, body: EmergencyContactRequest): Promise<EmergencyContact> {
+      const { data } = await http.post<EmergencyContact>(`/api/employees/${id}/contacts`, body);
+      return data;
+    },
+    async updateEmergencyContact(id: number, contactId: number, body: EmergencyContactRequest): Promise<EmergencyContact> {
+      const { data } = await http.put<EmergencyContact>(`/api/employees/${id}/contacts/${contactId}`, body);
+      return data;
+    },
+  },
+  /** `salary-module` owns `/api/employees/{id}/salary/**` (ARCH-01) – kept apart from `employees`. */
+  salary: {
+    async getCurrentSalary(empId: number): Promise<SalaryRecord> {
+      const { data } = await http.get<SalaryRecord>(`/api/employees/${empId}/salary`);
+      return data;
+    },
+    async changeSalary(empId: number, body: SalaryChangeRequest): Promise<SalaryRecord> {
+      const { data } = await http.post<SalaryRecord>(`/api/employees/${empId}/salary`, body);
+      return data;
+    },
+    async listSalaryHistory(empId: number): Promise<SalaryRecord[]> {
+      const { data } = await http.get<SalaryRecord[]>(`/api/employees/${empId}/salary/history`);
       return data;
     },
   },

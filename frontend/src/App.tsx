@@ -5,7 +5,8 @@ import type { CurrentUser } from './api/types';
 import { AppShell, MODULE_FLAGS } from './app/AppShell';
 import { AuthProvider } from './app/AuthContext';
 import { ErrorBoundary } from './app/ErrorBoundary';
-import { MODULE_TILES, isModulePromoted } from './app/modules';
+import { ModuleFlagsProvider } from './app/ModuleFlagsContext';
+import { MODULE_TILES, isModulePromoted, type ModuleFlagValue } from './app/modules';
 import { ProtectedRoute } from './app/ProtectedRoute';
 import { ToastProvider } from './app/ToastContext';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
@@ -15,6 +16,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage';
 import { PerformancePage } from './pages/performance/PerformancePage';
 import { LeavePage } from './pages/leave/LeavePage';
+import { EmployeePage } from './pages/employee/EmployeePage';
 
 export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
@@ -36,7 +38,7 @@ export function AppRoutes() {
           <Route path="/forbidden" element={<ForbiddenPage />} />
           {promoted.map((t) => (
             <Route key={t.id} element={<ProtectedRoute anyOf={t.anyOf} />}>
-              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : <ModulePlaceholderPage />} />
+              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : t.id === 'employees' ? <EmployeePage /> : <ModulePlaceholderPage />} />
             </Route>
           ))}
         </Route>
@@ -52,9 +54,11 @@ export interface AppProvidersProps {
   initialUser?: CurrentUser | null;
   /** Test-only: render with a MemoryRouter at these entries instead of BrowserRouter. */
   initialEntries?: string[];
+  /** Test-only: override the proxy flags read from `VITE_MODULE_FLAGS`. */
+  moduleFlags?: Record<string, ModuleFlagValue>;
 }
 
-export function AppProviders({ children, queryClient, initialUser = null, initialEntries }: AppProvidersProps) {
+export function AppProviders({ children, queryClient, initialUser = null, initialEntries, moduleFlags }: AppProvidersProps) {
   const qc = useMemo(() => queryClient ?? createQueryClient(), [queryClient]);
   const Router = initialEntries ? MemoryRouter : BrowserRouter;
   return (
@@ -62,7 +66,9 @@ export function AppProviders({ children, queryClient, initialUser = null, initia
       <QueryClientProvider client={qc}>
         <ToastProvider>
           <AuthProvider initialUser={initialUser}>
-            <Router {...(initialEntries ? { initialEntries } : {})}>{children}</Router>
+            <ModuleFlagsProvider flags={moduleFlags}>
+              <Router {...(initialEntries ? { initialEntries } : {})}>{children}</Router>
+            </ModuleFlagsProvider>
           </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>

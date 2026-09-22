@@ -425,3 +425,288 @@ export interface LeaveRequestsForEmployeeQuery extends LeaveRequestFilter {
   page?: number;
   size?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3 – contracts/p3-employee/openapi.yaml (employee-service + salary-module)
+// ---------------------------------------------------------------------------
+
+/** Decimal string with exactly two decimals (`NUMBER(12,2)`); never a float. */
+export type Money = string;
+
+export type EmploymentStatus = 'ACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'TERMINATED';
+export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERN';
+export type Gender = 'M' | 'F' | 'O';
+export type Relationship = 'SPOUSE' | 'CHILD' | 'PARENT' | 'DOMESTIC_PARTNER' | 'OTHER';
+export type HistoryChangeType =
+  | 'HIRE'
+  | 'TRANSFER'
+  | 'PROMOTION'
+  | 'DEMOTION'
+  | 'SALARY_CHANGE'
+  | 'TERMINATION'
+  | 'REHIRE'
+  | 'LEAVE_START'
+  | 'LEAVE_END'
+  | 'STATUS_CHANGE';
+export type PayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'SEMIMONTHLY' | 'MONTHLY';
+export type SalaryBasis = 'ANNUAL' | 'HOURLY';
+
+/** `GET /api/employees` without `fields` → `PageOfEmployeeListItem`. */
+export interface EmployeeListQuery {
+  lastName?: string;
+  firstName?: string;
+  q?: string;
+  deptId?: number;
+  jobId?: number;
+  managerEmpId?: number;
+  status?: EmploymentStatus;
+  active?: boolean;
+  locationCode?: string;
+  hireDateFrom?: string;
+  hireDateTo?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface EmployeeCreateRequest {
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  dateOfBirth?: string | null;
+  gender?: Gender | null;
+  maritalStatus?: string | null;
+  nationality?: string | null;
+  ssn?: string | null;
+  email?: string | null;
+  phoneWork?: string | null;
+  phoneMobile?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  stateProvince?: string | null;
+  postalCode?: string | null;
+  countryCode?: string | null;
+  hireDate: string;
+  deptId: number;
+  jobId: number;
+  managerEmpId?: number | null;
+  locationCode?: string | null;
+  employmentType?: EmploymentType | null;
+  initialSalary?: Money | null;
+  notes?: string | null;
+}
+
+/** Full replacement of the editable set; `ssn` absent/null = unchanged. */
+export interface EmployeeUpdateRequest {
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  dateOfBirth?: string | null;
+  gender?: Gender | null;
+  maritalStatus?: string | null;
+  nationality?: string | null;
+  ssn?: string | null;
+  email?: string | null;
+  phoneWork?: string | null;
+  phoneMobile?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  stateProvince?: string | null;
+  postalCode?: string | null;
+  countryCode?: string | null;
+  jobId: number;
+  managerEmpId?: number | null;
+  employmentType?: EmploymentType | null;
+  notes?: string | null;
+}
+
+export interface EmployeeTerminateRequest {
+  effectiveDate: string;
+  reason: string;
+  comments?: string | null;
+}
+
+export interface EmployeeTransferRequest {
+  effectiveDate: string;
+  deptId: number;
+  newJobId?: number | null;
+  newManagerEmpId?: number | null;
+  newLocationCode?: string | null;
+  reasonCode?: string | null;
+  comments?: string | null;
+}
+
+export interface SalaryChangeRequest {
+  effectiveDate: string;
+  baseSalary: Money;
+  currencyCode?: string | null;
+  payFrequency?: PayFrequency | null;
+  salaryBasis?: SalaryBasis | null;
+  changeReason: string;
+}
+
+export interface DependentRequest {
+  firstName: string;
+  lastName: string;
+  relationship: Relationship;
+  dateOfBirth?: string | null;
+  ssn?: string | null;
+  benefitsEnrolled?: boolean | null;
+  active?: boolean | null;
+}
+
+export interface EmergencyContactRequest {
+  contactName: string;
+  relationship?: string | null;
+  phonePrimary: string;
+  phoneSecondary?: string | null;
+  email?: string | null;
+  priorityOrder?: number | null;
+  active?: boolean | null;
+}
+
+/** `VW_EMPLOYEE_DETAILS` semantics; never contains SSN, photo or salary. */
+export interface EmployeeDetail {
+  id: number;
+  empNumber: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  dateOfBirth: string | null;
+  gender: Gender | null;
+  maritalStatus: string | null;
+  nationality: string | null;
+  ssnLast4: string | null;
+  email: string | null;
+  phoneWork: string | null;
+  phoneMobile: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  stateProvince: string | null;
+  postalCode: string | null;
+  countryCode: string | null;
+  hireDate: string;
+  terminationDate: string | null;
+  terminationReason: string | null;
+  deptId: number;
+  deptName: string;
+  jobId: number;
+  jobTitle: string;
+  gradeCode: string | null;
+  managerEmpId: number | null;
+  managerName: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  employmentType: EmploymentType;
+  employmentStatus: EmploymentStatus;
+  active: boolean;
+  notes: string | null;
+  version: number;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy: string | null;
+  modifiedDate: string | null;
+}
+
+export interface EmployeeListItem {
+  id: number;
+  empNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  deptId: number;
+  deptName: string;
+  jobId: number;
+  jobTitle: string;
+  managerEmpId: number | null;
+  managerName: string | null;
+  locationCode: string | null;
+  hireDate: string;
+  employmentType: EmploymentType;
+  employmentStatus: EmploymentStatus;
+  active: boolean;
+}
+
+export interface PageOfEmployeeListItem {
+  content: EmployeeListItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface SalaryRecord {
+  salaryId: number;
+  empId: number;
+  effectiveDate: string;
+  endDate: string | null;
+  baseSalary: Money;
+  currencyCode: string;
+  payFrequency: PayFrequency;
+  salaryBasis: SalaryBasis;
+  changeReason: string | null;
+  changePct: string | null;
+  active: boolean;
+  outOfGradeBand: boolean;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface EmployeeHistoryEntry {
+  histId: number;
+  empId: number;
+  changeType: HistoryChangeType;
+  effectiveDate: string;
+  oldDeptId: number | null;
+  oldDeptName: string | null;
+  newDeptId: number | null;
+  newDeptName: string | null;
+  oldJobId: number | null;
+  oldJobTitle: string | null;
+  newJobId: number | null;
+  newJobTitle: string | null;
+  oldManagerId: number | null;
+  oldManagerName: string | null;
+  newManagerId: number | null;
+  newManagerName: string | null;
+  oldSalary: Money | null;
+  newSalary: Money | null;
+  oldLocation: string | null;
+  newLocation: string | null;
+  reasonCode: string | null;
+  comments: string | null;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface Dependent {
+  dependentId: number;
+  empId: number;
+  firstName: string;
+  lastName: string;
+  relationship: Relationship;
+  dateOfBirth: string | null;
+  ssnLast4: string | null;
+  benefitsEnrolled: boolean;
+  active: boolean;
+}
+
+export interface EmergencyContact {
+  contactId: number;
+  empId: number;
+  contactName: string;
+  relationship: string | null;
+  phonePrimary: string;
+  phoneSecondary: string | null;
+  email: string | null;
+  priorityOrder: number;
+  active: boolean;
+}
+
+/** `GET …/{id}` returns the ETag the caller must echo as `If-Match` on `PUT`. */
+export interface EmployeeDetailWithEtag {
+  employee: EmployeeDetail;
+  etag: string;
+}
