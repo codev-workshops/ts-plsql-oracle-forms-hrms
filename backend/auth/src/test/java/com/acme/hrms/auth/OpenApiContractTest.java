@@ -19,7 +19,8 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Generate/compare gate for the frozen contract: the set of (method, path) pairs served by the
  * application must equal the union of the sets declared in the frozen contracts (P0 foundation + P1
- * performance) – nothing missing, nothing undocumented.
+ * performance + P2 leave) – nothing missing, nothing undocumented. Operations the P2 contract
+ * declares with {@code x-deferred: true} (the P5 admin batch routes) must NOT be served.
  */
 class OpenApiContractTest extends AuthApiTestBase {
 
@@ -31,11 +32,17 @@ class OpenApiContractTest extends AuthApiTestBase {
   void servedOperationsEqualTheFrozenContractExactly() throws Exception {
     Set<String> p0 = operations("p0-foundation");
     Set<String> p1 = operations("p1-performance");
+    Set<String> p2 = operations("p2-leave");
+    Set<String> p2Deferred = deferredOperations("p2-leave");
     assertThat(p0).hasSize(11);
     assertThat(p1).hasSize(18);
+    assertThat(p2).hasSize(16);
+    assertThat(p2Deferred).hasSize(4).allMatch(op -> op.startsWith("POST /api/leave/admin/"));
     Set<String> contract = new TreeSet<>(p0);
     contract.addAll(p1);
-    assertThat(contract).hasSize(29);
+    contract.addAll(p2);
+    contract.removeAll(p2Deferred);
+    assertThat(contract).hasSize(40);
 
     Set<String> served = new TreeSet<>();
     for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mappings.getHandlerMethods().entrySet()) {
@@ -54,6 +61,14 @@ class OpenApiContractTest extends AuthApiTestBase {
   }
 
   private static Set<String> operations(String contractDir) throws Exception {
+    return operations(contractDir, false);
+  }
+
+  private static Set<String> deferredOperations(String contractDir) throws Exception {
+    return operations(contractDir, true);
+  }
+
+  private static Set<String> operations(String contractDir, boolean onlyDeferred) throws Exception {
     Path spec = HrmsPostgres.repoRoot().resolve("contracts/" + contractDir + "/openapi.yaml");
     Map<String, Object> doc = new Yaml().load(Files.readString(spec));
     @SuppressWarnings("unchecked")
@@ -61,9 +76,17 @@ class OpenApiContractTest extends AuthApiTestBase {
     Set<String> ops = new TreeSet<>();
     paths.forEach(
         (path, methods) ->
-            methods.keySet().stream()
-                .filter(m -> Set.of("get", "post", "put", "patch", "delete").contains(m))
-                .forEach(m -> ops.add(m.toUpperCase() + " " + path)));
+            methods.forEach(
+                (m, op) -> {
+                  if (!Set.of("get", "post", "put", "patch", "delete").contains(m)) {
+                    return;
+                  }
+                  boolean deferred =
+                      op instanceof Map<?, ?> o && Boolean.TRUE.equals(o.get("x-deferred"));
+                  if (!onlyDeferred || deferred) {
+                    ops.add(m.toUpperCase() + " " + path);
+                  }
+                }));
     return ops;
   }
 }

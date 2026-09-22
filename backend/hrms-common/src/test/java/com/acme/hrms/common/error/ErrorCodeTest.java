@@ -40,7 +40,7 @@ class ErrorCodeTest {
     Pattern row =
         Pattern.compile("^\\|\\s*`(-20\\d{3}|[A-Z][A-Z0-9_]+)`\\s*\\|\\s*(\\d{3})\\s*\\|");
     Set<String> matched = new TreeSet<>();
-    for (String contract : List.of("p0-foundation", "p1-performance")) {
+    for (String contract : List.of("p0-foundation", "p1-performance", "p2-leave")) {
       List<String> lines =
           Files.readAllLines(root.resolve("contracts/" + contract + "/error-codes.md"));
       for (String line : lines) {

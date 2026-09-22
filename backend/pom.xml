@@ -32,6 +32,7 @@
     <module>hrms-notification</module>
     <module>reference</module>
     <module>performance</module>
+    <module>leave</module>
     <module>auth</module>
     <module>../tools/parallel-run</module>
     <module>../tools/reconcile</module>
@@ -68,6 +69,11 @@
       <dependency>
         <groupId>com.acme.hrms</groupId>
         <artifactId>performance</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.acme.hrms</groupId>
+        <artifactId>leave</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

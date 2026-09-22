@@ -2,6 +2,7 @@ package com.acme.hrms.tools.cdc;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * CUTOVER_PLAN.md §2 rule 1: one owning module per table group. Tables are listed in FK order so a
@@ -70,6 +71,19 @@ public enum TableGroup {
           Map.entry("audit_log", "audit_id"),
           Map.entry("notification_queue", "notification_id"),
           Map.entry("user_sessions", "session_id"));
+
+  /**
+   * Columns computed by the database on both sides (Oracle virtual column, PostgreSQL {@code
+   * GENERATED ALWAYS AS ... STORED}); they come back from {@code select *} but must never be
+   * written by the bulk load or the reverse extract (DATA_DICTIONARY.md §3,
+   * MODERNIZATION_BLUEPRINT.md §10).
+   */
+  public static final Map<String, Set<String>> GENERATED_COLUMNS =
+      Map.of("leave_balances", Set.of("available"));
+
+  public static boolean isGenerated(String table, String column) {
+    return GENERATED_COLUMNS.getOrDefault(table, Set.of()).contains(column.toLowerCase());
+  }
 
   /**
    * PostgreSQL sequence backing each table's primary key (same names as the Oracle SEQ_*). Tables

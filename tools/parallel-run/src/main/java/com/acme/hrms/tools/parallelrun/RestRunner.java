@@ -36,9 +36,10 @@ public final class RestRunner {
   }
 
   /**
-   * Ids captured from setup responses; paths may reference them as {cycleId}, {reviewId}, {goalId}.
+   * Ids captured from setup responses; paths may reference them as {cycleId}, {reviewId}, {goalId},
+   * {requestId}.
    */
-  static final List<String> CAPTURED_IDS = List.of("cycleId", "reviewId", "goalId");
+  static final List<String> CAPTURED_IDS = List.of("cycleId", "reviewId", "goalId", "requestId");
 
   private final Map<String, String> context = new LinkedHashMap<>();
 
@@ -125,14 +126,23 @@ public final class RestRunner {
     if (resp.statusCode() >= 400) {
       return Outcome.error(n.path("code").asText("HTTP_" + resp.statusCode()));
     }
+    if (n.isArray()) {
+      // list endpoints (e.g. /api/leave/balances/mine?year=) project their single/first element
+      n = n.isEmpty() ? JSON.createObjectNode() : n.get(0);
+    }
     Map<String, String> fields = new LinkedHashMap<>();
     for (String w : wanted) {
       JsonNode v = n.path(w);
       if (v.isMissingNode() && w.equals("emp_id")) {
         v = n.path("user").path("empId");
       }
-      fields.put(w, v.isMissingNode() ? null : v.asText());
+      fields.put(w, v.isMissingNode() ? null : text(v));
     }
     return Outcome.ok(fields);
+  }
+
+  /** JSON numbers as Oracle's NUMBER getString renders them: no trailing zeros (5.00 → 5). */
+  static String text(JsonNode v) {
+    return v.isNumber() ? v.decimalValue().stripTrailingZeros().toPlainString() : v.asText();
   }
 }

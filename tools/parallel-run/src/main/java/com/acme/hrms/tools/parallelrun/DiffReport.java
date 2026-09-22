@@ -36,9 +36,13 @@ public final class DiffReport {
       return legacy == null && ScenarioRegistry.UNTESTED_LIVE.equals(legacySource);
     }
 
+    boolean deferred() {
+      return LeaveScenarios.DEFERRED_TO_P5.contains(scenario);
+    }
+
     String verdict() {
       if (targetOk() && legacyOk()) {
-        return untestedLive() ? "UNTESTED-LIVE" : "PASS";
+        return untestedLive() ? "UNTESTED-LIVE" : deferred() ? "DEFERRED" : "PASS";
       }
       if (!targetOk() && legacyOk()) {
         return "TARGET-DIFF";
@@ -77,6 +81,10 @@ public final class DiffReport {
     if (untested > 0) {
       sb.append(", ").append(untested).append(" untested-live");
     }
+    long deferred = rows.stream().filter(r -> r.verdict().equals("DEFERRED")).count();
+    if (deferred > 0) {
+      sb.append(", ").append(deferred).append(" deferred");
+    }
     sb.append(")\n\n");
     sb.append(
         "| scenario | expected (contract) | legacy | target | verdict |\n|---|---|---|---|---|\n");
@@ -90,9 +98,11 @@ public final class DiffReport {
           .append(
               Objects.equals(r.expected(), r.legacyExpected())
                   ? ""
-                  : r.untestedLive()
-                      ? " (with Oracle attached expects " + fmt(r.legacyExpected()) + ")"
-                      : " (documented divergence, expects " + fmt(r.legacyExpected()) + ")")
+                  : r.deferred()
+                      ? " (endpoint mounted in P5; legacy expects " + fmt(r.legacyExpected()) + ")"
+                      : r.untestedLive()
+                          ? " (with Oracle attached expects " + fmt(r.legacyExpected()) + ")"
+                          : " (documented divergence, expects " + fmt(r.legacyExpected()) + ")")
           .append(" | ")
           .append(fmt(r.target()))
           .append(" | ")

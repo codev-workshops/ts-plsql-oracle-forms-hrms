@@ -59,16 +59,16 @@ public final class ReverseExtract {
       }
       try (ResultSet rs = sel.executeQuery()) {
         ResultSetMetaData md = rs.getMetaData();
-        int cols = md.getColumnCount();
+        List<Integer> idx = BulkLoader.writableColumns(table, md);
         List<String> oracleCols = new ArrayList<>();
-        for (int i = 1; i <= cols; i++) {
+        for (int i : idx) {
           oracleCols.add(TypeMapping.oracleIdentifier(md.getColumnLabel(i)));
         }
         try (PreparedStatement merge = oracle.prepareStatement(mergeSql(table, oracleCols))) {
           int inBatch = 0;
           while (rs.next()) {
-            for (int i = 1; i <= cols; i++) {
-              merge.setObject(i, TypeMapping.toOracle(rs.getObject(i)));
+            for (int k = 0; k < idx.size(); k++) {
+              merge.setObject(k + 1, TypeMapping.toOracle(rs.getObject(idx.get(k))));
             }
             merge.addBatch();
             n++;
