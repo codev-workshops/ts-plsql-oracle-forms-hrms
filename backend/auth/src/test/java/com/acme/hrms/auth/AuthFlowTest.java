@@ -228,7 +228,7 @@ class AuthFlowTest extends AuthApiTestBase {
     String token = accessToken(login(EXEC_EMAIL, PASSWORD));
     mvc.perform(get("/api/auth/sessions").header("Authorization", "Bearer " + token))
         .andExpect(status().isNotFound());
-    mvc.perform(get("/api/employees/1").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/employees/1/salary/current").header("Authorization", "Bearer " + token))
         .andExpect(status().isNotFound());
   }
 

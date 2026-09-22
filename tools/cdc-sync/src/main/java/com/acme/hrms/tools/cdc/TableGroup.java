@@ -81,9 +81,22 @@ public enum TableGroup {
   public static final Map<String, Set<String>> GENERATED_COLUMNS =
       Map.of("leave_balances", Set.of("available"));
 
-  /** Columns deliberately present only in PostgreSQL and ignored by Level 3 reconciliation. */
+  /**
+   * Columns deliberately present only in PostgreSQL: ignored by Level 3 reconciliation and never
+   * sent to Oracle by the reverse extract ({@code employees.version} = ETag / If-Match counter).
+   */
   public static final Map<String, Set<String>> PG_ONLY_COLUMNS =
-      Map.of("salary_records", Set.of("out_of_grade_band"));
+      Map.of(
+          "salary_records", Set.of("out_of_grade_band"),
+          "employees", Set.of("version"));
+
+  /**
+   * Business-key sequences that back a generated string column rather than a primary key. The
+   * legacy {@code generate_emp_number} used {@code MAX()+1}; the Java service draws from {@code
+   * SEQ_EMP_NUMBER}, so the bulk load must restart it above the highest loaded {@code EMP-nnnnnn}.
+   */
+  public static final Map<String, String> BUSINESS_KEY_SEQUENCES =
+      Map.of("employees", "seq_emp_number");
 
   public static boolean isPgOnly(String table, String column) {
     return PG_ONLY_COLUMNS.getOrDefault(table, Set.of()).contains(column.toLowerCase());

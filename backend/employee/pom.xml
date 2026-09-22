@@ -8,9 +8,9 @@
     <artifactId>hrms-backend</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>auth</artifactId>
-  <name>auth</name>
-  <description>auth-service: Spring Security, JWT + refresh, BCrypt, authorities, lockout, SSO bridge, FieldEncryptionService</description>
+  <artifactId>employee</artifactId>
+  <name>employee</name>
+  <description>employee-service: owner of employees, employee_history, employee_dependents, emergency_contacts (contracts/p3-employee)</description>
 
   <dependencies>
     <dependency>
@@ -27,27 +27,11 @@
     </dependency>
     <dependency>
       <groupId>com.acme.hrms</groupId>
-      <artifactId>hrms-notification</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.acme.hrms</groupId>
-      <artifactId>reference</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.acme.hrms</groupId>
-      <artifactId>performance</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.acme.hrms</groupId>
-      <artifactId>leave</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.acme.hrms</groupId>
       <artifactId>salary</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.acme.hrms</groupId>
-      <artifactId>employee</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -55,11 +39,7 @@
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-actuator</artifactId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
     <dependency>
       <groupId>com.acme.hrms</groupId>
@@ -83,23 +63,4 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-maven-plugin</artifactId>
-        <configuration>
-          <mainClass>com.acme.hrms.auth.HrmsApplication</mainClass>
-        </configuration>
-        <executions>
-          <execution>
-            <goals>
-              <goal>repackage</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
 </project>
