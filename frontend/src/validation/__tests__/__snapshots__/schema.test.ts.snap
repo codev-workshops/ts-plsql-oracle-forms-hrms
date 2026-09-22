@@ -636,6 +636,71 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
   },
+  "PayPeriodListQuery": {
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "sort": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollDetailListQuery": {
+    "empId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollRunCreateRequest": {
+    "runType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollRunListQuery": {
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollRunReverseRequest": {
+    "reason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
   "ReviewCycleRequest": {
     "calibrationDue": {
       "required": false,
