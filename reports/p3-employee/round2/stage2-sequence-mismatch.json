@@ -1,0 +1,9 @@
+{
+  "step": "initial sequence assertion before cleanup rerun",
+  "previousMax": 99,
+  "expectedEmpNumber": "EMP-000100",
+  "observedEmpNumber": "EMP-001000",
+  "observedEmployeeId": 10000,
+  "createStatus": 201,
+  "assessment": "Backend sequence did not equal previous maximum employee-number suffix plus one on the first NEW-stage attempt. The created probe was terminated before the successful reruns. Subsequent reruns matched after the sequence had advanced."
+}

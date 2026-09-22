@@ -1,0 +1,129 @@
+[
+  {
+    "step": "create employee",
+    "status": 201,
+    "empNumber": "EMP-001003",
+    "id": 10003
+  },
+  {
+    "step": "sequence and initial salary",
+    "status": "passed",
+    "expectedNumber": "EMP-001003",
+    "activeSalaryRows": 1
+  },
+  {
+    "step": "salary change",
+    "status": 201,
+    "body": {
+      "salaryId": 50,
+      "empId": 10003,
+      "effectiveDate": "2026-09-30",
+      "endDate": null,
+      "baseSalary": "80000.00",
+      "currencyCode": "USD",
+      "payFrequency": "MONTHLY",
+      "salaryBasis": "ANNUAL",
+      "changeReason": "MARKET",
+      "changePct": "14.29",
+      "active": true,
+      "outOfGradeBand": false,
+      "createdBy": "1",
+      "createdDate": "2026-09-22T15:05:54"
+    }
+  },
+  {
+    "step": "salary DB close/open rows",
+    "status": "passed",
+    "activeRows": 1,
+    "closedRowsWithEndDate": 1
+  },
+  {
+    "step": "duplicate active e-mail",
+    "status": 409,
+    "code": "-20502",
+    "body": {
+      "code": "-20502",
+      "message": "Email address already in use: david.martinez@company.com",
+      "field": "email",
+      "traceId": "00777b198c4e41a8b8adac7ba80d4143"
+    }
+  },
+  {
+    "step": "duplicate e-mail UI rendering",
+    "status": "passed",
+    "distinction": "API returned contract code and UI rendered inline field error"
+  },
+  {
+    "step": "self-manager cycle",
+    "status": 400,
+    "code": "-20004",
+    "body": {
+      "code": "-20004",
+      "message": "Circular reporting chain detected: Employee 10003 cannot report to 10003",
+      "field": "managerEmpId",
+      "traceId": "a30c783518f0c4ad4aedfc12aef62b99"
+    }
+  },
+  {
+    "step": "terminate employee",
+    "status": 200,
+    "body": {
+      "id": 10003,
+      "empNumber": "EMP-001003",
+      "firstName": "REAL",
+      "middleName": null,
+      "lastName": "STACK",
+      "dateOfBirth": null,
+      "gender": null,
+      "maritalStatus": null,
+      "nationality": null,
+      "ssnLast4": null,
+      "email": "real-stack-1790089553173@company.com",
+      "phoneWork": null,
+      "phoneMobile": null,
+      "addressLine1": null,
+      "addressLine2": null,
+      "city": null,
+      "stateProvince": null,
+      "postalCode": null,
+      "countryCode": null,
+      "hireDate": "2026-09-29",
+      "terminationDate": "2026-10-22",
+      "terminationReason": "VOLUNTARY",
+      "deptId": 20,
+      "deptName": "Finance & Accounting",
+      "jobId": 51,
+      "jobTitle": "QA Analyst",
+      "gradeCode": "G3",
+      "managerEmpId": null,
+      "managerName": null,
+      "locationCode": null,
+      "locationName": null,
+      "employmentType": "FULL_TIME",
+      "employmentStatus": "TERMINATED",
+      "active": false,
+      "notes": null,
+      "version": 1,
+      "createdBy": "1",
+      "createdDate": "2026-09-22T15:05:54",
+      "modifiedBy": "1",
+      "modifiedDate": "2026-09-22T15:05:54"
+    }
+  },
+  {
+    "step": "second termination",
+    "status": 422,
+    "code": "-20005",
+    "body": {
+      "code": "-20005",
+      "message": "Employee 10003 is already terminated",
+      "traceId": "87378cb867047a8437d4155eea310de1"
+    }
+  },
+  {
+    "step": "session revocation",
+    "status": "not exercised",
+    "reason": "Fresh employee has no user_account; seeded accounts are referenced by tests/golden/*.csv and were not terminated",
+    "userAccountRows": 0
+  }
+]
