@@ -47,6 +47,10 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiError> handleHrms(HrmsException e, HttpServletRequest request) {
     ResponseEntity<ApiError> response =
         render(e.code(), e.getMessage(), e.field(), null, request, e, false);
+    if (e.status() != e.code().status()) {
+      response =
+          ResponseEntity.status(e.status()).headers(response.getHeaders()).body(response.getBody());
+    }
     if (e instanceof RateLimitedException rl) {
       return ResponseEntity.status(response.getStatusCode())
           .headers(response.getHeaders())

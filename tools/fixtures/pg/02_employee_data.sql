@@ -160,6 +160,45 @@ values (42, 42, DATE '2023-01-01', NULL, 105000, 'USD', 'MONTHLY', 'ANNUAL', 'An
 insert into salary_records (salary_id, emp_id, effective_date, end_date, base_salary, currency_code, pay_frequency, salary_basis, change_reason, active_flag, created_by, created_date)
 values (43, 43, DATE '2023-01-01', NULL, 65000, 'USD', 'MONTHLY', 'ANNUAL', 'Annual review', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
 
+-- -----------------------------------------------------------------------
+-- EMPLOYEE TAX INFO (2024 W-4 data read by PKG_PAYROLL.calculate_employee_pay)
+-- Employees without a row keep the legacy defaults (SINGLE / 0 allowances / no state).
+-- Covers: NY + CA + IL state tax, MARRIED_JOINT / MARRIED_SEPARATE ladders,
+-- allowances, additional federal withholding and a zero-rate state (TX).
+-- -----------------------------------------------------------------------
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (1, 1, 2024, 'MARRIED_JOINT', 2, 2, 250.00, 0, 'N', 'NY', DATE '2024-01-08', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (2, 20, 2024, 'MARRIED_JOINT', 0, 0, 0, 0, 'N', 'NY', DATE '2024-01-10', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (3, 30, 2024, 'MARRIED_SEPARATE', 0, 0, 0, 0, 'N', 'TX', DATE '2024-01-15', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (4, 34, 2024, 'SINGLE', 1, 1, 0, 0, 'N', 'IL', DATE '2024-01-22', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (5, 40, 2024, 'MARRIED_JOINT', 1, 1, 0, 0, 'N', 'CA', DATE '2024-01-09', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_tax_info (tax_info_id, emp_id, tax_year, filing_status, federal_allowances, state_allowances, additional_fed_wh, additional_state_wh, exempt_flag, state_code, w4_received_date, active_flag, created_by, created_date)
+values (6, 41, 2024, 'SINGLE', 0, 0, 50.00, 0, 'N', 'CA', DATE '2024-02-01', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+
+-- -----------------------------------------------------------------------
+-- EMPLOYEE BANK ACCOUNTS (masked on the pay register: bank name + last 4 of routing / account)
+-- account_number_enc is the Java wire format enc:<keyId>:<base64(iv||ct||tag)> produced with the
+-- Level-1 test key (hrms.auth.encryption key-id=test-k1, backend/auth/src/test/resources/
+-- application-test.yml). Under any other key it is undecryptable and the register prints "****"
+-- for ACCOUNT_LAST4, exactly like a legacy ciphertext awaiting CDC re-encryption.
+-- -----------------------------------------------------------------------
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (1, 1, 'First National Bank', '021000021', 'enc:test-k1:213aIihkQv+eNFreEQlsomrVZfZ/wFEtf8F43f43NUyt/mKSA4y4Ww8=', 'CHECKING', 'FULL', NULL, NULL, 1, 'Y', DATE '2010-03-20', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (2, 2, 'Metro Credit Union', '026009593', 'enc:test-k1:pMvqXnv01yYSEkz43HRROLByRHAtV/JdNy6cVxUxYgJaAzAChVWGdEU=', 'CHECKING', 'FULL', NULL, NULL, 1, 'Y', DATE '2012-06-05', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (3, 20, 'Metro Credit Union', '026009593', 'enc:test-k1:cGHdljgVODIcE/hSTBl19Em/F4X+BsIaA8sFxkdKprWK0q7QIF7cGkhTNCU=', 'SAVINGS', 'PARTIAL_AMOUNT', 500.00, NULL, 1, 'Y', DATE '2014-05-15', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (4, 20, 'First National Bank', '021000021', 'enc:test-k1:0KqCCF58CdKg6/UC2XqsdFeMBpM6SkI9GOWXtErKkyakQlQZ1461UHR9naI=', 'CHECKING', 'REMAINDER', NULL, NULL, 2, 'Y', DATE '2014-05-15', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (5, 40, 'Pacific Coast Bank', '121000358', 'enc:test-k1:mevKdWY/ns4v//9B0PXCykXC3rRxAYQb0GS2gAWrE5cNqNKxFYWOfi3ky+w=', 'CHECKING', 'FULL', NULL, NULL, 1, 'Y', DATE '2014-11-08', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+insert into employee_bank_accounts (bank_acct_id, emp_id, bank_name, routing_number, account_number_enc, account_type, deposit_type, deposit_amount, deposit_percentage, priority_order, prenote_sent, prenote_date, active_flag, created_by, created_date)
+values (6, 41, 'Pacific Coast Bank', '121000358', 'enc:test-k1:LhGsdnvSRtjdkgN5O1l8faeIdTIC1euy3cpyYP89E4FVOSsn5JJkQFbbJio=', 'CHECKING', 'FULL', NULL, NULL, 1, 'N', NULL, 'N', 'SYSTEM', CURRENT_TIMESTAMP);
+
 -- Update department managers
 UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 10 WHERE DEPT_ID = 10;
 UPDATE DEPARTMENTS SET MANAGER_EMP_ID = 2 WHERE DEPT_ID = 20;

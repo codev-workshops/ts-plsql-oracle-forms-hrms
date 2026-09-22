@@ -19,9 +19,10 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Generate/compare gate for the frozen contract: the set of (method, path) pairs served by the
  * application must equal the union of the sets declared in the frozen contracts (P0 foundation + P1
- * performance + P2 leave + P3 employee) – nothing missing, nothing undocumented. P3 re-declares
- * P0's {@code GET/POST /api/employees}; a set union keeps them single. Operations the P2 contract
- * declares with {@code x-deferred: true} (the P5 admin batch routes) must NOT be served.
+ * performance + P2 leave + P3 employee + P4 payroll) – nothing missing, nothing undocumented. P3
+ * re-declares P0's {@code GET/POST /api/employees}; a set union keeps them single. Operations the
+ * P2 contract declares with {@code x-deferred: true} (the P5 admin batch routes) must NOT be
+ * served.
  */
 class OpenApiContractTest extends AuthApiTestBase {
 
@@ -40,13 +41,16 @@ class OpenApiContractTest extends AuthApiTestBase {
     assertThat(p1).hasSize(18);
     assertThat(p2).hasSize(16);
     assertThat(p2Deferred).hasSize(4).allMatch(op -> op.startsWith("POST /api/leave/admin/"));
+    Set<String> p4 = operations("p4-payroll");
     assertThat(p3).hasSize(16).doesNotContain("DELETE /api/employees/{id}");
+    assertThat(p4).hasSize(12).allMatch(op -> op.contains(" /api/payroll/"));
     Set<String> contract = new TreeSet<>(p0);
     contract.addAll(p1);
     contract.addAll(p2);
     contract.addAll(p3);
+    contract.addAll(p4);
     contract.removeAll(p2Deferred);
-    assertThat(contract).hasSize(55);
+    assertThat(contract).hasSize(67);
 
     Set<String> served = new TreeSet<>();
     for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mappings.getHandlerMethods().entrySet()) {

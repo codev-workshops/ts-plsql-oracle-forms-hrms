@@ -23,7 +23,11 @@ public class AuditService {
     DELETE,
     STATUS_CHANGE,
     LOGIN,
-    LOGOUT
+    LOGOUT,
+    PERIOD_CLOSE,
+    PAYROLL_APPROVE,
+    PAYROLL_REVERSE,
+    REGISTER_DOWNLOAD
   }
 
   private final JdbcTemplate jdbc;

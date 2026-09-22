@@ -25,8 +25,27 @@ class SsoScenarioContractTest {
   private static final Validator VALIDATOR =
       Validation.buildDefaultValidatorFactory().getValidator();
 
+  /** P4 target configuration: payroll cut over, engine JAVA, reporting still LEGACY. */
+  private static final TargetFlags P4 =
+      TargetFlags.of(
+          Map.of(
+              "performance", "NEW",
+              "leave", "NEW",
+              "employee", "NEW",
+              "payroll", "NEW",
+              "payroll.engine", "JAVA"));
+
+  private static final TargetFlags ALL_NEW = P4.with("reporting=NEW");
+
   private static Scenario scenario(String id) {
-    return ScenarioRegistry.all().stream().filter(s -> s.id().equals(id)).findFirst().orElseThrow();
+    return scenario(id, TargetFlags.legacyDefaults());
+  }
+
+  private static Scenario scenario(String id, TargetFlags flags) {
+    return ScenarioRegistry.all(flags).stream()
+        .filter(s -> s.id().equals(id))
+        .findFirst()
+        .orElseThrow();
   }
 
   private static SsoExchangeRequest requestOf(Scenario s) throws Exception {
@@ -56,13 +75,57 @@ class SsoScenarioContractTest {
    */
   @Test
   void legacyModuleExchangeTargetsAModuleStillLegacyInP3() throws Exception {
-    Scenario s = scenario("sso.exchange.legacy-module");
+    Scenario s =
+        scenario(
+            "sso.exchange.legacy-module",
+            TargetFlags.of(Map.of("performance", "NEW", "leave", "NEW", "employee", "NEW")));
     ProxyModule module = requestOf(s).getModule();
     assertThat(module)
         .isNotIn(
             ProxyModule.AUTH, ProxyModule.PERFORMANCE, ProxyModule.LEAVE, ProxyModule.EMPLOYEE);
     assertThat(module).isEqualTo(ProxyModule.PAYROLL);
     assertThat(s.expect()).isEqualTo(Outcome.ok(Map.of("formsModule", "HRMS_PAYROLL")));
+  }
+
+  /**
+   * P4 integration round-1 finding F2: with HRMS_FLAG_PAYROLL=NEW the exchange still hard-coded
+   * {@code module=payroll} and the auth-service (correctly) answered SSO_MODULE_NOT_LEGACY. The
+   * scenario must follow the target's flags: reporting is the module still LEGACY in P4.
+   */
+  @Test
+  void legacyModuleExchangeFollowsTheTargetFlagsInP4() throws Exception {
+    Scenario s = scenario("sso.exchange.legacy-module", P4);
+    ProxyModule module = requestOf(s).getModule();
+    assertThat(module).isNotEqualTo(ProxyModule.PAYROLL).isEqualTo(ProxyModule.REPORTING);
+    assertThat(s.expect()).isEqualTo(Outcome.ok(Map.of("formsModule", "HRMS_MENU")));
+    assertThat(s.legacy()).isNotNull();
+    assertThat(ScenarioRegistry.legacySource(s)).isEqualTo(ScenarioRegistry.UNTESTED_LIVE);
+    assertThat(ScenarioRegistry.targetExpect(s, false))
+        .isEqualTo(Outcome.error("SSO_LEGACY_UNAVAILABLE"));
+
+    // the same flags the README tells operators to export are what the registry reads
+    TargetFlags env =
+        TargetFlags.fromEnv(
+            Map.of(
+                "HRMS_FLAG_PERFORMANCE", "NEW",
+                "HRMS_FLAG_LEAVE", "NEW",
+                "HRMS_FLAG_EMPLOYEE", "NEW",
+                "HRMS_FLAG_PAYROLL", "NEW",
+                "HRMS_FLAG_PAYROLL_ENGINE", "JAVA"));
+    assertThat(env).isEqualTo(P4);
+    assertThat(env.flag("payroll.engine")).isEqualTo("JAVA");
+  }
+
+  /** Once every module is NEW no Forms session exists: the contract answer is recorded. */
+  @Test
+  void legacyModuleExchangeBecomesRecordedRejectionWhenNothingIsLegacy() throws Exception {
+    Scenario s = scenario("sso.exchange.legacy-module", ALL_NEW);
+    assertThat(requestOf(s).getModule()).isEqualTo(ProxyModule.PAYROLL);
+    assertThat(s.legacy()).isNull();
+    assertThat(s.expect()).isEqualTo(Outcome.error("SSO_MODULE_NOT_LEGACY"));
+    assertThat(ScenarioRegistry.legacySource(s)).isEqualTo(ScenarioRegistry.RECORDED);
+    assertThat(ScenarioRegistry.targetExpect(s, false)).isEqualTo(s.expect());
+    assertThat(ScenarioRegistry.targetExpect(s, true)).isEqualTo(s.expect());
   }
 
   @Test

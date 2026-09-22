@@ -26,6 +26,8 @@ public enum ErrorCode {
       "-20012", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot transfer non-active employee. Status: %s"),
   SALARY_NOT_POSITIVE("-20101", HttpStatus.BAD_REQUEST, "Salary must be positive: %s"),
   NO_ACTIVE_SALARY("-20104", HttpStatus.BAD_REQUEST, "No active salary record for employee %s"),
+  PERIOD_CLOSED("-20102", HttpStatus.UNPROCESSABLE_ENTITY, "Period already closed: %s"),
+  RUN_NOT_APPROVABLE("-20103", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot approve run in status: %s"),
   HIRE_DATE_TOO_FAR(
       "-20501", HttpStatus.BAD_REQUEST, "Hire date cannot be more than 90 days in the future"),
   EMAIL_IN_USE("-20502", HttpStatus.CONFLICT, "Email address already in use: %s"),
@@ -82,6 +84,27 @@ public enum ErrorCode {
   RATE_LIMITED("RATE_LIMITED", HttpStatus.TOO_MANY_REQUESTS, "Too many failed login attempts"),
   SSO_LEGACY_UNAVAILABLE(
       "SSO_LEGACY_UNAVAILABLE", HttpStatus.BAD_GATEWAY, "Legacy system is unavailable"),
+  PERIOD_NOT_FOUND("PERIOD_NOT_FOUND", HttpStatus.NOT_FOUND, "Pay period not found"),
+  RUN_NOT_FOUND("RUN_NOT_FOUND", HttpStatus.NOT_FOUND, "Payroll run not found"),
+  PAYSLIP_NOT_FOUND("PAYSLIP_NOT_FOUND", HttpStatus.NOT_FOUND, "Payslip not found"),
+  SHADOW_REPORT_NOT_FOUND(
+      "SHADOW_REPORT_NOT_FOUND",
+      HttpStatus.NOT_FOUND,
+      "Run has not been calculated by the Java engine"),
+  RUN_ALREADY_CALCULATING(
+      "RUN_ALREADY_CALCULATING", HttpStatus.CONFLICT, "Payroll run is already being calculated"),
+  RUN_NOT_CALCULABLE(
+      "RUN_NOT_CALCULABLE",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "Payroll run cannot be calculated in status: %s"),
+  RUN_NOT_REVERSIBLE(
+      "RUN_NOT_REVERSIBLE",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "Payroll run cannot be reversed in status: %s"),
+  MISSING_TAX_RATE(
+      "MISSING_TAX_RATE",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "No tax rate for tax year %s and state %s"),
   INTERNAL_ERROR(
       "INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
 

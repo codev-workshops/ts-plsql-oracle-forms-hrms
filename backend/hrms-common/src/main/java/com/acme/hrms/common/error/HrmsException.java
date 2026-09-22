@@ -1,5 +1,6 @@
 package com.acme.hrms.common.error;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
 
 /** Base of every business error; translated to {@link ApiError} only by GlobalExceptionHandler. */
@@ -29,6 +30,11 @@ public class HrmsException extends RuntimeException {
 
   public ErrorCode code() {
     return code;
+  }
+
+  /** HTTP status to render; subclasses may override when a route re-raises a recorded code. */
+  public HttpStatus status() {
+    return code.status();
   }
 
   @Nullable
