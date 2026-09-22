@@ -39,7 +39,11 @@ public final class RestRunner {
    * Ids captured from setup responses; paths may reference them as {cycleId}, {reviewId}, {goalId},
    * {requestId}.
    */
-  static final List<String> CAPTURED_IDS = List.of("cycleId", "reviewId", "goalId", "requestId");
+  static final List<String> CAPTURED_IDS =
+      List.of("cycleId", "reviewId", "goalId", "requestId", "id", "dependentId", "contactId");
+
+  /** Context key holding the last {@code ETag} seen; PUTs send it back as {@code If-Match}. */
+  static final String ETAG = "etag";
 
   private final Map<String, String> context = new LinkedHashMap<>();
 
@@ -56,6 +60,7 @@ public final class RestRunner {
     if (resp.statusCode() >= 300 || resp.body().isBlank()) {
       return;
     }
+    resp.headers().firstValue("ETag").ifPresent(v -> context.put(ETAG, v));
     JsonNode n = JSON.readTree(resp.body());
     if (n.isArray() && !n.isEmpty()) {
       n = n.get(0);
@@ -84,6 +89,9 @@ public final class RestRunner {
     }
     if (c.useRefreshCookie() && refreshCookie != null) {
       b.header("Cookie", refreshCookie);
+    }
+    if ("PUT".equals(c.method()) && context.containsKey(ETAG)) {
+      b.header("If-Match", context.get(ETAG));
     }
     if (c.body() == null) {
       b.method(c.method(), HttpRequest.BodyPublishers.noBody());

@@ -34,6 +34,7 @@
     <module>performance</module>
     <module>leave</module>
     <module>salary</module>
+    <module>employee</module>
     <module>auth</module>
     <module>../tools/parallel-run</module>
     <module>../tools/reconcile</module>
@@ -80,6 +81,11 @@
       <dependency>
         <groupId>com.acme.hrms</groupId>
         <artifactId>salary</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.acme.hrms</groupId>
+        <artifactId>employee</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

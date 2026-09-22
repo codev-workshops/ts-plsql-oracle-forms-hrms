@@ -29,7 +29,7 @@ class FlywayBaselineTest {
         jdbc.queryForList(
             "select version from flyway_schema_history where success order by installed_rank",
             String.class);
-    assertThat(versions).containsExactly("1", "2", "3", "4", "5");
+    assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
   }
 
   @Test
@@ -192,6 +192,37 @@ class FlywayBaselineTest {
                 "select count(*) from performance_reviews where status = 'MANAGER_REVIEW'",
                 Integer.class))
         .isEqualTo(2);
+  }
+
+  @Test
+  void seedAdvancesSequencesPastExplicitPrimaryKeys() {
+    Map<String, String> sequences =
+        Map.ofEntries(
+            Map.entry("seq_department", "select max(dept_id) from departments"),
+            Map.entry("seq_job_grade", "select max(grade_id) from job_grades"),
+            Map.entry("seq_job_title", "select max(job_id) from job_titles"),
+            Map.entry("seq_employee", "select max(emp_id) from employees"),
+            Map.entry("seq_salary", "select max(salary_id) from salary_records"),
+            Map.entry("seq_pay_element", "select max(element_id) from pay_elements"),
+            Map.entry("seq_pay_period", "select max(period_id) from pay_periods"),
+            Map.entry("seq_payroll_run", "select max(run_id) from payroll_runs"),
+            Map.entry("seq_payroll_detail", "select max(detail_id) from payroll_details"),
+            Map.entry("seq_leave_type", "select max(leave_type_id) from leave_types"),
+            Map.entry("seq_leave_balance", "select max(balance_id) from leave_balances"),
+            Map.entry("seq_leave_request", "select max(request_id) from leave_requests"),
+            Map.entry("seq_holiday", "select max(holiday_id) from holidays"),
+            Map.entry("seq_review_cycle", "select max(cycle_id) from review_cycles"),
+            Map.entry("seq_perf_review", "select max(review_id) from performance_reviews"),
+            Map.entry("seq_system_param", "select max(param_id) from system_parameters"));
+    sequences.forEach(
+        (seq, maxSql) -> {
+          Long max = jdbc.queryForObject(maxSql, Long.class);
+          Long next = jdbc.queryForObject("select nextval('" + seq + "')", Long.class);
+          assertThat(next).as(seq).isGreaterThan(max);
+        });
+    // seq_employee starts at 10000 (above the 43 seeded ids) and must not be pulled back
+    assertThat(jdbc.queryForObject("select last_value from seq_employee", Long.class))
+        .isGreaterThanOrEqualTo(10000L);
   }
 
   @Test

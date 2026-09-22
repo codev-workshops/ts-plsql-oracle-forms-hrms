@@ -29,9 +29,6 @@ class SalaryRepositoryTest {
   @BeforeEach
   void isolateEmployee() {
     jdbc.update("delete from salary_records where emp_id = 1");
-    jdbc.queryForObject(
-        "select setval('seq_salary', coalesce((select max(salary_id) from salary_records), 0), true)",
-        Long.class);
   }
 
   @Test

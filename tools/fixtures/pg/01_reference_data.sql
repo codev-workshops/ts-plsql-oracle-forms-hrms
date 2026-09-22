@@ -199,3 +199,19 @@ insert into system_parameters (param_id, param_group, param_code, param_value, p
 values (9, 'INTEGRATION', 'GL_FEED_STATUS', 'ACTIVE', 'GL integration status', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
 insert into system_parameters (param_id, param_group, param_code, param_value, param_description, editable_flag, created_by, created_date)
 values (10, 'INTEGRATION', 'BENEFITS_FEED_STATUS', 'ACTIVE', 'Benefits feed status', 'Y', 'SYSTEM', CURRENT_TIMESTAMP);
+
+-- Advance the sequences past the explicit primary keys inserted above.
+select setval('seq_department', max(dept_id)) from departments
+  having max(dept_id) >= (select last_value from seq_department);
+select setval('seq_holiday', max(holiday_id)) from holidays
+  having max(holiday_id) >= (select last_value from seq_holiday);
+select setval('seq_job_grade', max(grade_id)) from job_grades
+  having max(grade_id) >= (select last_value from seq_job_grade);
+select setval('seq_job_title', max(job_id)) from job_titles
+  having max(job_id) >= (select last_value from seq_job_title);
+select setval('seq_leave_type', max(leave_type_id)) from leave_types
+  having max(leave_type_id) >= (select last_value from seq_leave_type);
+select setval('seq_pay_element', max(element_id)) from pay_elements
+  having max(element_id) >= (select last_value from seq_pay_element);
+select setval('seq_system_param', max(param_id)) from system_parameters
+  having max(param_id) >= (select last_value from seq_system_param);
