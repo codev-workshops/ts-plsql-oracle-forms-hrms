@@ -148,6 +148,38 @@ class ValidationSchemaExporterTest {
   }
 
   @Test
+  void p4PayrollDtosPinLegacyRules() {
+    ObjectNode root = new ValidationSchemaExporter().export("x", 8);
+    assertThat(root.get("modules").get(4).asText()).isEqualTo("p4-payroll");
+    JsonNode dtos = root.get("dtos");
+    for (String dto :
+        new String[] {
+          "PayPeriodListQuery",
+          "PayrollRunListQuery",
+          "PayrollRunCreateRequest",
+          "PayrollRunReverseRequest",
+          "PayrollDetailListQuery"
+        }) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p4-payroll");
+    }
+    JsonNode runType = dtos.get("PayrollRunCreateRequest").get("fields").get("runType");
+    assertThat(runType.get("required").asBoolean()).isTrue();
+    assertThat(runType.get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("REGULAR", "SUPPLEMENTAL", "BONUS", "FINAL");
+    JsonNode reason = dtos.get("PayrollRunReverseRequest").get("fields").get("reason");
+    assertThat(reason.get("required").asBoolean()).isTrue();
+    assertThat(reason.get("maxLength").asInt()).isEqualTo(4000);
+    assertThat(dtos.get("PayPeriodListQuery").get("fields").get("status").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("OPEN", "PROCESSING", "CLOSED", "REVERSED");
+    assertThat(dtos.get("PayrollRunListQuery").get("fields").get("status").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly(
+            "PENDING", "CALCULATING", "CALCULATED", "APPROVED", "PAID", "REVERSED", "ERROR");
+  }
+
+  @Test
   void hashIsStable() {
     ValidationSchemaExporter e = new ValidationSchemaExporter();
     assertThat(e.export("a", 8).get("sourceHash")).isEqualTo(e.export("b", 8).get("sourceHash"));

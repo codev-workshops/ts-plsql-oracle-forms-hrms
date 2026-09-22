@@ -20,6 +20,11 @@ import com.acme.hrms.validation.dto.leave.LeaveApproveRequest;
 import com.acme.hrms.validation.dto.leave.LeaveCancelRequest;
 import com.acme.hrms.validation.dto.leave.LeaveRejectRequest;
 import com.acme.hrms.validation.dto.leave.LeaveRequestCreateRequest;
+import com.acme.hrms.validation.dto.payroll.PayPeriodListQuery;
+import com.acme.hrms.validation.dto.payroll.PayrollDetailListQuery;
+import com.acme.hrms.validation.dto.payroll.PayrollRunCreateRequest;
+import com.acme.hrms.validation.dto.payroll.PayrollRunListQuery;
+import com.acme.hrms.validation.dto.payroll.PayrollRunReverseRequest;
 import com.acme.hrms.validation.dto.performance.AcknowledgeRequest;
 import com.acme.hrms.validation.dto.performance.GoalProgressRequest;
 import com.acme.hrms.validation.dto.performance.GoalRequest;
@@ -75,7 +80,9 @@ public final class ValidationSchemaExporter {
   public static final String MODULE_P1 = "p1-performance";
   public static final String MODULE_P2 = "p2-leave";
   public static final String MODULE_P3 = "p3-employee";
-  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1, MODULE_P2, MODULE_P3);
+  public static final String MODULE_P4 = "p4-payroll";
+  public static final List<String> MODULES =
+      List.of(MODULE_P0, MODULE_P1, MODULE_P2, MODULE_P3, MODULE_P4);
   public static final int SESSION_TIMEOUT_MIN_DEFAULT = 30;
 
   /** DTO name -> (owning contract module, class); insertion order is the output order. */
@@ -105,6 +112,11 @@ public final class ValidationSchemaExporter {
     register(MODULE_P3, "SalaryChangeRequest", SalaryChangeRequest.class);
     register(MODULE_P3, "DependentRequest", DependentRequest.class);
     register(MODULE_P3, "EmergencyContactRequest", EmergencyContactRequest.class);
+    register(MODULE_P4, "PayPeriodListQuery", PayPeriodListQuery.class);
+    register(MODULE_P4, "PayrollRunListQuery", PayrollRunListQuery.class);
+    register(MODULE_P4, "PayrollRunCreateRequest", PayrollRunCreateRequest.class);
+    register(MODULE_P4, "PayrollRunReverseRequest", PayrollRunReverseRequest.class);
+    register(MODULE_P4, "PayrollDetailListQuery", PayrollDetailListQuery.class);
   }
 
   private static void register(String module, String name, Class<?> dto) {

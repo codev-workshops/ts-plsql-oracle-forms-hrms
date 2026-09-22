@@ -3,13 +3,14 @@
   "schemaVersion": 1,
   "generator": "hrms-validation:exporter",
   "generatorVersion": "0.1.0",
-  "sourceHash": "3d32c90b729212dd1e722ef668cbf4bba627b4a5e0076747443ffd34dd85825b",
+  "sourceHash": "9b7914f79b3adff1a83ccb25ff8bd4ed046ef6b77e0f73699e6d206fb99d1f53",
   "module": "hrms",
   "modules": [
     "p0-foundation",
     "p1-performance",
     "p2-leave",
-    "p3-employee"
+    "p3-employee",
+    "p4-payroll"
   ],
   "parameters": {
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
@@ -1397,6 +1398,130 @@
           "required": false,
           "min": 1,
           "max": 99,
+          "messages": {}
+        }
+      }
+    },
+    "PayPeriodListQuery": {
+      "module": "p4-payroll",
+      "fields": {
+        "status": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "OPEN",
+            "PROCESSING",
+            "CLOSED",
+            "REVERSED"
+          ],
+          "messages": {}
+        },
+        "sort": {
+          "type": "string",
+          "required": false,
+          "trim": false,
+          "pattern": "^(periodStartDate|periodEndDate|payDate|periodName),(asc|desc)$",
+          "messages": {
+            "pattern": "sort must be <periodStartDate|periodEndDate|payDate|periodName>,<asc|desc>"
+          }
+        },
+        "page": {
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "messages": {}
+        },
+        "size": {
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 100,
+          "messages": {}
+        }
+      }
+    },
+    "PayrollRunListQuery": {
+      "module": "p4-payroll",
+      "fields": {
+        "status": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "PENDING",
+            "CALCULATING",
+            "CALCULATED",
+            "APPROVED",
+            "PAID",
+            "REVERSED",
+            "ERROR"
+          ],
+          "messages": {}
+        }
+      }
+    },
+    "PayrollRunCreateRequest": {
+      "module": "p4-payroll",
+      "fields": {
+        "runType": {
+          "type": "enum",
+          "required": true,
+          "values": [
+            "REGULAR",
+            "SUPPLEMENTAL",
+            "BONUS",
+            "FINAL"
+          ],
+          "messages": {
+            "required": "runType is required"
+          }
+        }
+      }
+    },
+    "PayrollRunReverseRequest": {
+      "module": "p4-payroll",
+      "fields": {
+        "reason": {
+          "type": "string",
+          "required": true,
+          "trim": true,
+          "minLength": 1,
+          "maxLength": 4000,
+          "messages": {
+            "required": "A reversal reason is required"
+          }
+        }
+      }
+    },
+    "PayrollDetailListQuery": {
+      "module": "p4-payroll",
+      "fields": {
+        "empId": {
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "messages": {}
+        },
+        "status": {
+          "type": "enum",
+          "required": false,
+          "values": [
+            "CALCULATED",
+            "ERROR",
+            "REVERSED"
+          ],
+          "messages": {}
+        },
+        "page": {
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "messages": {}
+        },
+        "size": {
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 500,
           "messages": {}
         }
       }

@@ -27,7 +27,13 @@ describe('frontend/src/generated/validation-schema.json', () => {
     expect(schema.generatorVersion).toMatch(/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/);
     expect(schema.sourceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(schema.module).toBe('hrms');
-    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance', 'p2-leave', 'p3-employee']);
+    expect(schema.modules).toEqual([
+      'p0-foundation',
+      'p1-performance',
+      'p2-leave',
+      'p3-employee',
+      'p4-payroll',
+    ]);
     expect(Object.keys(schema.dtos).length).toBeGreaterThan(0);
   });
 
@@ -145,6 +151,41 @@ describe('frontend/src/generated/validation-schema.json', () => {
       'EmergencyContactRequest',
     ] as const) {
       expect(schema.dtos[dto].module).toBe('p3-employee');
+    }
+  });
+
+  it('pins the P4 payroll DTOs to PKG_PAYROLL / CHK_RUN_TYPE / CHK_RUN_STATUS (runType required, reversal reason required)', () => {
+    expect(schema.dtos.PayrollRunCreateRequest.fields.runType.required).toBe(true);
+    expect(schema.dtos.PayrollRunCreateRequest.fields.runType.values).toEqual([
+      'REGULAR',
+      'SUPPLEMENTAL',
+      'BONUS',
+      'FINAL',
+    ]);
+    const reason = schema.dtos.PayrollRunReverseRequest.fields.reason;
+    expect([reason.required, reason.trim, reason.minLength, reason.maxLength]).toEqual([true, true, 1, 4000]);
+    expect(schema.dtos.PayPeriodListQuery.fields.status.values).toEqual(['OPEN', 'PROCESSING', 'CLOSED', 'REVERSED']);
+    expect(schema.dtos.PayPeriodListQuery.fields.sort.pattern).toBe(
+      '^(periodStartDate|periodEndDate|payDate|periodName),(asc|desc)$',
+    );
+    expect(schema.dtos.PayrollRunListQuery.fields.status.values).toEqual([
+      'PENDING',
+      'CALCULATING',
+      'CALCULATED',
+      'APPROVED',
+      'PAID',
+      'REVERSED',
+      'ERROR',
+    ]);
+    expect(schema.dtos.PayrollDetailListQuery.fields.status.values).toEqual(['CALCULATED', 'ERROR', 'REVERSED']);
+    for (const dto of [
+      'PayPeriodListQuery',
+      'PayrollRunListQuery',
+      'PayrollRunCreateRequest',
+      'PayrollRunReverseRequest',
+      'PayrollDetailListQuery',
+    ] as const) {
+      expect(schema.dtos[dto].module).toBe('p4-payroll');
     }
   });
 
