@@ -79,6 +79,14 @@ public class SessionRepository {
         keepSessionId);
   }
 
+  /** Every ACTIVE session of an employee (termination, BUG-07). */
+  public List<Long> activeSessions(long empId) {
+    return jdbc.queryForList(
+        "select session_id from user_sessions where emp_id = ? and session_status = 'ACTIVE'",
+        Long.class,
+        empId);
+  }
+
   public Optional<String> jtiOf(long sessionId) {
     return jdbc
         .queryForList(

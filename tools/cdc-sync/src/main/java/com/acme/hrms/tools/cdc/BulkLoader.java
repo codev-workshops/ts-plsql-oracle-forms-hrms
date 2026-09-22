@@ -115,6 +115,30 @@ public final class BulkLoader {
 
   private void advanceSequence(String table) throws SQLException {
     restartSequence(pg, table);
+    restartBusinessKeySequence(pg, table);
+  }
+
+  /**
+   * Restarts {@code SEQ_EMP_NUMBER} above the highest loaded {@code EMP-nnnnnn} suffix so the first
+   * Java hire after the flip cannot collide with a legacy (MAX()+1-generated) number. Returns the
+   * next value, or -1 when the table has no business-key sequence.
+   */
+  static long restartBusinessKeySequence(Connection pg, String table) throws SQLException {
+    String seq = TableGroup.BUSINESS_KEY_SEQUENCES.get(table);
+    if (seq == null) {
+      return -1;
+    }
+    try (PreparedStatement ps =
+        pg.prepareStatement(
+            "select setval(?, greatest(coalesce((select max(substring(emp_number from"
+                + " '^EMP-([0-9]{6})$')::bigint) from employees where emp_number ~"
+                + " '^EMP-[0-9]{6}$'), 0) + 1, 1000), false)")) {
+      ps.setString(1, seq);
+      try (ResultSet rs = ps.executeQuery()) {
+        rs.next();
+        return rs.getLong(1);
+      }
+    }
   }
 
   /**

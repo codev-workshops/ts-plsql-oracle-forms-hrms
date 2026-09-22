@@ -101,6 +101,17 @@ public class UserAccountRepository {
         userId);
   }
 
+  /** Termination disables the login ({@code status = DISABLED}); no-op without an account. */
+  public boolean disableByEmployee(long empId, Instant when, String modifiedBy) {
+    return jdbc.update(
+            "update user_accounts set status = 'DISABLED', modified_by = ?, modified_date = ?"
+                + " where emp_id = ? and status = 'ACTIVE'",
+            modifiedBy,
+            ts(when),
+            empId)
+        > 0;
+  }
+
   public void recordFailure(long userId) {
     jdbc.update(
         "update user_accounts set failed_attempts = failed_attempts + 1 where user_id = ?", userId);

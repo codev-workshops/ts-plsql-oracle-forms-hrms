@@ -107,20 +107,32 @@ class ReferenceAndSsoTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.content[0].name").value("SARAH CHEN"))
         .andExpect(jsonPath("$.totalElements").value(1));
 
+    // P3 contract supersedes the P0 slice: every EmploymentStatus is accepted and `fields` is
+    // optional (absent -> full EmployeeListItem without sensitive columns).
     mvc.perform(
             get("/api/employees")
                 .param("status", "TERMINATED")
                 .param("fields", "id,name,jobTitle")
                 .header("Authorization", "Bearer " + execToken))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-        .andExpect(jsonPath("$.field").value("status"));
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content[0].id").value(99))
+        .andExpect(jsonPath("$.totalElements").value(1));
     mvc.perform(
             get("/api/employees")
                 .param("status", "ACTIVE")
+                .param("q", "chen")
+                .header("Authorization", "Bearer " + execToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content[0].empNumber").value("EMP-000002"))
+        .andExpect(jsonPath("$.content[0].ssnLast4").doesNotExist())
+        .andExpect(jsonPath("$.content[0].dateOfBirth").doesNotExist());
+    mvc.perform(
+            get("/api/employees")
+                .param("fields", "id,name")
                 .header("Authorization", "Bearer " + execToken))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("fields"));
   }
 
   @Test

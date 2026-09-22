@@ -49,11 +49,20 @@ class SsoScenarioContractTest {
     }
   }
 
+  /**
+   * P3 integration round-2 finding: with HRMS_FLAG_EMPLOYEE=NEW the employee module no longer needs
+   * a Forms session, so the legacy-module exchange must target a module still LEGACY in P3
+   * (payroll, cut over in P4) or the auth-service answers SSO_MODULE_NOT_LEGACY.
+   */
   @Test
-  void legacyModuleExchangeTargetsEmployeeAndExpectsTheFormsModule() throws Exception {
+  void legacyModuleExchangeTargetsAModuleStillLegacyInP3() throws Exception {
     Scenario s = scenario("sso.exchange.legacy-module");
-    assertThat(requestOf(s).getModule()).isEqualTo(ProxyModule.EMPLOYEE);
-    assertThat(s.expect()).isEqualTo(Outcome.ok(Map.of("formsModule", "HRMS_EMPLOYEE")));
+    ProxyModule module = requestOf(s).getModule();
+    assertThat(module)
+        .isNotIn(
+            ProxyModule.AUTH, ProxyModule.PERFORMANCE, ProxyModule.LEAVE, ProxyModule.EMPLOYEE);
+    assertThat(module).isEqualTo(ProxyModule.PAYROLL);
+    assertThat(s.expect()).isEqualTo(Outcome.ok(Map.of("formsModule", "HRMS_PAYROLL")));
   }
 
   @Test

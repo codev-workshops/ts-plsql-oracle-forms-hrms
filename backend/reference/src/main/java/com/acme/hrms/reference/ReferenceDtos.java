@@ -51,14 +51,4 @@ public final class ReferenceDtos {
       boolean requiresApproval,
       boolean requiresDocument,
       boolean active) {}
-
-  public record EmployeeSummary(
-      long id, String empNumber, String name, @Nullable String jobTitle) {}
-
-  public record PageOfEmployeeSummary(
-      java.util.List<EmployeeSummary> content,
-      int page,
-      int size,
-      long totalElements,
-      int totalPages) {}
 }

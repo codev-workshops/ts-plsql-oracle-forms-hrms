@@ -25,9 +25,6 @@ class SalaryApiTest extends AuthApiTestBase {
     seedAccounts();
     jdbc.update("update employees set employment_status = 'ACTIVE' where emp_id = 1");
     jdbc.update("delete from salary_records where emp_id = 1");
-    jdbc.queryForObject(
-        "select setval('seq_salary', coalesce((select max(salary_id) from salary_records), 0), true)",
-        Long.class);
     jdbc.update(
         "insert into salary_records (salary_id, emp_id, effective_date, base_salary,"
             + " currency_code, pay_frequency, salary_basis, change_reason, active_flag,"
