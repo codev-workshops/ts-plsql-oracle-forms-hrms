@@ -82,6 +82,105 @@ class RegistryAndReportTest {
   }
 
   @Test
+  void phase2RegistersTheLeaveSet() {
+    Map<String, String> codes =
+        Map.of(
+            "leave.submit.insufficient-balance", "-20201",
+            "leave.submit.overlap", "-20202",
+            "leave.submit.invalid-leave-type", "-20203",
+            "leave.submit.tenure-not-met", "-20203",
+            "leave.cancel.cancelled.invalid-status", "-20204",
+            "leave.approve.not-pending", "-20204",
+            "leave.reject.not-pending", "-20204",
+            "leave.submit.date-order", "-20210",
+            "leave.submit.too-far-in-past", "-20211",
+            "leave.submit.no-business-days", "-20212");
+    Map<String, Scenario> byId =
+        ScenarioRegistry.all().stream()
+            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+    assertThat(byId.keySet())
+        .containsAll(codes.keySet())
+        .contains(
+            "leave.submit.ok",
+            "leave.cancel.pending",
+            "leave.cancel.pending.balance-restored",
+            "leave.cancel.approved.balance-restored",
+            "leave.approve.ok",
+            "leave.approve.moves-pending-to-used",
+            "leave.reject.ok.releases-pending",
+            "leave.reject.comments-required",
+            "leave.request.not-found",
+            "leave.batch.accrual.seed-year",
+            "leave.batch.carryover.seed-year",
+            "leave.batch.carryover.expire.bug-04");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("leave.request.not-found").expect().errorCode())
+        .isEqualTo("LEAVE_REQUEST_NOT_FOUND");
+    assertThat(byId.get("leave.cancel.pending.balance-restored").expect().fields())
+        .containsEntry("pending", "0")
+        .containsEntry("available", "10");
+    assertThat(byId.get("leave.approve.moves-pending-to-used").expect().fields())
+        .containsEntry("used", "5");
+
+    // BUG-04/05/06: documented divergences – contract vs. recorded legacy
+    Scenario bug06 = byId.get("leave.submit.half-day.am-pm-same-day.bug-06");
+    assertThat(bug06.expect().errorCode()).isNull();
+    assertThat(ScenarioRegistry.legacyOutcome(bug06)).isEqualTo(Outcome.error("-20202"));
+    Scenario bug05 = byId.get("leave.business-days.saturday-holiday.bug-05");
+    assertThat(bug05.expect().fields()).containsEntry("businessDays", "4");
+    assertThat(ScenarioRegistry.legacyOutcome(bug05).fields()).containsEntry("businessDays", "5");
+    Scenario bug04 = byId.get("leave.batch.carryover.expire.bug-04");
+    assertThat(LeaveScenarios.P5_CONTRACT.get(bug04.id()).fields())
+        .containsEntry("adjustment", "-2");
+    assertThat(ScenarioRegistry.legacyOutcome(bug04).fields()).containsEntry("adjustment", "-5");
+
+    // batch admin routes are P5: target must 404 until then, row is DEFERRED not FAIL
+    for (String id : LeaveScenarios.DEFERRED_TO_P5) {
+      assertThat(ScenarioRegistry.legacySource(byId.get(id))).isEqualTo(ScenarioRegistry.RECORDED);
+      assertThat(byId.get(id).expect()).isEqualTo(LeaveScenarios.NOT_MOUNTED);
+      assertThat(LeaveScenarios.P5_CONTRACT).containsKey(id);
+    }
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (s.module().equals(LeaveScenarios.MODULE)
+          && !LeaveScenarios.DEFERRED_TO_P5.contains(s.id())) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+        assertThat(ScenarioRegistry.targetExpect(s, false)).isEqualTo(s.expect());
+      }
+    }
+  }
+
+  @Test
+  void deferredRowsDoNotFailTheRun() {
+    DiffReport r = new DiffReport();
+    Outcome notMounted = LeaveScenarios.NOT_MOUNTED;
+    r.add(
+        new DiffReport.Row(
+            "leave.batch.accrual.seed-year",
+            notMounted,
+            Outcome.ok(Map.of("accrued", "8.75")),
+            null,
+            notMounted));
+    assertThat(r.rows().get(0).verdict()).isEqualTo("DEFERRED");
+    assertThat(r.passed()).isTrue();
+    assertThat(r.toMarkdown()).contains("1 deferred").contains("endpoint mounted in P5");
+  }
+
+  @Test
+  void restRunnerRendersNumbersLikeOracleGetString() {
+    com.fasterxml.jackson.databind.ObjectMapper json =
+        new com.fasterxml.jackson.databind.ObjectMapper();
+    assertThat(RestRunner.text(json.getNodeFactory().numberNode(new java.math.BigDecimal("5.00"))))
+        .isEqualTo("5");
+    assertThat(RestRunner.text(json.getNodeFactory().numberNode(new java.math.BigDecimal("0.50"))))
+        .isEqualTo("0.5");
+    assertThat(RestRunner.text(json.getNodeFactory().numberNode(10))).isEqualTo("10");
+    assertThat(RestRunner.text(json.getNodeFactory().textNode("PENDING"))).isEqualTo("PENDING");
+  }
+
+  @Test
   void lockoutIsADocumentedDivergenceFromLegacy() {
     Scenario lockout =
         ScenarioRegistry.all().stream()

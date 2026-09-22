@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -51,19 +52,19 @@ public final class BulkLoader {
     try (Statement st = oracle.createStatement();
         ResultSet rs = st.executeQuery(sql)) {
       ResultSetMetaData md = rs.getMetaData();
-      int cols = md.getColumnCount();
-      String[] pgCols = new String[cols];
-      int[] types = new int[cols];
-      for (int i = 1; i <= cols; i++) {
-        pgCols[i - 1] = TypeMapping.pgIdentifier(md.getColumnLabel(i));
-        types[i - 1] = md.getColumnType(i);
+      List<Integer> idx = writableColumns(table, md);
+      List<String> pgCols = new ArrayList<>();
+      int[] types = new int[idx.size()];
+      for (int k = 0; k < idx.size(); k++) {
+        pgCols.add(TypeMapping.pgIdentifier(md.getColumnLabel(idx.get(k))));
+        types[k] = md.getColumnType(idx.get(k));
       }
-      String upsert = upsertSql(table, List.of(pgCols));
+      String upsert = upsertSql(table, pgCols);
       try (PreparedStatement ps = pg.prepareStatement(upsert)) {
         int inBatch = 0;
         while (rs.next()) {
-          for (int i = 1; i <= cols; i++) {
-            ps.setObject(i, TypeMapping.toPostgres(rs.getObject(i), types[i - 1]));
+          for (int k = 0; k < idx.size(); k++) {
+            ps.setObject(k + 1, TypeMapping.toPostgres(rs.getObject(idx.get(k)), types[k]));
           }
           ps.addBatch();
           n++;
@@ -79,6 +80,17 @@ public final class BulkLoader {
     }
     advanceSequence(table);
     return n;
+  }
+
+  /** 1-based result-set indexes of the columns that may be written (generated ones dropped). */
+  static List<Integer> writableColumns(String table, ResultSetMetaData md) throws SQLException {
+    List<Integer> idx = new ArrayList<>();
+    for (int i = 1; i <= md.getColumnCount(); i++) {
+      if (!TableGroup.isGenerated(table, md.getColumnLabel(i))) {
+        idx.add(i);
+      }
+    }
+    return idx;
   }
 
   static String upsertSql(String table, List<String> cols) {

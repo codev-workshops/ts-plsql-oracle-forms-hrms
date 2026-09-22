@@ -217,6 +217,7 @@ Scheduler replacement: `run_monthly_accrual`, `process_carryover`, `expire_carry
 ### 6.3 Rollback strategy
 
 - Flag `leave=LEGACY` → `HRMS_LEAVE` via SSO bridge, preceded by the §2 rule 6 reverse extract of `LEAVE_REQUESTS` / `LEAVE_BALANCES` / `LEAVE_ACCRUAL_LOG` to Oracle.
+- Load / extract order is `leave_balances`, `leave_requests`, `leave_accrual_log` (`TableGroup.LEAVE`); `LEAVE_BALANCES.AVAILABLE` is computed on both sides (Oracle virtual column / PostgreSQL `GENERATED ALWAYS … STORED`) and is excluded from the keyed upsert and the MERGE (`TableGroup.GENERATED_COLUMNS`). `SEQ_LEAVE_BALANCE/REQUEST/ACCRUAL` are restarted at MAX(pk)+1 after the load. PostgreSQL leg covered by `tools/cdc-sync` `LeaveCutoverTest`; Oracle legs are `untested-live` (no Oracle in this programme).
 - **Dual-write is not used**; PostgreSQL is the sole database of record once the flag is NEW. Because the React tier fixes BUG-06, a request pair (AM + PM) created in NEW would be *rejected as overlapping* by legacy `check_leave_overlap` if, after a rollback, the user tries to add a third request via Forms – acceptable, documented for support.
 - Scheduled jobs: legacy `DBMS_SCHEDULER` jobs are absent from the repo; whichever job runs in production (if any) must be **disabled before** the Spring job is enabled to avoid double accrual. Rollback = disable Spring job, re-enable legacy job. `LEAVE_ACCRUAL_LOG` provides the idempotency check either way.
 

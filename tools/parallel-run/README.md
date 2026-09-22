@@ -29,3 +29,27 @@ java -jar target/hrms-tool-parallel-run.jar \
 Phase 0 registers: `auth.login.*`, `auth.refresh.rotates`, `auth.password.{too-short,no-upper,no-digit}`
 (-20310/-20311/-20312), `auth.lockout.after-5-failures`, `sso.exchange.*`. Later phases only append
 to `ScenarioRegistry`.
+
+## Phase 2 – leave (`LeaveScenarios`)
+
+Apply `fixtures/leave.sql` on top of `tools/fixtures/pg/*.sql` first (idempotent; gives emp 2 a
+10-day PTO balance in the current year and in 2030..2034, a Saturday holiday for BUG-05 and a
+tenure-gated leave type 99). Scenarios submit as `sarah.chen` (emp 2) and approve/reject as her
+manager `james.richardson` (emp 1). Balance-observing scenarios each own a calendar year so the
+projected `pending/used/available` are order-independent; numbers are projected without trailing
+zeros (`5.00` → `5`) to match Oracle's `NUMBER` `getString`.
+
+* `leave.submit.*` – happy path (`PENDING`, 5 days) and -20201/-20202/-20203 (invalid type and
+  tenure)/-20210/-20211/-20212; `leave.request.not-found` → `LEAVE_REQUEST_NOT_FOUND`
+  (legacy `ORA-01403`).
+* `leave.cancel.*` – pending vs approved cancellation with balance restoration, -20204 on re-cancel.
+* `leave.approve.*` / `leave.reject.*` – pending→used move, pending release, -20204, comments
+  required (`VALIDATION_FAILED`, no legacy equivalent).
+* Documented divergences (contracts/p2-leave/error-codes.md), in `LeaveScenarios.legacyOutcome`:
+  `…bug-06` (AM+PM half-days same day: target `PENDING`, legacy -20202), `…bug-05`
+  (Saturday holiday observed on Friday: 4 vs 5 business days), `…bug-04` (expiry forfeits only the
+  remaining carryover: adjustment -2 vs -5).
+* `leave.batch.{accrual,carryover,carryover.expire}` – recorded legacy expectations on the seed
+  year (balance 9001, `LeaveScenarios.P5_CONTRACT`). Their `/api/leave/admin/*` routes are declared in the contract but mounted
+  in P5, so until then the target must answer `404` and the row is `DEFERRED` (does not fail the
+  run; the legacy leg stays `recorded`).

@@ -22,6 +22,24 @@ public enum ErrorCode {
   CYCLE_NOT_FOUND("CYCLE_NOT_FOUND", HttpStatus.NOT_FOUND, "Review cycle not found"),
   REVIEW_NOT_FOUND("REVIEW_NOT_FOUND", HttpStatus.NOT_FOUND, "Performance review not found"),
   GOAL_NOT_FOUND("GOAL_NOT_FOUND", HttpStatus.NOT_FOUND, "Performance goal not found"),
+  LEAVE_INSUFFICIENT_BALANCE(
+      "-20201", HttpStatus.UNPROCESSABLE_ENTITY, "Insufficient leave balance"),
+  LEAVE_OVERLAP("-20202", HttpStatus.CONFLICT, "Leave request overlaps with existing request"),
+  LEAVE_TYPE_INVALID("-20203", HttpStatus.UNPROCESSABLE_ENTITY, "Invalid leave type"),
+  LEAVE_STATUS_INVALID(
+      "-20204", HttpStatus.UNPROCESSABLE_ENTITY, "Operation not allowed in current status"),
+  LEAVE_DATE_ORDER(
+      "-20210", HttpStatus.BAD_REQUEST, "Start date must be before or equal to end date"),
+  LEAVE_TOO_FAR_IN_PAST(
+      "-20211",
+      HttpStatus.BAD_REQUEST,
+      "Cannot submit leave requests more than 5 days in the past"),
+  LEAVE_NO_BUSINESS_DAYS(
+      "-20212",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "Leave request must include at least one business day"),
+  LEAVE_REQUEST_NOT_FOUND(
+      "LEAVE_REQUEST_NOT_FOUND", HttpStatus.NOT_FOUND, "Leave request not found"),
 
   // ---- framework
   VALIDATION_FAILED("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "Request validation failed"),

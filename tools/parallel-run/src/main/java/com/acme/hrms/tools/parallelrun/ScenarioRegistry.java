@@ -47,6 +47,7 @@ public final class ScenarioRegistry {
   public static List<Scenario> all() {
     List<Scenario> all = new ArrayList<>(phase0());
     all.addAll(PerformanceScenarios.all());
+    all.addAll(LeaveScenarios.all());
     return List.copyOf(all);
   }
 
@@ -161,6 +162,9 @@ public final class ScenarioRegistry {
   }
 
   public static Outcome legacyOutcome(Scenario s) {
+    if (LeaveScenarios.MODULE.equals(s.module())) {
+      return LeaveScenarios.legacyOutcome(s);
+    }
     return switch (s.id()) {
       case "auth.lockout.after-5-failures" -> Outcome.error("-20301"); // SEC-02: no lockout
       default -> s.expect();
