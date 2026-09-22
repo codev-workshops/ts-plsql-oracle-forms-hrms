@@ -40,7 +40,18 @@ public final class RestRunner {
    * {requestId}.
    */
   static final List<String> CAPTURED_IDS =
-      List.of("cycleId", "reviewId", "goalId", "requestId", "id", "dependentId", "contactId");
+      List.of(
+          "cycleId", "reviewId", "goalId", "requestId", "id", "dependentId", "contactId", "runId");
+
+  /**
+   * Setup calls to a payroll {@code /status} resource are re-polled while the asynchronous Spring
+   * Batch job reports {@code CALCULATING} (COMPONENT_MAPPING.md §4: calculate returns 202).
+   */
+  static final String ASYNC_STATUS_SUFFIX = "/status";
+
+  private static final String ASYNC_PENDING = "CALCULATING";
+  private static final int ASYNC_MAX_POLLS = 120;
+  private static final long ASYNC_POLL_MILLIS = 500;
 
   /** Context key holding the last {@code ETag} seen; PUTs send it back as {@code If-Match}. */
   static final String ETAG = "etag";
@@ -50,10 +61,27 @@ public final class RestRunner {
   public Outcome run(Scenario s) throws IOException, InterruptedException {
     context.clear();
     for (RestCall setup : s.target().setup()) {
-      capture(call(setup));
+      HttpResponse<String> resp = call(setup);
+      if (setup.path().endsWith(ASYNC_STATUS_SUFFIX)) {
+        resp = awaitSettled(setup, resp);
+      }
+      capture(resp);
     }
     HttpResponse<String> resp = call(s.target());
     return project(resp, s.expect().fields().keySet());
+  }
+
+  private HttpResponse<String> awaitSettled(RestCall status, HttpResponse<String> first)
+      throws IOException, InterruptedException {
+    HttpResponse<String> resp = first;
+    for (int i = 0; i < ASYNC_MAX_POLLS && resp.statusCode() < 300; i++) {
+      if (!ASYNC_PENDING.equals(JSON.readTree(resp.body()).path("status").asText())) {
+        return resp;
+      }
+      Thread.sleep(ASYNC_POLL_MILLIS);
+      resp = call(status);
+    }
+    return resp;
   }
 
   private void capture(HttpResponse<String> resp) throws IOException {
@@ -144,7 +172,7 @@ public final class RestRunner {
     }
     Map<String, String> fields = new LinkedHashMap<>();
     for (String w : wanted) {
-      JsonNode v = n.path(w);
+      JsonNode v = w.contains(".") || w.contains("[") ? select(n, w) : n.path(w);
       if (w.matches("\\[\\d+\\]\\..+")) {
         int dot = w.indexOf('.');
         int index = Integer.parseInt(w.substring(1, dot - 1));
@@ -157,6 +185,28 @@ public final class RestRunner {
       fields.put(w, v.isMissingNode() ? null : text(v));
     }
     return Outcome.ok(fields);
+  }
+
+  /**
+   * Dotted / indexed selector over the response, e.g. {@code summary.matched} or {@code
+   * content[0].errorCode}; a missing hop yields a missing node.
+   */
+  static JsonNode select(JsonNode root, String selector) {
+    JsonNode cur = root;
+    for (String hop : selector.split("\\.")) {
+      int bracket = hop.indexOf('[');
+      String name = bracket < 0 ? hop : hop.substring(0, bracket);
+      if (!name.isEmpty()) {
+        cur = cur.path(name);
+      }
+      while (bracket >= 0) {
+        int close = hop.indexOf(']', bracket);
+        int index = Integer.parseInt(hop.substring(bracket + 1, close));
+        cur = cur.isArray() && index < cur.size() ? cur.get(index) : JSON.missingNode();
+        bracket = hop.indexOf('[', close);
+      }
+    }
+    return cur;
   }
 
   /** JSON numbers as Oracle's NUMBER getString renders them: no trailing zeros (5.00 → 5). */

@@ -280,4 +280,162 @@ class RegistryAndReportTest {
         .contains("documented divergence, expects `-20301`")
         .contains("| c |");
   }
+
+  @Test
+  void phase4RegistersThePayrollSet() {
+    Map<String, String> codes =
+        Map.of(
+            "payroll.run.create.closed-period", "-20102",
+            "payroll.run.approve.not-calculated", "-20103");
+    Map<String, Scenario> byId =
+        ScenarioRegistry.all().stream()
+            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+    assertThat(byId.keySet())
+        .containsAll(codes.keySet())
+        .contains(
+            "payroll.run.calculate.seed-period",
+            "payroll.shadow.seed-period",
+            "payroll.calculate.no-active-salary",
+            "payroll.payslip.ytd");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("payroll.run.calculate.seed-period").expect().fields())
+        .containsEntry("totalGross", PayrollScenarios.SEED_GROSS)
+        .containsEntry("employeeCount", PayrollScenarios.SEED_EMPLOYEES)
+        .containsEntry("errorCount", "0");
+    assertThat(byId.get("payroll.calculate.no-active-salary").expect().fields())
+        .containsEntry("content[0].errorCode", "-20104")
+        .containsEntry("content[0].elementId", "0");
+    assertThat(byId.get("payroll.payslip.ytd").expect().fields())
+        .containsEntry("ytdGross", "52500.00");
+    // every calculate flow ends its setup with a /status poll so the 202 job has settled
+    for (Scenario s : ScenarioRegistry.all()) {
+      if (PayrollScenarios.MODULE.equals(s.module())) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+        assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(s.expect());
+        boolean calculates =
+            s.target().setup().stream().anyMatch(c -> c.path().endsWith("/calculate"));
+        if (calculates) {
+          assertThat(s.target().setup().stream().map(Scenario.RestCall::path))
+              .as(s.id())
+              .anyMatch(path -> path.endsWith(RestRunner.ASYNC_STATUS_SUFFIX));
+        }
+      }
+    }
+  }
+
+  /**
+   * P4 integration round-1 finding F1: the runner never resets the database, so payroll.* (23
+   * ACTIVE employees, 97 rows) ran after employee.* had hired three and terminated one and reported
+   * 26/27 employees, 4 errors, matched=88. Population-sensitive modules must precede every hire /
+   * terminate scenario in the full registry.
+   */
+  @Test
+  void populationSensitiveScenariosRunBeforeAnyHireOrTermination() {
+    List<Scenario> all = ScenarioRegistry.all(TargetFlags.legacyDefaults());
+    int firstMutation =
+        java.util.stream.IntStream.range(0, all.size())
+            .filter(i -> ScenarioRegistry.changesEmployeePopulation(all.get(i)))
+            .findFirst()
+            .orElseThrow();
+    assertThat(all.get(firstMutation).id()).startsWith("employee.");
+    for (int i = firstMutation; i < all.size(); i++) {
+      assertThat(ScenarioRegistry.POPULATION_SENSITIVE_MODULES)
+          .as(all.get(i).id() + " runs after " + all.get(firstMutation).id())
+          .doesNotContain(all.get(i).module());
+    }
+    assertThat(all.stream().filter(s -> PayrollScenarios.MODULE.equals(s.module())).count())
+        .isEqualTo(PayrollScenarios.all().size());
+  }
+
+  /** F4: the payroll expectations are the totals of the regenerated recorded pack, not stale. */
+  @Test
+  void payrollExpectationsMatchTheRecordedPack() throws Exception {
+    java.nio.file.Path root = java.nio.file.Path.of("").toAbsolutePath();
+    while (root != null
+        && !java.nio.file.Files.isRegularFile(root.resolve("tests/golden/payroll/202406.json"))) {
+      root = root.getParent();
+    }
+    assertThat(root).isNotNull();
+    com.fasterxml.jackson.databind.JsonNode pack =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(root.resolve("tests/golden/payroll/202406.json").toFile());
+    java.math.BigDecimal gross = java.math.BigDecimal.ZERO;
+    java.math.BigDecimal taxes = java.math.BigDecimal.ZERO;
+    int rows = 0;
+    int stateRows = 0;
+    java.util.Set<Long> employees = new java.util.HashSet<>();
+    for (com.fasterxml.jackson.databind.JsonNode r : pack.path("rows")) {
+      assertThat(r.path("status").asText()).isEqualTo("CALCULATED");
+      rows++;
+      employees.add(r.path("empId").asLong());
+      java.math.BigDecimal amount = new java.math.BigDecimal(r.path("amount").asText());
+      if (r.path("elementId").asLong() == 1) {
+        gross = gross.add(amount);
+      } else {
+        taxes = taxes.add(amount.abs());
+      }
+      if (r.path("elementId").asLong() == 101) {
+        stateRows++;
+      }
+    }
+    assertThat(stateRows).as("seed EMPLOYEE_TAX_INFO rows must yield STATE_TAX rows").isEqualTo(5);
+    assertThat(String.valueOf(rows)).isEqualTo(PayrollScenarios.SEED_ROWS);
+    assertThat(String.valueOf(employees.size())).isEqualTo(PayrollScenarios.SEED_EMPLOYEES);
+    assertThat(gross.toPlainString()).isEqualTo(PayrollScenarios.SEED_GROSS);
+    assertThat(taxes.toPlainString()).isEqualTo(PayrollScenarios.SEED_TAXES);
+    assertThat(gross.subtract(taxes).toPlainString()).isEqualTo(PayrollScenarios.SEED_NET);
+
+    String readme = java.nio.file.Files.readString(root.resolve("tools/parallel-run/README.md"));
+    assertThat(readme)
+        .contains(
+            PayrollScenarios.SEED_GROSS
+                + " / "
+                + PayrollScenarios.SEED_TAXES
+                + " / "
+                + PayrollScenarios.SEED_NET)
+        .contains(PayrollScenarios.SEED_ROWS + " `MATCH`");
+  }
+
+  /**
+   * F3: the README told operators to start the target with HRMS_FLAG_PAYROLL_ENGINE=SHADOW, which
+   * ProxyFlags.Flag does not have (LEGACY|JAVA) and the backend refused to start.
+   */
+  @Test
+  void readmeDocumentsOnlyValidPayrollEngineFlags() throws Exception {
+    java.nio.file.Path readme = java.nio.file.Path.of("README.md");
+    if (!java.nio.file.Files.isRegularFile(readme)) {
+      readme = java.nio.file.Path.of("tools/parallel-run/README.md");
+    }
+    String text = java.nio.file.Files.readString(readme);
+    java.util.regex.Matcher m =
+        java.util.regex.Pattern.compile("HRMS_FLAG_PAYROLL_ENGINE=([A-Z_]+)").matcher(text);
+    int found = 0;
+    while (m.find()) {
+      found++;
+      assertThat(m.group(1)).isIn("LEGACY", "JAVA");
+    }
+    assertThat(found).isPositive();
+    assertThat(text).contains("HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=JAVA");
+    TargetFlags flags = TargetFlags.legacyDefaults().with("payroll=NEW,payroll.engine=JAVA");
+    assertThat(flags.flag("payroll.engine")).isEqualTo("JAVA");
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> TargetFlags.legacyDefaults().with("payroll.engine=SHADOW"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void selectorWalksDottedAndIndexedPaths() throws Exception {
+    com.fasterxml.jackson.databind.JsonNode n =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(
+                "{\"summary\":{\"matched\":92},\"content\":[{\"errorCode\":\"-20104\"}],"
+                    + "\"totalElements\":1}");
+    assertThat(RestRunner.select(n, "summary.matched").asInt()).isEqualTo(92);
+    assertThat(RestRunner.select(n, "content[0].errorCode").asText()).isEqualTo("-20104");
+    assertThat(RestRunner.select(n, "content[3].errorCode").isMissingNode()).isTrue();
+    assertThat(RestRunner.select(n, "totalElements").asInt()).isEqualTo(1);
+  }
 }
