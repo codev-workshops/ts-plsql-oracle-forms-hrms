@@ -14,6 +14,7 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage';
 import { PerformancePage } from './pages/performance/PerformancePage';
+import { EmployeePage } from './pages/employees/EmployeePage';
 import { LeavePage } from './pages/leave/LeavePage';
 
 export function createQueryClient() {
@@ -36,7 +37,7 @@ export function AppRoutes() {
           <Route path="/forbidden" element={<ForbiddenPage />} />
           {promoted.map((t) => (
             <Route key={t.id} element={<ProtectedRoute anyOf={t.anyOf} />}>
-              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : <ModulePlaceholderPage />} />
+              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : t.id === 'employees' ? <EmployeePage flags={MODULE_FLAGS} /> : <ModulePlaceholderPage />} />
             </Route>
           ))}
         </Route>

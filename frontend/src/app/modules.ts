@@ -97,6 +97,14 @@ export function parseModuleFlags(raw: string | undefined): Record<string, Module
   return out;
 }
 
+/**
+ * Write gate (CUTOVER_PLAN.md §7.1): a promoted module accepts writes only at `NEW`;
+ * `NEW_READONLY` mounts the reads and the UI must hide every write control.
+ */
+export function isModuleWritable(proxyFlag: string, flags: Record<string, ModuleFlagValue>): boolean {
+  return flags[proxyFlag] === 'NEW';
+}
+
 export function isModulePromoted(tile: ModuleTile, flags: Record<string, ModuleFlagValue>): boolean {
   if (!tile.proxyFlag) return false;
   const v = flags[tile.proxyFlag];

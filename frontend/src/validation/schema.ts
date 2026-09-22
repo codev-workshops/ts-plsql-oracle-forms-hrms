@@ -139,13 +139,18 @@ export function evaluateCustomRule(rule: FieldRule, value: unknown, values: Reco
   const day = utcDay(value);
   if (day === null) return true;
   switch (rule.id) {
-    case 'leave.dateOrder': {
+    case 'leave.dateOrder':
+    case 'employee.hireDateRange': {
       const other = values[String(rule.value)];
       const otherDay = typeof other === 'string' ? utcDay(other) : null;
       return otherDay === null || otherDay <= day;
     }
     case 'leave.pastLimit':
       return day >= todayUtcDay() - Number(rule.value);
+    case 'employee.hireDateLimit':
+      return day <= todayUtcDay() + Number(rule.value);
+    case 'employee.dateNotFuture':
+      return day <= todayUtcDay();
     default:
       return true;
   }
@@ -178,9 +183,14 @@ function numberField(spec: FieldSpec): z.ZodTypeAny {
   const m = spec.messages;
   const base = z.number({ required_error: m.required ?? 'Required', invalid_type_error: m.format ?? m.required ?? 'Invalid number' });
   let n = spec.type === 'integer' ? base.int() : base;
-  if (spec.min !== undefined) n = n.min(Number(spec.min), m.min);
-  if (spec.max !== undefined) n = n.max(Number(spec.max), m.max);
-  const coerced = z.preprocess((v) => (v === '' || v === null ? undefined : typeof v === 'string' ? Number(v) : v), n);
+  const ruledKinds = new Set((spec.rules ?? []).map((r) => r.kind));
+  if (spec.min !== undefined && !ruledKinds.has('min')) n = n.min(Number(spec.min), m.min);
+  if (spec.max !== undefined && !ruledKinds.has('max')) n = n.max(Number(spec.max), m.max);
+  const withRules = n.superRefine((value, ctx) => {
+    const failure = evaluateRules(spec, String(value));
+    if (failure) ctx.addIssue({ code: z.ZodIssueCode.custom, message: failure.message, params: { errorCode: failure.errorCode } });
+  });
+  const coerced = z.preprocess((v) => (v === '' || v === null ? undefined : typeof v === 'string' ? Number(v) : v), withRules);
   return spec.required ? coerced : coerced.optional();
 }
 

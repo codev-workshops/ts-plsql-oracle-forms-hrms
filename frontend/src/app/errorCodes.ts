@@ -1,5 +1,5 @@
 /**
- * `ApiError.code` vocabulary from contracts/p0-foundation/error-codes.md.
+ * `ApiError.code` vocabulary from contracts/p0-foundation/error-codes.md (+ p1/p2/p3 error-codes.md).
  * Legacy codes are the Oracle -20xxx numbers carried verbatim as strings.
  */
 export const LegacyErrorCode = {
@@ -18,6 +18,19 @@ export const LegacyErrorCode = {
   LEAVE_DATE_ORDER: '-20210',
   LEAVE_TOO_FAR_IN_PAST: '-20211',
   LEAVE_NO_BUSINESS_DAYS: '-20212',
+  EMPLOYEE_DUPLICATE_NUMBER: '-20002',
+  EMPLOYEE_INVALID_DEPARTMENT: '-20003',
+  EMPLOYEE_INVALID_MANAGER: '-20004',
+  EMPLOYEE_ALREADY_TERMINATED: '-20005',
+  EMPLOYEE_NAME_REQUIRED: '-20010',
+  EMPLOYEE_INVALID_JOB: '-20011',
+  EMPLOYEE_TRANSFER_NOT_ACTIVE: '-20012',
+  SALARY_NOT_POSITIVE: '-20101',
+  SALARY_NO_ACTIVE_RECORD: '-20104',
+  EMPLOYEE_HIRE_DATE_LIMIT: '-20501',
+  EMPLOYEE_EMAIL_IN_USE: '-20502',
+  EMPLOYEE_REACTIVATE_FORBIDDEN: '-20503',
+  EMPLOYEE_DELETE_FORBIDDEN: '-20504',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -33,6 +46,11 @@ export const FrameworkErrorCode = {
   REVIEW_NOT_FOUND: 'REVIEW_NOT_FOUND',
   GOAL_NOT_FOUND: 'GOAL_NOT_FOUND',
   LEAVE_REQUEST_NOT_FOUND: 'LEAVE_REQUEST_NOT_FOUND',
+  DEPENDENT_NOT_FOUND: 'DEPENDENT_NOT_FOUND',
+  CONTACT_NOT_FOUND: 'CONTACT_NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  PRECONDITION_REQUIRED: 'PRECONDITION_REQUIRED',
+  MODULE_READ_ONLY: 'MODULE_READ_ONLY',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];
@@ -60,4 +78,11 @@ export const DEFAULT_FIELD_FOR_CODE: Readonly<Record<string, string>> = {
   [LegacyErrorCode.LEAVE_DATE_ORDER]: 'endDate',
   [LegacyErrorCode.LEAVE_TOO_FAR_IN_PAST]: 'startDate',
   [LegacyErrorCode.LEAVE_NO_BUSINESS_DAYS]: 'startDate',
+  [LegacyErrorCode.EMPLOYEE_INVALID_DEPARTMENT]: 'deptId',
+  [LegacyErrorCode.EMPLOYEE_INVALID_MANAGER]: 'managerEmpId',
+  [LegacyErrorCode.EMPLOYEE_NAME_REQUIRED]: 'firstName',
+  [LegacyErrorCode.EMPLOYEE_INVALID_JOB]: 'jobId',
+  [LegacyErrorCode.SALARY_NOT_POSITIVE]: 'baseSalary',
+  [LegacyErrorCode.EMPLOYEE_HIRE_DATE_LIMIT]: 'hireDate',
+  [LegacyErrorCode.EMPLOYEE_EMAIL_IN_USE]: 'email',
 };

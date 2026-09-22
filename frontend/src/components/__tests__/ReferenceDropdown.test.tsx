@@ -52,7 +52,7 @@ describe('ReferenceDropdown', () => {
     expect(screen.queryByRole('option', { name: /DAVID MARTINEZ/ })).not.toBeInTheDocument();
 
     await userEvent.setup().type(screen.getByRole('searchbox', { name: 'Search Ref' }), 'mia');
-    await waitFor(() => expect(screen.getByRole('option', { name: 'MIA MANAGER' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: 'MIA MANAGER – Manager' })).toBeInTheDocument());
     expect(screen.queryByRole('option', { name: /JAMES RICHARDSON/ })).not.toBeInTheDocument();
   });
 
