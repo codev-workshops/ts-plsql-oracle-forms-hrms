@@ -1,0 +1,8 @@
+ emp_id | ora_level | pg_level | ora_leaf | pg_leaf |                                    ora_path                                    | pg_path 
+--------+-----------+----------+----------+---------+--------------------------------------------------------------------------------+---------
+     22 |         5 |          |        1 |         |  > JAMES RICHARDSON > SARAH CHEN > ROBERT KUMAR > JENNIFER PARK > THOMAS BAKER | 
+     23 |         5 |          |        1 |         |  > JAMES RICHARDSON > SARAH CHEN > ROBERT KUMAR > JENNIFER PARK > LISA WONG    | 
+     24 |         5 |          |        1 |         |  > JAMES RICHARDSON > SARAH CHEN > ROBERT KUMAR > JENNIFER PARK > ANDREW PATEL | 
+  10006 |         5 |          |        1 |         |  > JAMES RICHARDSON > SARAH CHEN > ROBERT KUMAR > Grace Hopper > Ada Lovelace  | 
+(4 rows)
+
