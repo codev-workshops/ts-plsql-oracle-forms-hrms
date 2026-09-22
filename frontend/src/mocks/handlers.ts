@@ -16,6 +16,8 @@ import { createPerformanceHandlers } from './performanceHandlers';
 import { resetPerformanceState } from './performanceStore';
 import { createLeaveHandlers } from './leaveHandlers';
 import { createEmployeeHandlers } from './employeeHandlers';
+import { createPayrollHandlers } from './payrollHandlers';
+import { resetPayrollState } from './payrollStore';
 import { resetEmployeeState } from './employeeStore';
 import { resetLeaveState } from './leaveStore';
 
@@ -100,6 +102,7 @@ export function resetMockState() {
   resetPerformanceState();
   resetLeaveState(MOCK_LEAVE_TYPES);
   resetEmployeeState({ departments: MOCK_DEPARTMENTS, jobTitles: MOCK_JOB_TITLES, locations: MOCK_LOCATIONS });
+  resetPayrollState();
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -285,3 +288,12 @@ export const employeeHandlers = createEmployeeHandlers((request) => {
 
 handlers.push(...employeeHandlers);
 resetEmployeeState({ departments: MOCK_DEPARTMENTS, jobTitles: MOCK_JOB_TITLES, locations: MOCK_LOCATIONS });
+
+export const payrollHandlers = createPayrollHandlers((request) => {
+  const session = authenticate(request);
+  if (!session) return null;
+  const user = MOCK_USERS[session.email];
+  return user ? { userId: user.userId, empId: user.empId, username: user.email, roles: user.roles } : null;
+});
+
+handlers.push(...payrollHandlers);
