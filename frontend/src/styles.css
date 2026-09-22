@@ -47,3 +47,27 @@ input[aria-invalid='true'], select[aria-invalid='true'] { border-color: #c0392b;
 .error-boundary, .forbidden-page { padding: 2rem; }
 .password-policy { padding-left: 1.2rem; color: #52606d; font-size: 0.9rem; }
 .actions { display: flex; gap: 0.5rem; }
+
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid #d9e2ec; margin-bottom: 1rem; }
+.tabs button[aria-selected='true'] { border-bottom: 3px solid #1f5fbf; color: #1f5fbf; }
+.filters { display: flex; gap: 1rem; align-items: end; margin-bottom: 0.75rem; }
+.filters fieldset { display: flex; gap: 0.75rem; border: 0; padding: 0; margin: 0; }
+.filters fieldset label { display: inline-flex; gap: 0.25rem; align-items: center; }
+.filters input[type='checkbox'] { width: auto; }
+.grid { border-collapse: collapse; width: 100%; background: #fff; margin-top: 1rem; }
+.grid th, .grid td { border: 1px solid #d9e2ec; padding: 0.55rem; text-align: left; vertical-align: top; }
+.grid th { background: #f0f4f8; }
+.badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; background: #e4e7eb; font-size: 0.8rem; white-space: nowrap; }
+.badge-OPEN, .badge-IN_PROGRESS, .badge-MANAGER_REVIEW { background: #d9f2e6; color: #146b3a; }
+.badge-CLOSED, .badge-ACKNOWLEDGED { background: #e4e7eb; color: #52606d; }
+.badge-DRAFT, .badge-NOT_STARTED { background: #fff4e5; color: #8a4b08; }
+.dialog-overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(31, 58, 95, 0.45); z-index: 50; }
+.dialog { width: min(600px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff; border-radius: 8px; padding: 1.25rem; box-shadow: 0 4px 20px rgba(0,0,0,.25); }
+.dialog textarea, .review-detail textarea { width: 100%; min-height: 5rem; font: inherit; padding: 0.45rem; border: 1px solid #9aa5b1; border-radius: 4px; }
+.performance-page h1 { margin-top: 0; }
+.performance-page section { margin-top: 1rem; }
+.preformatted { white-space: pre-wrap; }
+.review-detail dl { display: grid; grid-template-columns: minmax(150px, 1fr) 3fr; gap: 0.4rem 1rem; background: #fff; padding: 0.75rem; }
+.review-detail dt { font-weight: 600; }
+.review-detail form { background: #fff; padding: 1rem; margin-top: 1rem; border: 1px solid #d9e2ec; border-radius: 6px; }
+.bar { height: 0.75rem; background: #1f5fbf; border-radius: 3px; min-width: 2px; }

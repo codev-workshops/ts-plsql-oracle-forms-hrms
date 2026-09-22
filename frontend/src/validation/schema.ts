@@ -158,7 +158,9 @@ function fieldToZod(spec: FieldSpec): z.ZodTypeAny {
     case 'boolean':
       return spec.required ? z.boolean() : z.boolean().optional();
     case 'date':
-      return spec.required ? z.string().date(spec.messages.format) : z.string().date(spec.messages.format).optional();
+      return spec.required
+        ? z.string().min(1, spec.messages.required ?? 'Required').pipe(z.string().date(spec.messages.format))
+        : z.string().date(spec.messages.format).optional();
     case 'enum': {
       const values = spec.values ?? [];
       const e = z.enum(values as [string, ...string[]], { message: spec.messages.required });

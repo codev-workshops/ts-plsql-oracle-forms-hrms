@@ -14,6 +14,8 @@ import type {
 } from '../api/types';
 import { ROLE_AUTHORITIES, SEED_ACCOUNTS, SEED_PASSWORD } from '../../e2e/seed-accounts';
 import { evaluateRules, getDto, getParameter } from '../validation/schema';
+import { createPerformanceHandlers } from './performanceHandlers';
+import { resetPerformanceState } from './performanceStore';
 
 /**
  * msw implementation of contracts/p0-foundation/openapi.yaml, shared by Vitest (node) and
@@ -96,6 +98,7 @@ export function resetMockState() {
   for (const e of Object.keys(MOCK_USERS)) passwords.set(e, MOCK_PASSWORD);
   seq = 0;
   refreshCookieForTests = null;
+  resetPerformanceState();
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -138,7 +141,7 @@ function refreshCookie(s: Session) {
   return `hrms_refresh=${s.refreshToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth`;
 }
 
-function authenticate(request: Request): Session | null {
+export function authenticate(request: Request): Session | null {
   const h = request.headers.get('authorization');
   if (!h?.startsWith('Bearer ')) return null;
   return sessions.get(h.slice(7)) ?? null;
@@ -276,3 +279,12 @@ export const handlers = [
     return HttpResponse.json(body);
   }),
 ];
+
+export const performanceHandlers = createPerformanceHandlers((request) => {
+  const session = authenticate(request);
+  if (!session) return null;
+  const user = MOCK_USERS[session.email];
+  return user ? { userId: user.userId, empId: user.empId, roles: user.roles } : null;
+});
+
+handlers.push(...performanceHandlers);

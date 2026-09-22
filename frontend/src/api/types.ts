@@ -1,6 +1,7 @@
 /**
  * Hand-written 1:1 TypeScript projection of contracts/p0-foundation/openapi.yaml
- * (components.schemas). Do not add fields that are not in the contract.
+ * and contracts/p1-performance/openapi.yaml (components.schemas). Do not add fields
+ * that are not in the contract.
  */
 
 export interface ApiErrorDetail {
@@ -24,7 +25,7 @@ export interface LoginRequest {
 }
 
 export type Authority =
-  `${'PAYROLL' | 'EMPLOYEE' | 'LEAVE' | 'ADMIN' | 'REPORTS'}:${'VIEW' | 'EDIT' | 'APPROVE' | 'CREATE'}`;
+  `${'PAYROLL' | 'EMPLOYEE' | 'LEAVE' | 'ADMIN' | 'REPORTS' | 'PERFORMANCE'}:${'VIEW' | 'EDIT' | 'APPROVE' | 'CREATE' | 'ADMIN'}`;
 
 export interface CurrentUser {
   userId: string;
@@ -147,4 +148,155 @@ export interface EmployeeSearchQuery {
 
 export interface ReferenceQuery {
   active?: boolean;
+}
+
+export type CycleStatus = 'DRAFT' | 'OPEN' | 'IN_PROGRESS' | 'CALIBRATION' | 'CLOSED';
+export type ReviewStatus = 'NOT_STARTED' | 'SELF_REVIEW' | 'MANAGER_REVIEW' | 'MEETING_SCHEDULED' | 'COMPLETED' | 'ACKNOWLEDGED';
+export type ReviewType = 'ANNUAL';
+export type RatingLabel = 'Exceptional' | 'Exceeds Expectations' | 'Meets Expectations' | 'Needs Improvement' | 'Unsatisfactory';
+export type GoalCategory = 'BUSINESS' | 'DEVELOPMENT' | 'LEADERSHIP' | 'INNOVATION' | 'COMPLIANCE';
+export type GoalStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'DEFERRED' | 'CANCELLED';
+
+export interface ReviewCycleRequest {
+  cycleName: string;
+  cycleYear: number;
+  startDate: string;
+  endDate: string;
+  selfReviewDue?: string | null;
+  managerReviewDue?: string | null;
+  calibrationDue?: string | null;
+}
+
+export interface ReviewCycle {
+  cycleId: number;
+  cycleName: string;
+  cycleYear: number;
+  startDate: string;
+  endDate: string;
+  selfReviewDue?: string | null;
+  managerReviewDue?: string | null;
+  calibrationDue?: string | null;
+  status: CycleStatus;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+export interface GenerateReviewsResult {
+  cycleId: number;
+  generated: number;
+  skipped: number;
+}
+
+export interface PerformanceReview {
+  reviewId: number;
+  cycleId: number;
+  empId: number;
+  employeeName: string;
+  reviewerEmpId: number;
+  reviewerName: string;
+  reviewType: ReviewType;
+  status: ReviewStatus;
+  overallRating?: number | null;
+  ratingLabel?: RatingLabel | null;
+  selfAssessment?: string | null;
+  managerAssessment?: string | null;
+  strengths?: string | null;
+  areasForImprovement?: string | null;
+  developmentPlan?: string | null;
+  employeeComments?: string | null;
+  employeeAckDate?: string | null;
+  calibratedRating?: number | null;
+  calibrationNotes?: string | null;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+export interface PageOfPerformanceReview {
+  content: PerformanceReview[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface SelfAssessmentRequest {
+  selfAssessment: string;
+}
+
+export interface ManagerReviewRequest {
+  overallRating: number;
+  managerAssessment: string;
+  strengths?: string | null;
+  improvementAreas?: string | null;
+  developmentPlan?: string | null;
+}
+
+export interface AcknowledgeRequest {
+  employeeComments?: string | null;
+}
+
+export interface GoalRequest {
+  goalTitle: string;
+  goalDescription?: string | null;
+  goalCategory?: GoalCategory;
+  weightPct?: number;
+  targetDate?: string | null;
+}
+
+export interface GoalProgressRequest {
+  progressPct: number;
+  status?: GoalStatus | null;
+  comments?: string | null;
+}
+
+export interface PerformanceGoal {
+  goalId: number;
+  reviewId: number;
+  empId: number;
+  goalTitle: string;
+  goalDescription?: string | null;
+  goalCategory: GoalCategory;
+  weightPct: number;
+  targetDate?: string | null;
+  status: GoalStatus;
+  progressPct: number;
+  selfRating?: number | null;
+  managerRating?: number | null;
+  comments?: string | null;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+export interface TeamReviewRow {
+  reviewId: number;
+  empId: number;
+  employeeName: string;
+  jobTitle: string;
+  deptName: string;
+  status: ReviewStatus;
+  overallRating?: number | null;
+  ratingLabel?: RatingLabel | null;
+}
+
+export interface RatingDistributionRow {
+  ratingLabel: RatingLabel;
+  count: number;
+  percentage: number;
+}
+
+export interface ListCyclesQuery {
+  status?: string;
+  sort?: 'cycleYear,desc' | 'cycleYear,asc' | 'startDate,desc' | 'startDate,asc';
+}
+
+export interface ListCycleReviewsQuery {
+  status?: string;
+  page?: number;
+  size?: number;
 }

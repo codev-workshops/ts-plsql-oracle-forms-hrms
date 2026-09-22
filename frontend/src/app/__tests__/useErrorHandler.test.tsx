@@ -48,6 +48,32 @@ describe('useErrorHandler', () => {
     expect(h.fieldErrors).toEqual({ newPassword: 'Too short' });
   });
 
+  it('uses overallRating for an unfielded rating error without a toast', () => {
+    const { result } = renderHook(() => useErrorHandler(), { wrapper });
+    let h!: ReturnType<typeof result.current.handleError>;
+    act(() => {
+      h = result.current.handleError(apiErr(400, { code: '-20403', message: 'Rating must be between 1.0 and 5.0', traceId: 't5' }));
+    });
+    expect(h.fieldErrors).toEqual({ overallRating: 'Rating must be between 1.0 and 5.0' });
+    expect(h.toasted).toBe(false);
+  });
+
+  it('toasts a known review status error', () => {
+    const { result } = renderHook(() => useErrorHandler(), { wrapper });
+    act(() => {
+      result.current.handleError(apiErr(422, { code: '-20402', message: 'Review not found or not in correct status', traceId: 't6' }));
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Review not found or not in correct status');
+  });
+
+  it('toasts a known cycle not found error', () => {
+    const { result } = renderHook(() => useErrorHandler(), { wrapper });
+    act(() => {
+      result.current.handleError(apiErr(404, { code: 'CYCLE_NOT_FOUND', message: 'Review cycle not found', traceId: 't7' }));
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Review cycle not found');
+  });
+
   it('collects VALIDATION_FAILED details per field', () => {
     const { result } = renderHook(() => useErrorHandler(), { wrapper });
     let h!: ReturnType<typeof result.current.handleError>;
