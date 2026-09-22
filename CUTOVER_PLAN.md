@@ -359,6 +359,7 @@ Reporting is read-only – rollback is re-pointing report consumers at the previ
 | 0 | PROMOTED 2026-09-21 — no end-user traffic moved, proxy still routes all modules to Forms | `ea5925e4d8030755e53985d7d7e5b9de511fadce` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P0.security-signoff` approved | [cutover-log/p0-foundation.md](cutover-log/p0-foundation.md) |
 | 1 | PROMOTED 2026-09-22 — proxy flag `performance=NEW` flip, Forms `HRMS_PERFORMANCE` retirement and `PKG_PERFORMANCE` drop (after bake) unblocked for humans; not yet executed | `3bae336d587884f15dee4689538f3a1b99759dae` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P1.bake-4-weeks` approved | [cutover-log/p1-performance.md](cutover-log/p1-performance.md) |
 | 2 | PROMOTED 2026-09-22 — proxy flag `leave=NEW` flip, Forms `HRMS_LEAVE` retirement, and `PKG_LEAVE` + `TRG_LEAVE_REQUEST_AUDIT` drop (after the accrual cycle) unblocked for humans; not yet executed | `94933cdbe78201bab64b3470cd23b1bf666e8cd2` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P2.accrual-cycle` approved | [cutover-log/p2-leave.md](cutover-log/p2-leave.md) |
+| 3 | PROMOTED 2026-09-22 — proxy flag `employee=NEW_READONLY` then `NEW`, Forms `HRMS_EMPLOYEE` retirement, and `TRG_EMP_*` + `TRG_SALARY_AUDIT` + `PKG_EMPLOYEE` drop (after approval) unblocked for humans; not yet executed | `61ea0aca841ebee67ddcb0e94a5b1bb7e33eda74` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P3.readonly-then-write-bake` approved | [cutover-log/p3-employee.md](cutover-log/p3-employee.md) |
 
 ---
 
