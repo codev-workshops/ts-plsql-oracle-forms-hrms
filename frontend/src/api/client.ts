@@ -49,6 +49,20 @@ import type {
   LeaveRequest,
   LeaveRequestCreateRequest,
   LeaveRequestFilter,
+  PageOfPayPeriod,
+  PageOfPayrollDetail,
+  PayPeriod,
+  PayPeriodListQuery,
+  PayrollDetailListQuery,
+  PayrollRegisterDownload,
+  PayrollRun,
+  PayrollRunApproval,
+  PayrollRunCreateRequest,
+  PayrollRunListQuery,
+  PayrollRunReverseRequest,
+  PayrollRunStatus,
+  Payslip,
+  ShadowDiffReport,
   LeaveRequestsForEmployeeQuery,
   PageOfLeaveRequest,
   PendingLeaveApproval,
@@ -57,7 +71,8 @@ import type {
 
 /**
  * One function per operationId in contracts/p0-foundation/openapi.yaml,
- * contracts/p1-performance/openapi.yaml and contracts/p2-leave/openapi.yaml (the
+ * contracts/p1-performance/openapi.yaml, contracts/p2-leave/openapi.yaml,
+ * contracts/p3-employee/openapi.yaml and contracts/p4-payroll/openapi.yaml (the
  * `x-deferred` P5 admin routes are not mounted and have no client).
  * `exchangeJwtForFormsSession` is proxy-only and intentionally has no browser client.
  */
@@ -299,6 +314,66 @@ export const api = {
     },
     async getTeamLeaveCalendar(params: { from: string; to: string }): Promise<TeamCalendarEntry[]> {
       const { data } = await http.get<TeamCalendarEntry[]>('/api/leave/team-calendar', { params });
+      return data;
+    },
+  },
+
+  /** `payroll-module` – contracts/p4-payroll/openapi.yaml, one function per operationId. */
+  payroll: {
+    async listPayPeriods(params: PayPeriodListQuery = {}): Promise<PageOfPayPeriod> {
+      const { data } = await http.get<PageOfPayPeriod>('/api/payroll/periods', { params });
+      return data;
+    },
+    async closePayPeriod(periodId: number): Promise<PayPeriod> {
+      const { data } = await http.post<PayPeriod>(`/api/payroll/periods/${periodId}/close`);
+      return data;
+    },
+    async listPayrollRuns(periodId: number, params: PayrollRunListQuery = {}): Promise<PayrollRun[]> {
+      const { data } = await http.get<PayrollRun[]>(`/api/payroll/periods/${periodId}/runs`, { params });
+      return data;
+    },
+    async createPayrollRun(periodId: number, body: PayrollRunCreateRequest): Promise<PayrollRun> {
+      const { data } = await http.post<PayrollRun>(`/api/payroll/periods/${periodId}/runs`, body);
+      return data;
+    },
+    /** `202 Accepted`; poll `getPayrollRunStatus` every 2 s while `CALCULATING`. */
+    async calculatePayrollRun(runId: number): Promise<PayrollRunStatus> {
+      const { data } = await http.post<PayrollRunStatus>(`/api/payroll/runs/${runId}/calculate`);
+      return data;
+    },
+    async getPayrollRunStatus(runId: number): Promise<PayrollRunStatus> {
+      const { data } = await http.get<PayrollRunStatus>(`/api/payroll/runs/${runId}/status`);
+      return data;
+    },
+    async approvePayrollRun(runId: number): Promise<PayrollRunApproval> {
+      const { data } = await http.post<PayrollRunApproval>(`/api/payroll/runs/${runId}/approve`);
+      return data;
+    },
+    async reversePayrollRun(runId: number, body: PayrollRunReverseRequest): Promise<PayrollRun> {
+      const { data } = await http.post<PayrollRun>(`/api/payroll/runs/${runId}/reverse`, body);
+      return data;
+    },
+    async listPayrollDetails(runId: number, params: PayrollDetailListQuery = {}): Promise<PageOfPayrollDetail> {
+      const { data } = await http.get<PageOfPayrollDetail>(`/api/payroll/runs/${runId}/details`, { params });
+      return data;
+    },
+    async getPayslip(runId: number, empId: number): Promise<Payslip> {
+      const { data } = await http.get<Payslip>(`/api/payroll/runs/${runId}/payslips/${empId}`);
+      return data;
+    },
+    async downloadPayrollRegister(runId: number, params: { includeBank?: boolean } = {}): Promise<PayrollRegisterDownload> {
+      const res = await http.get<string>(`/api/payroll/runs/${runId}/register.csv`, {
+        params,
+        headers: { Accept: 'text/csv' },
+        responseType: 'text',
+        transformResponse: (d: string) => d,
+      });
+      const disposition = (res.headers as Record<string, string | undefined>)['content-disposition'] ?? '';
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `PAY_REGISTER_${runId}.csv`;
+      return { filename, csv: res.data };
+    },
+    async getShadowDiff(runId: number): Promise<ShadowDiffReport> {
+      const { data } = await http.get<ShadowDiffReport>(`/api/payroll/shadow/runs/${runId}/diff`);
       return data;
     },
   },

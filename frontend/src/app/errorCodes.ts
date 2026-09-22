@@ -32,6 +32,9 @@ export const LegacyErrorCode = {
   EMPLOYEE_EMAIL_IN_USE: '-20502',
   EMPLOYEE_USE_REHIRE_PROCESS: '-20503',
   EMPLOYEE_DELETE_FORBIDDEN: '-20504',
+  // contracts/p4-payroll/error-codes.md (-20101 / -20104 / -20001 shared with P3 above)
+  PAYROLL_PERIOD_CLOSED: '-20102',
+  PAYROLL_RUN_NOT_APPROVABLE: '-20103',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -52,6 +55,15 @@ export const FrameworkErrorCode = {
   CONFLICT: 'CONFLICT',
   PRECONDITION_REQUIRED: 'PRECONDITION_REQUIRED',
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
+  // contracts/p4-payroll/error-codes.md §2
+  PERIOD_NOT_FOUND: 'PERIOD_NOT_FOUND',
+  RUN_NOT_FOUND: 'RUN_NOT_FOUND',
+  PAYSLIP_NOT_FOUND: 'PAYSLIP_NOT_FOUND',
+  SHADOW_REPORT_NOT_FOUND: 'SHADOW_REPORT_NOT_FOUND',
+  RUN_ALREADY_CALCULATING: 'RUN_ALREADY_CALCULATING',
+  RUN_NOT_CALCULABLE: 'RUN_NOT_CALCULABLE',
+  RUN_NOT_REVERSIBLE: 'RUN_NOT_REVERSIBLE',
+  MISSING_TAX_RATE: 'MISSING_TAX_RATE',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];

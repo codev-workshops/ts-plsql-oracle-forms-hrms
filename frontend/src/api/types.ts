@@ -710,3 +710,210 @@ export interface EmployeeDetailWithEtag {
   employee: EmployeeDetail;
   etag: string;
 }
+
+// ---------------------------------------------------------------------------------------
+// contracts/p4-payroll/openapi.yaml – payroll-module (pure-Java TaxEngine / PayrollRunService)
+// ---------------------------------------------------------------------------------------
+
+export type PeriodStatus = 'OPEN' | 'PROCESSING' | 'CLOSED' | 'REVERSED';
+export type RunType = 'REGULAR' | 'SUPPLEMENTAL' | 'BONUS' | 'FINAL';
+export type RunStatus = 'PENDING' | 'CALCULATING' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'REVERSED' | 'ERROR';
+export type DetailStatus = 'CALCULATED' | 'ERROR' | 'REVERSED';
+export type ElementType = 'EARNING' | 'DEDUCTION' | 'TAX' | 'BENEFIT' | 'ERROR';
+export type FilingStatus = 'SINGLE' | 'MARRIED_JOINT' | 'MARRIED_SEPARATE' | 'HEAD_OF_HOUSEHOLD';
+
+export type PayPeriodSort = `${'periodStartDate' | 'periodEndDate' | 'payDate' | 'periodName'},${'asc' | 'desc'}`;
+
+export interface PayPeriodListQuery {
+  status?: PeriodStatus;
+  sort?: PayPeriodSort;
+  page?: number;
+  size?: number;
+}
+
+export interface PayrollRunListQuery {
+  status?: RunStatus;
+}
+
+export interface PayrollDetailListQuery {
+  empId?: number;
+  status?: DetailStatus;
+  page?: number;
+  size?: number;
+}
+
+export interface PayrollRunCreateRequest {
+  runType: RunType;
+}
+
+export interface PayrollRunReverseRequest {
+  reason: string;
+}
+
+export interface PayPeriod {
+  periodId: number;
+  periodName: string;
+  payFrequency: PayFrequency;
+  periodStartDate: string;
+  periodEndDate: string;
+  payDate: string;
+  status: PeriodStatus;
+  closedBy?: string | null;
+  closedDate?: string | null;
+  runCount: number;
+  latestRunId?: number | null;
+  latestRunStatus?: RunStatus | null;
+}
+
+export interface PageOfPayPeriod {
+  content: PayPeriod[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface PayrollRun {
+  runId: number;
+  periodId: number;
+  runType: RunType;
+  runDate: string;
+  status: RunStatus;
+  totalGross: Money;
+  /** Positive magnitude of taxes + deductions + benefits. */
+  totalDeductions: Money;
+  totalNet: Money;
+  /** Never computed in P4; always `null`. */
+  totalEmployerCost?: Money | null;
+  employeeCount: number;
+  errorCount: number;
+  engine: 'JAVA';
+  submittedBy?: string | null;
+  submittedDate?: string | null;
+  approvedBy?: string | null;
+  approvedDate?: string | null;
+  createdBy?: string;
+  createdDate?: string;
+}
+
+export interface PayrollRunStatus {
+  runId: number;
+  status: RunStatus;
+  jobExecutionId?: number | null;
+  processed: number;
+  /** Population size; `null` until resolved. */
+  total: number | null;
+  errorCount: number;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  /** Set only when the batch job itself failed and the run is `ERROR`. */
+  failureMessage?: string | null;
+}
+
+export interface PayrollApprovalWarning {
+  empId: number;
+  empNumber: string;
+  errorCode: string;
+  errorMessage: string;
+}
+
+export interface PayrollRunApproval {
+  run: PayrollRun;
+  warnings: PayrollApprovalWarning[];
+}
+
+export interface PayrollDetail {
+  detailId: number;
+  runId: number;
+  empId: number;
+  empNumber: string;
+  /** `1` base pay, `100` FED_TAX, `101` STATE_TAX, `102` FICA, `103` MEDICARE, `0` error sentinel. */
+  elementId: number;
+  elementCode: string;
+  elementType: ElementType;
+  hoursWorked?: string | null;
+  rate?: string | null;
+  /** Stored sign: `+` earnings, `−` taxes/deductions/benefits, `0.00` on ERROR rows. */
+  amount: Money;
+  ytdAmount?: Money | null;
+  status: DetailStatus;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface PageOfPayrollDetail {
+  content: PayrollDetail[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface Payslip {
+  runId: number;
+  empId: number;
+  empNumber: string;
+  empName: string;
+  departmentName?: string | null;
+  jobTitle?: string | null;
+  periodName: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  payDate: string;
+  runStatus: RunStatus;
+  grossPay: Money;
+  federalTax: Money;
+  stateTax: Money;
+  socialSecurity: Money;
+  medicare: Money;
+  otherDeductions: Money;
+  totalDeductions: Money;
+  netPay: Money;
+  ytdGross: Money;
+  ytdTaxes: Money;
+  ytdDeductions: Money;
+  ytdNet: Money;
+  lines: PayrollDetail[];
+}
+
+export type ShadowClassification = 'MATCH' | 'DIFF_EXPLAINED' | 'DIFF_UNEXPLAINED' | 'LEGACY_ONLY' | 'JAVA_ONLY';
+export type ShadowExplanation = 'UNLISTED_STATE_FALLBACK' | 'HEAD_OF_HOUSEHOLD_ZERO_FED' | 'NON_2024_YEAR' | 'LEGACY_PARTIAL_COMMIT' | 'LEGACY_ERROR_ROW';
+
+export interface ShadowDiffLine {
+  empId: number;
+  empNumber?: string;
+  elementId: number;
+  elementCode?: string;
+  classification: ShadowClassification;
+  explanation?: ShadowExplanation | null;
+  legacyAmount: Money | null;
+  javaAmount: Money | null;
+  deltaCents: number;
+}
+
+export interface ShadowDiffReport {
+  runId: number;
+  periodId: number;
+  taxYear: number;
+  engineFlag: 'LEGACY' | 'JAVA';
+  legacySource: 'oracle-cdc' | 'recorded';
+  comparedAt: string;
+  summary: {
+    employees: number;
+    matched: number;
+    explained: number;
+    unexplained: number;
+    legacyOnly: number;
+    javaOnly: number;
+    errorRowsLegacy: number;
+    errorRowsJava: number;
+    netDeltaCents: number;
+  };
+  lines: ShadowDiffLine[];
+}
+
+/** `GET …/register.csv` – the streamed body plus the server-chosen filename. */
+export interface PayrollRegisterDownload {
+  filename: string;
+  csv: string;
+}
