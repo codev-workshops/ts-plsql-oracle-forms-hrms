@@ -134,8 +134,9 @@ public final class ScenarioRegistry {
                 "declare v_session number; begin v_session := pkg_security.create_session(:emp_id, "
                     + "'HRMS_MENU', 'PARALLEL-RUN'); :session_id := v_session; end;",
                 List.of("session_id")),
-            post("/legacy/sso/exchange", Map.of("module", "employee", "clientIp", CLIENT_IP), USER),
-            Outcome.ok(Map.of("formsModule", "HRMS_EMPLOYEE"))),
+            // Must target a module that is still LEGACY in the current phase (payroll until P4).
+            post("/legacy/sso/exchange", Map.of("module", "payroll", "clientIp", CLIENT_IP), USER),
+            Outcome.ok(Map.of("formsModule", "HRMS_PAYROLL"))),
         new Scenario(
             "sso.exchange.new-module-rejected",
             "auth",
