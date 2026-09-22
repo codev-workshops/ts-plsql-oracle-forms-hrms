@@ -1,0 +1,41 @@
+| module | tests | failures | errors | skipped |
+|---|---:|---:|---:|---:|
+| ../tools/cdc-sync / com.acme.hrms.tools.cdc.EmployeeCutoverTest | 6 | 0 | 0 | 0 |
+| ../tools/cdc-sync / com.acme.hrms.tools.cdc.ExecutableJarManifestTest | 1 | 0 | 0 | 0 |
+| ../tools/cdc-sync / com.acme.hrms.tools.cdc.HolidaysRoundTripTest | 5 | 0 | 0 | 0 |
+| ../tools/cdc-sync / com.acme.hrms.tools.cdc.LeaveCutoverTest | 6 | 0 | 0 | 0 |
+| ../tools/cdc-sync / com.acme.hrms.tools.cdc.PerformanceCutoverTest | 4 | 0 | 0 | 0 |
+| ../tools/parallel-run / com.acme.hrms.tools.parallelrun.RegistryAndReportTest | 10 | 0 | 0 | 0 |
+| ../tools/parallel-run / com.acme.hrms.tools.parallelrun.SsoScenarioContractTest | 6 | 0 | 0 | 0 |
+| ../tools/reconcile / com.acme.hrms.tools.reconcile.DiffAndCanonicalTest | 5 | 0 | 0 | 0 |
+| ../tools/reconcile / com.acme.hrms.tools.reconcile.PgReconciliationQueriesTest | 7 | 0 | 0 | 0 |
+| ../tools/reconcile / com.acme.hrms.tools.reconcile.QueriesRootResolutionTest | 3 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.AuthFlowTest | 11 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.EmployeeApiTest | 4 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.LeaveApiTest | 9 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.OpenApiContractTest | 1 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.PerformanceApiTest | 7 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.ReferenceAndSsoTest | 3 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.SalaryApiTest | 6 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.SalaryModuleReadOnlyTest | 1 | 0 | 0 | 0 |
+| auth / com.acme.hrms.auth.SeededAccountsTest | 2 | 0 | 0 | 0 |
+| employee / com.acme.hrms.employee.EmployeeRepositoryTest | 9 | 0 | 0 | 0 |
+| employee / com.acme.hrms.employee.EmployeeServiceTest | 21 | 0 | 0 | 0 |
+| hrms-audit / com.acme.hrms.audit.ErrorLogServiceTest | 2 | 0 | 0 | 0 |
+| hrms-common / com.acme.hrms.common.calendar.BusinessCalendarTest | 6 | 0 | 0 | 0 |
+| hrms-common / com.acme.hrms.common.error.ErrorCodeTest | 3 | 0 | 0 | 0 |
+| hrms-common / com.acme.hrms.common.error.GlobalExceptionHandlerTest | 3 | 0 | 0 | 0 |
+| hrms-common / com.acme.hrms.common.testsupport.FlywayBaselineTest | 9 | 0 | 0 | 0 |
+| hrms-common / com.acme.hrms.common.trace.TraceContextTest | 1 | 0 | 0 | 0 |
+| hrms-notification / com.acme.hrms.notification.NotificationServiceTest | 2 | 0 | 0 | 0 |
+| hrms-validation / com.acme.hrms.validation.EmployeeConstraintsTest | 3 | 0 | 0 | 0 |
+| hrms-validation / com.acme.hrms.validation.PasswordPolicyTest | 3 | 0 | 0 | 0 |
+| hrms-validation / com.acme.hrms.validation.ValidationSchemaExporterTest | 5 | 0 | 0 | 0 |
+| leave / com.acme.hrms.leave.LeaveAccrualJobTest | 3 | 0 | 0 | 0 |
+| leave / com.acme.hrms.leave.LeaveRepositoryTest | 10 | 0 | 0 | 0 |
+| performance / com.acme.hrms.performance.PerformanceRepositoryTest | 5 | 0 | 0 | 0 |
+| performance / com.acme.hrms.performance.RatingLabelAndGoalStatusTest | 12 | 0 | 0 | 0 |
+| performance / com.acme.hrms.performance.StatusMachineServiceTest | 37 | 0 | 0 | 0 |
+| salary / com.acme.hrms.salary.SalaryRepositoryTest | 4 | 0 | 0 | 0 |
+| salary / com.acme.hrms.salary.SalaryServiceTest | 3 | 0 | 0 | 0 |
+| **total** | **238** | **0** | **0** | **0** |

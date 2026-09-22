@@ -1,0 +1,26 @@
+[
+  {
+    "step": "staff reads detail and history",
+    "status": "passed",
+    "empNumber": "EMP-000011"
+  },
+  {
+    "step": "frontend flag behavior",
+    "status": "passed",
+    "banner": "not rendered with VITE_MODULE_FLAGS=employee=NEW"
+  },
+  {
+    "step": "executive reads salary tab",
+    "status": "passed"
+  },
+  {
+    "step": "backend POST /api/employees at NEW_READONLY",
+    "status": 409,
+    "code": "MODULE_READ_ONLY",
+    "body": {
+      "code": "MODULE_READ_ONLY",
+      "message": "Employee module is read-only during cutover",
+      "traceId": "129ced63d418ed91537e713465fb7ed2"
+    }
+  }
+]
