@@ -1,0 +1,42 @@
+# P4 – Payroll integration test, round 1
+
+Tested: `p4-payroll/integration` @ `36de0427f2dab31334ea5605bca9c1162e0fdb2c` (PR #33).
+Golden-oracle mode OFF: PostgreSQL 17 (docker `hrms-pg`) only; legacy PL/SQL read as reference; `legacy_source=recorded`. No application code changed (the real-stack Playwright harness lives in `harness/`, not in the app tree).
+
+Verdict: **FAIL → failure_owner = backend** — the Phase-4 shadow gate itself is green (every `(RUN, EMP_ID, ELEMENT_ID)` diffs to 0 cents), but the Level 2 `tools/parallel-run` full-registry run exits 1 with three stale/order-dependent recorded fixtures and the seed lacks the fixtures needed to exercise STATE_TAX and masked bank data outside unit tests. Everything else passed.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Level 1 backend (`mvn verify` on merged tree, Java 21, Testcontainers PG) + standalone tools | PASS – 282 JUnit tests (13 modules) + parallel-run 18 / reconcile 15 / cdc-sync 22, 0 failures | `level1-junit-module-summary.txt` |
+| Level 1 frontend (Vitest, `tsc -b`, eslint) | PASS – 27 files / 155 tests, typecheck clean, lint 0 errors (7 pre-existing warnings) | `level1-vitest-summary.txt` |
+| Playwright real stack (Vite :5173 ↔ Spring :8080 ↔ PG, `E2E_REAL_STACK=1`, `payroll=NEW`, `payroll.engine=JAVA`, no msw) | PASS – 2/2: HR opens JUN-2024 → Create run → Calculate (202, progress bar + `/status` polling → Calculated, 23 employees, 300,833.32 / 82,259.64 / 218,573.68) → Pay Details EMP-000002 BASE_PAY +31,666.67, FED_TAX −8,188.73, FICA −1,963.33, MEDICARE −459.17 (no STATE_TAX row — see F4) → Approve → payslip gross 31,666.67 / YTD 52,500.00 / net 21,055.44 → `PAY_REGISTER_<run>_yyyyMMdd_HHmmss.csv` with 23 rows and `BANK_NAME,ROUTING_LAST4,ACCOUNT_LAST4` columns, no full account/routing numbers; manager (`PAYROLL:VIEW`) sees no create/calculate/approve controls | `playwright-html/index.html`, `harness/payroll-real-stack.spec.ts` |
+| Level 2 gate – `PayrollShadowRunner` shadow comparison (`payroll` scenarios only, pristine seed + `fixtures/payroll.sql`) | PASS – 6/6 scenarios; 92/92 MATCH, 0 unexplained, 0 legacyOnly/javaOnly, net delta 0 cents for runs created via REST (9004, 9007) and via the UI (9003); no-active-salary period → 23 × `-20104` sentinel rows | `parallel-run-payroll-only.md`, `shadow/README.md`, `shadow/*.json` |
+| Level 2 – `tools/parallel-run` full registry (73 scenarios) on a pristine seed | **FAIL – 67/73, 3 DEFERRED (P5 leave.batch), 3 TARGET-DIFF (F1, F2)** | `parallel-run-full-registry.md` |
+| Level 3 – `tools/reconcile` on the 6 `tests/reconciliation/pg/` views after a Java run of 202406 is approved via the API, vs `tests/golden/views-baseline.csv` with `VW_PAYROLL_LATEST` replaced by `tests/golden/payroll/vw_payroll_latest-202406-approved.csv` | PASS – 0 mismatching cells; `VW_PAYROLL_LATEST` 23/23 rows to the cent, `VW_EMPLOYEE_COMPENSATION` unchanged (23/23, 0 cells) | `reconcile-after-api-approved-202406.md` |
+| Level 3 – same, after the run approved through the UI (Playwright) | PASS – 0 mismatching cells | `reconcile-after-ui-approved-202406.md` |
+| Level 3 – control: post-approval state vs the *pristine* baseline | DIFF only in `VW_PAYROLL_LATEST` (MAY-2024 legacy rows → JUN-2024 Java rows), all other views 0 cells — expected, kept as evidence that only the payroll view moved | `reconcile-post-approval-vs-pristine-baseline-EXPECTED-DIFF.md` |
+| Phase-specific – shadow report artifact with per-run totals | PASS – `shadow/README.md` (per-run totals table) + raw `ShadowDiffReport` JSON per run | `shadow/` |
+| Phase-specific – `PayrollShadowRunner` schedulable against production runs | PASS with caveats – `GET /api/payroll/shadow/runs/{runId}/diff` (`ADMIN:VIEW`) recomputes and upserts `payroll_shadow_reports` idempotently, so an external scheduler (cron + service token) can watch it; there is no in-process `@Scheduled`/CLI trigger and the `oracle-cdc` legacy-source branch (`legacyRunOfRecord`) has no unit test → `untested-live` (see A1/A2) | `PayrollController.shadowDiff`, `PayrollShadowRunner.report` |
+
+## Findings (routed)
+
+F1 `[backend]` `tools/parallel-run` `payroll.run.calculate.seed-period` and `payroll.shadow.seed-period` TARGET-DIFF when the full registry runs on a pristine database: the P3 `employee.*` scenarios that precede them hire 3 employees and terminate one, so the JUN-2024 run sees 26/27 employees, 4 `ERROR` rows and `legacyOnly=4` (target `employeeCount=26 errorCount=4 totalGross=296499.99`, expected `23 / 0 / 300833.32`; shadow `matched=88 employees=27`, expected `92 / 23`). The recorded expectations only hold with `--only payroll`, which the README (§Phase 4) does not state. Fix the fixture (e.g. a dedicated fixture period whose salary population is unaffected by the employee scenarios, or make `payroll.*` expectations derive from the live employee set) rather than the engine — the Java engine matches PKG_PAYROLL row-for-row on the isolated run.
+
+F2 `[backend]` `tools/parallel-run` `sso.exchange.legacy-module` TARGET-DIFF (`SSO_MODULE_NOT_LEGACY`, expected `SSO_LEGACY_UNAVAILABLE`): the scenario hard-codes `module=payroll` "still LEGACY until P4"; with `HRMS_FLAG_PAYROLL=NEW` in P4 the auth-service correctly rejects it. Same class as P3 F1; make the scenario flag-aware (skip / expect `SSO_MODULE_NOT_LEGACY` when no module is LEGACY) so it stops going stale every phase.
+
+F3 `[backend]` `tools/parallel-run/README.md` §Phase 4 instructs `HRMS_FLAG_PAYROLL_ENGINE=SHADOW`; `ProxyFlags.Flag` only accepts `LEGACY|NEW_READONLY|NEW|JAVA` and the backend refuses to start (`No enum constant …Flag.SHADOW`). The runner needs `HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=JAVA`; fix the doc (or add the value if shadow was meant to be a flag state).
+
+F4 `[backend]` Missing fixture: `tools/fixtures/pg` seeds 0 `employee_tax_info` and 0 `employee_bank_accounts` rows, so at Level 2/3 and in the golden path every employee is `SINGLE / 0 allowances / no state` and has no bank account. STATE_TAX never produces a `PAYROLL_DETAILS` row (the requested "FED/STATE/FICA/MEDICARE" check could only verify STATE = no row / payslip 0.00) and the register's masked bank columns are always empty — the state ladder and `MaskedBankAccount` are covered by Level 1 unit tests only (`tax/2024-golden.json`, `PayRegisterExporter` tests). Add tax-info (≥1 CA/NY employee, a MARRIED filer, an `additional_fed_wh`) and bank rows to the seed and extend `tests/golden/payroll/202406.json` / `vw_payroll_latest-202406-approved.csv` accordingly.
+
+Advisory (not counted against the gate):
+- A1 `[backend]` `PayrollShadowRunner.legacyRunOfRecord` (`legacySource=oracle-cdc`, the branch production shadow mode will use) has no unit test; CDC / reverse-extract / decommission remain `untested-live` per the P4 contract.
+- A2 `[backend]` No in-repo scheduler for the shadow gate; the manual gate must be driven externally via the `diff` endpoint (idempotent, persisted). Consider a documented `@Scheduled`/CLI entry point in P5.
+- `[env]` PostgreSQL 17 was used (Docker Hub rate-limited `postgres:16-alpine`; local `postgres:17` retagged for Testcontainers) — harness only, not a code finding.
+
+## Method / environment notes
+
+- Default JDK on the box is 11; everything ran with `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`.
+- Order that works: PG → backend once against an empty schema (Flyway V1–V7, then `PayElementStartupValidator` aborts) → `tools/fixtures/pg/01…04` → `tools/parallel-run/fixtures/payroll.sql` + `leave.sql` → restart backend (`harness/reset-db.sh`, `harness/start-backend.sh`). Level 2, Level 3 and each Playwright run were executed on a freshly recreated database.
+- Backend flags: `HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=JAVA HRMS_FLAG_EMPLOYEE=NEW HRMS_FLAG_LEAVE=NEW HRMS_FLAG_PERFORMANCE=NEW HRMS_PROXY_CIDRS=127.0.0.1/32,::1/128 HRMS_PAYROLL_RECORDED_DIR=<repo>/tests/golden/payroll`.
+- The committed `frontend/e2e/payroll-golden-path.spec.ts` is msw-only and skips under `E2E_REAL_STACK=1`; the real-stack spec used is `harness/payroll-real-stack.spec.ts` (run from `frontend/e2e/` with `E2E_REAL_STACK=1 VITE_MODULE_FLAGS=payroll=NEW,payroll.engine=JAVA,… npx playwright test payroll-real-stack`).
+- Level 3 expected file for the post-approval state = `views-baseline.csv` minus `VW_PAYROLL_LATEST` + `tests/golden/payroll/vw_payroll_latest-202406-approved.csv` (both committed golden files; nothing regenerated).
