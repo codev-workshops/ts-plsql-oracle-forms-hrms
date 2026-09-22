@@ -18,6 +18,20 @@ export const LegacyErrorCode = {
   LEAVE_DATE_ORDER: '-20210',
   LEAVE_TOO_FAR_IN_PAST: '-20211',
   LEAVE_NO_BUSINESS_DAYS: '-20212',
+  // contracts/p3-employee/error-codes.md
+  EMPLOYEE_NUMBER_DUPLICATE: '-20002',
+  EMPLOYEE_DEPT_INVALID: '-20003',
+  EMPLOYEE_MANAGER_INVALID: '-20004',
+  EMPLOYEE_ALREADY_TERMINATED: '-20005',
+  EMPLOYEE_NAMES_REQUIRED: '-20010',
+  EMPLOYEE_JOB_INVALID: '-20011',
+  EMPLOYEE_TRANSFER_NOT_ACTIVE: '-20012',
+  SALARY_NOT_POSITIVE: '-20101',
+  SALARY_NO_ACTIVE_RECORD: '-20104',
+  EMPLOYEE_HIRE_DATE_TOO_FAR: '-20501',
+  EMPLOYEE_EMAIL_IN_USE: '-20502',
+  EMPLOYEE_USE_REHIRE_PROCESS: '-20503',
+  EMPLOYEE_DELETE_FORBIDDEN: '-20504',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -33,6 +47,11 @@ export const FrameworkErrorCode = {
   REVIEW_NOT_FOUND: 'REVIEW_NOT_FOUND',
   GOAL_NOT_FOUND: 'GOAL_NOT_FOUND',
   LEAVE_REQUEST_NOT_FOUND: 'LEAVE_REQUEST_NOT_FOUND',
+  DEPENDENT_NOT_FOUND: 'DEPENDENT_NOT_FOUND',
+  CONTACT_NOT_FOUND: 'CONTACT_NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  PRECONDITION_REQUIRED: 'PRECONDITION_REQUIRED',
+  MODULE_READ_ONLY: 'MODULE_READ_ONLY',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];
@@ -60,4 +79,11 @@ export const DEFAULT_FIELD_FOR_CODE: Readonly<Record<string, string>> = {
   [LegacyErrorCode.LEAVE_DATE_ORDER]: 'endDate',
   [LegacyErrorCode.LEAVE_TOO_FAR_IN_PAST]: 'startDate',
   [LegacyErrorCode.LEAVE_NO_BUSINESS_DAYS]: 'startDate',
+  [LegacyErrorCode.EMPLOYEE_DEPT_INVALID]: 'deptId',
+  [LegacyErrorCode.EMPLOYEE_MANAGER_INVALID]: 'managerEmpId',
+  [LegacyErrorCode.EMPLOYEE_NAMES_REQUIRED]: 'lastName',
+  [LegacyErrorCode.EMPLOYEE_JOB_INVALID]: 'jobId',
+  [LegacyErrorCode.SALARY_NOT_POSITIVE]: 'baseSalary',
+  [LegacyErrorCode.EMPLOYEE_HIRE_DATE_TOO_FAR]: 'hireDate',
+  [LegacyErrorCode.EMPLOYEE_EMAIL_IN_USE]: 'email',
 };
