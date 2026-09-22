@@ -89,6 +89,8 @@ Per-phase view scope (TEST_STRATEGY.md §5): P0 all six views vs `tests/golden/v
 
 **P4 deviation.** The Level-2 check *is* the `PayrollShadowRunner` shadow-mode comparison (CUTOVER_PLAN.md §8.2–§8.4): legacy `PKG_PAYROLL.calculate_payroll` on Oracle vs the Java `TaxEngine`/`PayrollRunService` on PostgreSQL for every fixture period, diffed per `(RUN, EMP_ID, ELEMENT_ID)`; any non-zero cent on 2024-rule inputs fails the gate. The same runner is later pointed at real production periods for the manual shadow gate (§6).
 
+**Golden-oracle mode** (`HRMS_WF_ORACLE`, default `off`). With `off` — the current project decision — child sessions have no Oracle/Forms/utPLSQL and must not try to obtain one: legacy PL/SQL is read as reference, expected behaviour is recorded as fixtures in the scenario registry and `tests/golden/`, Level 2 runs only the REST runner against the PostgreSQL-backed backend (`legacy_source=recorded`), Level 3 runs the reconciliation queries on PostgreSQL against those recorded rows, and Playwright still runs on the real stack. Missing Oracle is never an `environment` failure; CDC/reverse-extract/decommission items ship as code + unit tests marked `untested-live`. With `live` the rows above apply literally.
+
 **Phase gate** (`gate_passed`): `level1_passed ∧ level2_passed ∧ level3_passed ∧ e2e_passed ∧ phase_specific_passed ∧ failure_owner == "none"`. There is no partial pass.
 
 ---
@@ -178,9 +180,11 @@ Environment variables read at start (defaults in the file):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HRMS_WF_BASE_BRANCH` | `main` | branch P0 is cut from; must carry the reference documents |
+| `HRMS_WF_BASE_BRANCH` | `devin/1789629102-hrms-analysis-artifacts` | branch P0 is cut from; must carry the reference documents |
 | `HRMS_WF_PHASES` | `P0,P1,P2,P3,P4,P5` | subset to run (in order); earlier phases must already be promoted |
 | `HRMS_WF_APPROVED_GATES` | empty | gate ids granted out of band, e.g. `P1.bake-4-weeks,P4.shadow-gate` |
+| `HRMS_WF_ORACLE` | `off` | `off` = validate against local PostgreSQL only (§4); `live` = Oracle golden oracle available to child sessions |
+| `HRMS_WF_ACCEPT_BLOCKERS` | `P0.backend` | implementation labels whose `blockers` text is logged and accepted (used when a recorded result predates a policy change; P0.backend reported only the missing Oracle) |
 
 **Resuming after a calendar gate.** A run that stopped at `P1.bake-4-weeks` is resumed – weeks later – by re-running the *same script* with the *same `run_id`* and `HRMS_WF_APPROVED_GATES=P1.bake-4-weeks`. Every completed node (contract, backend, frontend, fan-in, integration, earlier phases) replays from the journal; the approval node is skipped as pre-approved; the promote node and P2's contract node run next. The same mechanism resumes after a halt (`contract`/`environment`) once the human fix is in – the failed node is retried, the rest replays.
 
