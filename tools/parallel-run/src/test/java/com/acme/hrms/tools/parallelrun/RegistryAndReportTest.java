@@ -326,6 +326,106 @@ class RegistryAndReportTest {
     }
   }
 
+  /**
+   * P4 integration round-1 finding F1: the runner never resets the database, so payroll.* (23
+   * ACTIVE employees, 97 rows) ran after employee.* had hired three and terminated one and reported
+   * 26/27 employees, 4 errors, matched=88. Population-sensitive modules must precede every hire /
+   * terminate scenario in the full registry.
+   */
+  @Test
+  void populationSensitiveScenariosRunBeforeAnyHireOrTermination() {
+    List<Scenario> all = ScenarioRegistry.all(TargetFlags.legacyDefaults());
+    int firstMutation =
+        java.util.stream.IntStream.range(0, all.size())
+            .filter(i -> ScenarioRegistry.changesEmployeePopulation(all.get(i)))
+            .findFirst()
+            .orElseThrow();
+    assertThat(all.get(firstMutation).id()).startsWith("employee.");
+    for (int i = firstMutation; i < all.size(); i++) {
+      assertThat(ScenarioRegistry.POPULATION_SENSITIVE_MODULES)
+          .as(all.get(i).id() + " runs after " + all.get(firstMutation).id())
+          .doesNotContain(all.get(i).module());
+    }
+    assertThat(all.stream().filter(s -> PayrollScenarios.MODULE.equals(s.module())).count())
+        .isEqualTo(PayrollScenarios.all().size());
+  }
+
+  /** F4: the payroll expectations are the totals of the regenerated recorded pack, not stale. */
+  @Test
+  void payrollExpectationsMatchTheRecordedPack() throws Exception {
+    java.nio.file.Path root = java.nio.file.Path.of("").toAbsolutePath();
+    while (root != null
+        && !java.nio.file.Files.isRegularFile(root.resolve("tests/golden/payroll/202406.json"))) {
+      root = root.getParent();
+    }
+    assertThat(root).isNotNull();
+    com.fasterxml.jackson.databind.JsonNode pack =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(root.resolve("tests/golden/payroll/202406.json").toFile());
+    java.math.BigDecimal gross = java.math.BigDecimal.ZERO;
+    java.math.BigDecimal taxes = java.math.BigDecimal.ZERO;
+    int rows = 0;
+    int stateRows = 0;
+    java.util.Set<Long> employees = new java.util.HashSet<>();
+    for (com.fasterxml.jackson.databind.JsonNode r : pack.path("rows")) {
+      assertThat(r.path("status").asText()).isEqualTo("CALCULATED");
+      rows++;
+      employees.add(r.path("empId").asLong());
+      java.math.BigDecimal amount = new java.math.BigDecimal(r.path("amount").asText());
+      if (r.path("elementId").asLong() == 1) {
+        gross = gross.add(amount);
+      } else {
+        taxes = taxes.add(amount.abs());
+      }
+      if (r.path("elementId").asLong() == 101) {
+        stateRows++;
+      }
+    }
+    assertThat(stateRows).as("seed EMPLOYEE_TAX_INFO rows must yield STATE_TAX rows").isEqualTo(5);
+    assertThat(String.valueOf(rows)).isEqualTo(PayrollScenarios.SEED_ROWS);
+    assertThat(String.valueOf(employees.size())).isEqualTo(PayrollScenarios.SEED_EMPLOYEES);
+    assertThat(gross.toPlainString()).isEqualTo(PayrollScenarios.SEED_GROSS);
+    assertThat(taxes.toPlainString()).isEqualTo(PayrollScenarios.SEED_TAXES);
+    assertThat(gross.subtract(taxes).toPlainString()).isEqualTo(PayrollScenarios.SEED_NET);
+
+    String readme = java.nio.file.Files.readString(root.resolve("tools/parallel-run/README.md"));
+    assertThat(readme)
+        .contains(
+            PayrollScenarios.SEED_GROSS
+                + " / "
+                + PayrollScenarios.SEED_TAXES
+                + " / "
+                + PayrollScenarios.SEED_NET)
+        .contains(PayrollScenarios.SEED_ROWS + " `MATCH`");
+  }
+
+  /**
+   * F3: the README told operators to start the target with HRMS_FLAG_PAYROLL_ENGINE=SHADOW, which
+   * ProxyFlags.Flag does not have (LEGACY|JAVA) and the backend refused to start.
+   */
+  @Test
+  void readmeDocumentsOnlyValidPayrollEngineFlags() throws Exception {
+    java.nio.file.Path readme = java.nio.file.Path.of("README.md");
+    if (!java.nio.file.Files.isRegularFile(readme)) {
+      readme = java.nio.file.Path.of("tools/parallel-run/README.md");
+    }
+    String text = java.nio.file.Files.readString(readme);
+    java.util.regex.Matcher m =
+        java.util.regex.Pattern.compile("HRMS_FLAG_PAYROLL_ENGINE=([A-Z_]+)").matcher(text);
+    int found = 0;
+    while (m.find()) {
+      found++;
+      assertThat(m.group(1)).isIn("LEGACY", "JAVA");
+    }
+    assertThat(found).isPositive();
+    assertThat(text).contains("HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=JAVA");
+    TargetFlags flags = TargetFlags.legacyDefaults().with("payroll=NEW,payroll.engine=JAVA");
+    assertThat(flags.flag("payroll.engine")).isEqualTo("JAVA");
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> TargetFlags.legacyDefaults().with("payroll.engine=SHADOW"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
   @Test
   void selectorWalksDottedAndIndexedPaths() throws Exception {
     com.fasterxml.jackson.databind.JsonNode n =

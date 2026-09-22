@@ -18,6 +18,16 @@ java -jar target/hrms-tool-parallel-run.jar \
   (DECISION P0-D1: `sso.exchange.legacy-module`). For those, `ScenarioRegistry.targetExpect`
   swaps the target expectation to the contracted no-Oracle answer (`502 SSO_LEGACY_UNAVAILABLE`)
   and the verdict is `UNTESTED-LIVE`, which does not fail the run.
+* The registry is **flag-aware**: it reads the same `HRMS_FLAG_<MODULE>` variables the backend was
+  started with (or `--flags payroll=NEW,payroll.engine=JAVA`) and `sso.exchange.legacy-module`
+  targets the first module in cutover order that still needs a Forms session (payroll until P4,
+  reporting until P5). Once every module is NEW the same request is contractually
+  `SSO_MODULE_NOT_LEGACY` and the scenario becomes `recorded`.
+* **Registry order is a fixture.** The runner never resets the database, so the scenarios whose
+  expectations are derived from the frozen seed population (`performance.*` review generation,
+  `payroll.*` totals over the 23 ACTIVE employees) are registered before `employee.*`, which hires
+  three employees and terminates one. `RegistryAndReportTest` guards the order; run the full
+  registry (or `--only` subsets) against a freshly seeded PostgreSQL.
 * Exit 0 = all PASS / UNTESTED-LIVE, 1 = differences, 2 = usage error.
 * Verdicts: `PASS`, `UNTESTED-LIVE` (no Oracle; target matched the no-Oracle contract outcome),
   `TARGET-DIFF` (target ≠ contract), `ORACLE-DRIFT` (legacy ≠ its expected outcome – the golden
@@ -62,7 +72,9 @@ running the harness. The REST side exercises the salary-module routes while the 
 
 ## Phase 4 – payroll (`PayrollScenarios`)
 
-Set `HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=SHADOW` on the target and apply
+Set `HRMS_FLAG_PAYROLL=NEW HRMS_FLAG_PAYROLL_ENGINE=JAVA` on the target (the engine flag is
+`LEGACY|JAVA`, ProxyFlags.Flag; shadow mode is the persisted diff of every JAVA run against the
+recorded legacy pack, not a flag value), export the same variables for the runner, and apply
 `fixtures/payroll.sql` (idempotent; adds OPEN period 200001 that predates every seed salary). The
 legacy leg is `recorded` from `plsql/packages/PKG_PAYROLL.pkb` over the seed; the per-employee,
 per-element amounts are in `tests/golden/payroll/202406.json` (see `generate_recorded.py`) and are
@@ -75,14 +87,20 @@ from the create response. Projections may use dotted / indexed selectors (`summa
 
 * `payroll.run.create.closed-period` – run on CLOSED 202405 → `-20102`.
 * `payroll.run.calculate.seed-period` – fresh run on 202406: `CALCULATED`, 23 employees, 0 errors,
-  gross/taxes/net to the cent (`300833.32 / 82259.64 / 218573.68`).
-* `payroll.shadow.seed-period` – `GET /api/payroll/shadow/runs/{runId}/diff`: 92 `MATCH`, 0
-  unexplained (the gate of CUTOVER_PLAN.md §8.3).
+  gross/taxes/net to the cent (`300833.32 / 83657.79 / 217175.53`; the seed `EMPLOYEE_TAX_INFO`
+  rows give emp 1/20 NY, 40/41 CA and 34 IL state tax, MARRIED_JOINT / MARRIED_SEPARATE ladders,
+  allowances and additional federal withholding).
+* `payroll.shadow.seed-period` – `GET /api/payroll/shadow/runs/{runId}/diff`: 97 `MATCH` (92 +
+  5 STATE_TAX rows), 0 unexplained (the gate of CUTOVER_PLAN.md §8.3).
+* Shadow gate trigger: the diff is computed and persisted on the first `GET …/diff` after a run is
+  CALCULATED and is idempotent, so the gate is scheduled from outside the JVM (this harness, CI or
+  cron) rather than by an in-process `@Scheduled` job – the contract has no trigger endpoint.
 * `payroll.run.approve.not-calculated` – approve a PENDING run → `-20103`.
 * `payroll.calculate.no-active-salary` – run on 200001: emp 43 has exactly one sentinel row
   (element 0, `ERROR`, `0.00`, `-20104`) and the run still completes.
 * `payroll.payslip.ytd` – approve the fresh 202406 run, then emp 2's payslip as `sarah.chen`:
   gross `31666.67`, YTD gross `52500.00` (= approved MAY run 9001 `20833.33` + JUN).
 
-Run the scenarios in registry order: `payroll.payslip.ytd` approves a 202406 run last.
+Run the scenarios in registry order: `payroll.payslip.ytd` approves a 202406 run last, and the
+payroll set runs before `employee.*` (see "Registry order is a fixture" above).
 

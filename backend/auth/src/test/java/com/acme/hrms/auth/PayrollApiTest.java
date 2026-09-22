@@ -237,6 +237,29 @@ class PayrollApiTest extends AuthApiTestBase {
             .getContentAsString();
     assertThat(banked.split("\r\n")[0]).endsWith(",BANK_NAME,ROUTING_LAST4,ACCOUNT_LAST4");
     assertThat(banked).doesNotContainPattern("\\d{9}");
+    // seed W-4 / bank rows (emp 1: MARRIED_JOINT, NY, +250 fed; First National ...0021 / ...0123)
+    // reach the register: STATE_TAX is a real column value and the bank columns are masked, not
+    // empty
+    String richardson =
+        List.of(banked.split("\r\n")).stream()
+            .filter(l -> l.startsWith("EMP-000001,"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(richardson).endsWith(",First National Bank,****0021,****0123");
+    assertThat(richardson)
+        .contains(
+            ","
+                + expected.get("1:100").negate().toPlainString()
+                + ","
+                + expected.get("1:101").negate().toPlainString()
+                + ",");
+    assertThat(expected.get("1:101")).as("NY state tax row for emp 1").isNotNull();
+    String moore =
+        List.of(banked.split("\r\n")).stream()
+            .filter(l -> l.startsWith("EMP-000043,"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(moore).endsWith(",,,");
     assertThat(
             jdbc.queryForObject(
                 "select count(*) from audit_log where action_type = 'REGISTER_DOWNLOAD'",
@@ -388,6 +411,66 @@ class PayrollApiTest extends AuthApiTestBase {
               jsonPath("$.lines[?(@.empId == 43 && @.classification == 'MATCH')]").isEmpty());
     } finally {
       jdbc.update("update salary_records set end_date = null where emp_id = 43");
+    }
+  }
+
+  /**
+   * CUTOVER_PLAN §8.2 oracle-cdc leg: when a LEGACY-engine run of record exists for the period
+   * (replicated from Oracle), the shadow diff compares against its rows instead of the recorded
+   * pack; a REVERSED legacy run does not count. Seed run 9002 (emp 2 only, stale gross 20833.33)
+   * plays the replicated run, so the diff is one unexplained cent-level difference plus JAVA_ONLY
+   * rows for everybody else. untested-live against a real CDC feed.
+   */
+  @Test
+  void shadowDiffPrefersTheLegacyRunOfRecordOverTheRecordedPack() throws Exception {
+    long runId = createRun();
+    mvc.perform(
+            post("/api/payroll/runs/" + runId + "/calculate")
+                .header("Authorization", "Bearer " + exec))
+        .andExpect(status().isAccepted());
+    awaitCalculated(runId);
+    Map<String, BigDecimal> expected = recordedPack(202406);
+    long deltaCents =
+        expected.get("2:1").subtract(new BigDecimal("20833.33")).movePointRight(2).longValueExact();
+    try {
+      jdbc.update("update payroll_runs set engine = 'LEGACY' where run_id = 9002");
+      mvc.perform(
+              get("/api/payroll/shadow/runs/" + runId + "/diff")
+                  .header("Authorization", "Bearer " + exec))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.legacySource").value("oracle-cdc"))
+          .andExpect(jsonPath("$.summary.matched").value(0))
+          .andExpect(jsonPath("$.summary.legacyOnly").value(0))
+          .andExpect(jsonPath("$.summary.javaOnly").value(expected.size() - 1))
+          .andExpect(jsonPath("$.summary.unexplained").value(1))
+          .andExpect(jsonPath("$.summary.netDeltaCents").value(org.hamcrest.Matchers.not(0)))
+          .andExpect(
+              jsonPath("$.lines[?(@.empId == 2 && @.elementId == 1)].classification")
+                  .value(org.hamcrest.Matchers.contains("DIFF_UNEXPLAINED")))
+          .andExpect(
+              jsonPath("$.lines[?(@.empId == 2 && @.elementId == 1)].deltaCents")
+                  .value(org.hamcrest.Matchers.contains((int) deltaCents)))
+          .andExpect(
+              jsonPath("$.lines[?(@.empId == 2 && @.elementId == 1)].legacyAmount")
+                  .value(org.hamcrest.Matchers.contains("20833.33")));
+      assertThat(
+              jdbc.queryForObject(
+                  "select legacy_source from payroll_shadow_reports where run_id = ?",
+                  String.class,
+                  runId))
+          .isEqualTo("oracle-cdc");
+
+      jdbc.update("update payroll_runs set status = 'REVERSED' where run_id = 9002");
+      mvc.perform(
+              get("/api/payroll/shadow/runs/" + runId + "/diff")
+                  .header("Authorization", "Bearer " + exec))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.legacySource").value("recorded"))
+          .andExpect(jsonPath("$.summary.matched").value(expected.size()))
+          .andExpect(jsonPath("$.summary.javaOnly").value(0));
+    } finally {
+      jdbc.update(
+          "update payroll_runs set engine = 'JAVA', status = 'CALCULATED' where run_id = 9002");
     }
   }
 

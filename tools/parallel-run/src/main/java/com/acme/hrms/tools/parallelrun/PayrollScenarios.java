@@ -34,12 +34,16 @@ final class PayrollScenarios {
   /** emp 2, STAFF: self-scope payslip only. */
   private static final String STAFF = ScenarioRegistry.USER;
 
-  /** Totals of tests/golden/payroll/202406.json (23 CALCULATED employees, 92 rows). */
+  /**
+   * Totals of tests/golden/payroll/202406.json (23 CALCULATED employees, 97 rows: 92 + the five
+   * STATE_TAX rows of the seed EMPLOYEE_TAX_INFO employees in NY / CA / IL).
+   */
   static final String SEED_GROSS = "300833.32";
 
-  static final String SEED_TAXES = "82259.64";
-  static final String SEED_NET = "218573.68";
+  static final String SEED_TAXES = "83657.79";
+  static final String SEED_NET = "217175.53";
   static final String SEED_EMPLOYEES = "23";
+  static final String SEED_ROWS = "97";
 
   private static final Map<String, Object> REGULAR = Map.of("runType", "REGULAR");
 
@@ -91,7 +95,7 @@ final class PayrollScenarios {
                 Map.of(
                     "legacySource", "recorded",
                     "summary.employees", SEED_EMPLOYEES,
-                    "summary.matched", "92",
+                    "summary.matched", SEED_ROWS,
                     "summary.unexplained", "0",
                     "summary.legacyOnly", "0",
                     "summary.javaOnly", "0"))),

@@ -15,7 +15,16 @@
       "empId": 1,
       "elementId": 100,
       "elementType": "TAX",
-      "amount": "-10230.40",
+      "amount": "-7523.08",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 1,
+      "elementId": 101,
+      "elementType": "TAX",
+      "amount": "-2568.75",
       "status": "CALCULATED",
       "errorCode": null,
       "explanation": null
@@ -231,7 +240,16 @@
       "empId": 20,
       "elementId": 100,
       "elementType": "TAX",
-      "amount": "-4688.73",
+      "amount": "-3456.42",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 20,
+      "elementId": 101,
+      "elementType": "TAX",
+      "amount": "-1484.17",
       "status": "CALCULATED",
       "errorCode": null,
       "explanation": null
@@ -555,7 +573,16 @@
       "empId": 34,
       "elementId": 100,
       "elementType": "TAX",
-      "amount": "-823.42",
+      "amount": "-744.58",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 34,
+      "elementId": 101,
+      "elementType": "TAX",
+      "amount": "-338.25",
       "status": "CALCULATED",
       "errorCode": null,
       "explanation": null
@@ -699,7 +726,16 @@
       "empId": 40,
       "elementId": 100,
       "elementType": "TAX",
-      "amount": "-5272.06",
+      "amount": "-3770.42",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 40,
+      "elementId": 101,
+      "elementType": "TAX",
+      "amount": "-1691.67",
       "status": "CALCULATED",
       "errorCode": null,
       "explanation": null
@@ -735,7 +771,16 @@
       "empId": 41,
       "elementId": 100,
       "elementType": "TAX",
-      "amount": "-1728.21",
+      "amount": "-1778.21",
+      "status": "CALCULATED",
+      "errorCode": null,
+      "explanation": null
+    },
+    {
+      "empId": 41,
+      "elementId": 101,
+      "elementType": "TAX",
+      "amount": "-785.42",
       "status": "CALCULATED",
       "errorCode": null,
       "explanation": null

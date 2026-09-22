@@ -25,6 +25,8 @@ final class PerformanceScenarios {
   /** emp 1, EXECUTIVE (PERFORMANCE:ADMIN), manager of emp 2. */
   static final String ADMIN = "james.richardson@company.com";
 
+  static final String MODULE = "performance";
+
   /** emp 2, STAFF, reviewee of the review generated for a fresh cycle. */
   static final String EMP_2 = ScenarioRegistry.USER;
 

@@ -16,6 +16,7 @@ import java.util.Map;
  *   parallel-run [--only auth,sso] --target http://proxy:8080 --seed-password P
  *                [--oracle jdbc:oracle:thin:@//host:1521/HRMSPDB --oracle-user U --oracle-password P]
  *                [--utplsql hrms:ut_pkg_security,hrms:ut_pkg_employee] [--report target/parallel-run.md]
+ *                [--flags payroll=NEW,payroll.engine=JAVA]   (default: HRMS_FLAG_* of the environment)
  * </pre>
  *
  * Without {@code --oracle} only the target side is executed and compared to the contract (that is
@@ -37,7 +38,11 @@ public final class ParallelRunMain {
       System.err.println("usage: parallel-run --target URL --seed-password P [--oracle URL ...]");
       System.exit(2);
     }
-    List<Scenario> scenarios = ScenarioRegistry.all();
+    TargetFlags flags = TargetFlags.fromEnv();
+    if (o.containsKey("--flags")) {
+      flags = flags.with(o.get("--flags"));
+    }
+    List<Scenario> scenarios = ScenarioRegistry.all(flags);
     if (o.containsKey("--only")) {
       List<String> mods = List.of(o.get("--only").split(","));
       scenarios = scenarios.stream().filter(s -> mods.contains(s.module())).toList();

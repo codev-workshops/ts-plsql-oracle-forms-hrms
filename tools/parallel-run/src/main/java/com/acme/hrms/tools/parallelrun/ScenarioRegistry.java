@@ -44,17 +44,37 @@ public final class ScenarioRegistry {
   /** Contract outcome of a legacy-module SSO exchange when the auth-service has no Oracle. */
   static final Outcome SSO_LEGACY_UNAVAILABLE = Outcome.error("SSO_LEGACY_UNAVAILABLE");
 
+  /** Registry for the flags in the runner's environment ({@link TargetFlags#fromEnv()}). */
   public static List<Scenario> all() {
-    List<Scenario> all = new ArrayList<>(phase0());
+    return all(TargetFlags.fromEnv());
+  }
+
+  /**
+   * Registry order is a fixture: the REST runner never resets the database, so scenarios whose
+   * expectations are derived from the frozen seed population (performance review generation,
+   * payroll totals over the 23 ACTIVE employees) run before {@code employee.*} hires / terminates
+   * anybody. {@link #POPULATION_SENSITIVE_MODULES} is guarded by RegistryAndReportTest.
+   */
+  public static List<Scenario> all(TargetFlags flags) {
+    List<Scenario> all = new ArrayList<>(phase0(flags));
     all.addAll(PerformanceScenarios.all());
     all.addAll(LeaveScenarios.all());
     all.addAll(SalaryScenarios.all());
-    all.addAll(EmployeeScenarios.all());
     all.addAll(PayrollScenarios.all());
+    all.addAll(EmployeeScenarios.all());
     return List.copyOf(all);
   }
 
-  private static List<Scenario> phase0() {
+  /** Modules whose recorded expectations assume the pristine seed employee population. */
+  static final Set<String> POPULATION_SENSITIVE_MODULES =
+      Set.of(PerformanceScenarios.MODULE, PayrollScenarios.MODULE);
+
+  /** Scenario ids that change the ACTIVE employee population (hire / terminate). */
+  static boolean changesEmployeePopulation(Scenario s) {
+    return s.id().startsWith("employee.create.") || s.id().startsWith("employee.terminate.");
+  }
+
+  private static List<Scenario> phase0(TargetFlags flags) {
     return List.of(
         new Scenario(
             "auth.login.ok",
@@ -128,16 +148,7 @@ public final class ScenarioRegistry {
                         null))),
             // SEC-02: legacy never locks (-20301 forever); target returns RATE_LIMITED (429).
             Outcome.error("RATE_LIMITED")),
-        new Scenario(
-            "sso.exchange.legacy-module",
-            "auth",
-            plsql(
-                "declare v_session number; begin v_session := pkg_security.create_session(:emp_id, "
-                    + "'HRMS_MENU', 'PARALLEL-RUN'); :session_id := v_session; end;",
-                List.of("session_id")),
-            // Must target a module that is still LEGACY in the current phase (payroll until P4).
-            post("/legacy/sso/exchange", Map.of("module", "payroll", "clientIp", CLIENT_IP), USER),
-            Outcome.ok(Map.of("formsModule", "HRMS_PAYROLL"))),
+        legacyModuleExchange(flags),
         new Scenario(
             "sso.exchange.new-module-rejected",
             "auth",
@@ -146,10 +157,34 @@ public final class ScenarioRegistry {
             Outcome.error("SSO_MODULE_NOT_LEGACY")));
   }
 
-  /** Legacy expectations where the contract deliberately diverges (README SEC-xx). */
+  /**
+   * SSO handoff to a module that still needs a Forms session. Which module that is depends on the
+   * target's flags (payroll until P4, reporting until P5); once every module is NEW the same
+   * request is contractually SSO_MODULE_NOT_LEGACY and no Forms session is involved any more.
+   */
+  static Scenario legacyModuleExchange(TargetFlags flags) {
+    String module = flags.firstLegacyModule().orElse("payroll");
+    boolean legacy = flags.needsFormsSession(module);
+    return new Scenario(
+        "sso.exchange.legacy-module",
+        "auth",
+        legacy
+            ? plsql(
+                "declare v_session number; begin v_session := pkg_security.create_session(:emp_id, "
+                    + "'HRMS_MENU', 'PARALLEL-RUN'); :session_id := v_session; end;",
+                List.of("session_id"))
+            : null,
+        post("/legacy/sso/exchange", Map.of("module", module, "clientIp", CLIENT_IP), USER),
+        legacy
+            ? Outcome.ok(Map.of("formsModule", TargetFlags.FORMS_MODULE.get(module)))
+            : Outcome.error("SSO_MODULE_NOT_LEGACY"));
+  }
+
   /** How the legacy column of the report was obtained when Oracle is not attached. */
   public static String legacySource(Scenario s) {
-    return UNTESTED_LIVE_SCENARIOS.contains(s.id()) ? UNTESTED_LIVE : RECORDED;
+    return UNTESTED_LIVE_SCENARIOS.contains(s.id()) && s.legacy() != null
+        ? UNTESTED_LIVE
+        : RECORDED;
   }
 
   /**
@@ -159,7 +194,7 @@ public final class ScenarioRegistry {
    * verifies instead of the Forms module handoff.
    */
   public static Outcome targetExpect(Scenario s, boolean oracleAttached) {
-    if (!oracleAttached && "sso.exchange.legacy-module".equals(s.id())) {
+    if (!oracleAttached && UNTESTED_LIVE.equals(legacySource(s))) {
       return SSO_LEGACY_UNAVAILABLE;
     }
     return s.expect();
