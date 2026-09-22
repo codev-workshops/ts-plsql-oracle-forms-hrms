@@ -4,12 +4,10 @@ import type {
   ChangePasswordRequest,
   CurrentUser,
   DepartmentRef,
-  EmployeeSummary,
   JobTitleRef,
   LeaveTypeRef,
   LocationRef,
   LoginRequest,
-  PageOfEmployeeSummary,
   TokenResponse,
 } from '../api/types';
 import { ROLE_AUTHORITIES, SEED_ACCOUNTS, SEED_PASSWORD } from '../../e2e/seed-accounts';
@@ -17,6 +15,8 @@ import { evaluateRules, getDto, getParameter } from '../validation/schema';
 import { createPerformanceHandlers } from './performanceHandlers';
 import { resetPerformanceState } from './performanceStore';
 import { createLeaveHandlers } from './leaveHandlers';
+import { createEmployeeHandlers } from './employeeHandlers';
+import { resetEmployeeState } from './employeeStore';
 import { resetLeaveState } from './leaveStore';
 
 /**
@@ -62,6 +62,9 @@ export const MOCK_DEPARTMENTS: DepartmentRef[] = [
 export const MOCK_JOB_TITLES: JobTitleRef[] = [
   { jobId: 1, jobCode: 'ANL', jobTitle: 'Analyst', jobFamily: 'Finance', gradeId: 3, gradeCode: 'G3', gradeName: 'Grade 3', gradeMinSalary: '45000.00', gradeMaxSalary: '65000.00', active: true },
   { jobId: 2, jobCode: 'HRD', jobTitle: 'HR Director', jobFamily: 'HR', gradeId: 9, gradeCode: 'G9', gradeName: 'Grade 9', gradeMinSalary: '120000.00', gradeMaxSalary: '180000.00', active: true },
+  { jobId: 3, jobCode: 'MGR', jobTitle: 'Manager', jobFamily: 'Management', gradeId: 6, gradeCode: 'G6', gradeName: 'Grade 6', gradeMinSalary: '80000.00', gradeMaxSalary: '120000.00', active: true },
+  { jobId: 4, jobCode: 'CEO', jobTitle: 'CEO', jobFamily: 'Executive', gradeId: 10, gradeCode: 'G10', gradeName: 'Grade 10', gradeMinSalary: '200000.00', gradeMaxSalary: '300000.00', active: true },
+  { jobId: 8, jobCode: 'OLDJ', jobTitle: 'Retired Job', jobFamily: 'Legacy', gradeId: 1, gradeCode: 'G1', gradeName: 'Grade 1', gradeMinSalary: '20000.00', gradeMaxSalary: '30000.00', active: false },
 ];
 
 export const MOCK_LOCATIONS: LocationRef[] = [
@@ -73,12 +76,6 @@ export const MOCK_LOCATIONS: LocationRef[] = [
 export const MOCK_LEAVE_TYPES: LeaveTypeRef[] = [
   { leaveTypeId: 1, leaveTypeCode: 'PTO', leaveTypeName: 'Paid Time Off', paid: true, accrual: true, accrualRate: '1.25', maxBalance: '30.00', carryoverMax: '5.00', minTenureDays: 0, requiresApproval: true, requiresDocument: false, active: true },
   { leaveTypeId: 2, leaveTypeCode: 'SICK', leaveTypeName: 'Sick Leave', paid: true, accrual: true, accrualRate: '0.83', maxBalance: '10.00', carryoverMax: null, minTenureDays: 0, requiresApproval: false, requiresDocument: true, active: true },
-];
-
-export const MOCK_EMPLOYEES: EmployeeSummary[] = [
-  { id: 1, empNumber: 'EMP-000001', name: 'JAMES RICHARDSON', jobTitle: 'CEO' },
-  { id: 11, empNumber: 'EMP-000011', name: 'DAVID MARTINEZ', jobTitle: 'Analyst' },
-  { id: 4, empNumber: 'EMP-000004', name: 'MIA MANAGER', jobTitle: null },
 ];
 
 interface Session {
@@ -102,6 +99,7 @@ export function resetMockState() {
   refreshCookieForTests = null;
   resetPerformanceState();
   resetLeaveState(MOCK_LEAVE_TYPES);
+  resetEmployeeState({ departments: MOCK_DEPARTMENTS, jobTitles: MOCK_JOB_TITLES, locations: MOCK_LOCATIONS });
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -134,7 +132,6 @@ function apiError(status: number, body: Omit<ApiError, 'traceId'>, headers?: Rec
 }
 
 const unauthorized = () => apiError(401, { code: 'TOKEN_INVALID', message: 'Session has expired' });
-const forbidden = () => apiError(403, { code: 'FORBIDDEN', message: 'You do not have permission to perform this action' });
 
 function tokenResponse(s: Session): TokenResponse {
   return { accessToken: s.accessToken, tokenType: 'Bearer', expiresIn: SESSION_TIMEOUT_MIN * 60, user: MOCK_USERS[s.email] };
@@ -255,32 +252,6 @@ export const handlers = [
   referenceHandler('/api/reference/job-titles', MOCK_JOB_TITLES),
   referenceHandler('/api/reference/locations', MOCK_LOCATIONS),
   referenceHandler('/api/reference/leave-types', MOCK_LEAVE_TYPES),
-
-  http.get('/api/employees', ({ request }) => {
-    const s = authenticate(request);
-    if (!s) return unauthorized();
-    if (!MOCK_USERS[s.email].roles.includes('EMPLOYEE:VIEW')) return forbidden();
-    const url = new URL(request.url);
-    if (url.searchParams.get('status') !== 'ACTIVE' || url.searchParams.get('fields') !== 'id,name,jobTitle') {
-      return apiError(400, { code: 'VALIDATION_FAILED', message: 'Request validation failed', field: 'status' });
-    }
-    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
-    if (q.length > 100) return apiError(400, { code: 'VALIDATION_FAILED', message: 'Request validation failed', field: 'q' });
-    const excludeSelf = url.searchParams.get('excludeSelf') === 'true';
-    const page = Number(url.searchParams.get('page') ?? 0);
-    const size = Number(url.searchParams.get('size') ?? 20);
-    if (page < 0 || size < 1 || size > 100) return apiError(400, { code: 'VALIDATION_FAILED', message: 'Request validation failed', field: 'size' });
-    let rows = MOCK_EMPLOYEES.filter((e) => !q || e.name.toLowerCase().includes(q) || e.empNumber.toLowerCase().includes(q));
-    if (excludeSelf) rows = rows.filter((e) => e.id !== MOCK_USERS[s.email].empId);
-    const body: PageOfEmployeeSummary = {
-      content: rows.slice(page * size, page * size + size),
-      page,
-      size,
-      totalElements: rows.length,
-      totalPages: Math.ceil(rows.length / size),
-    };
-    return HttpResponse.json(body);
-  }),
 ];
 
 export const performanceHandlers = createPerformanceHandlers((request) => {
@@ -304,3 +275,13 @@ export const leaveHandlers = createLeaveHandlers(
 
 handlers.push(...leaveHandlers);
 resetLeaveState(MOCK_LEAVE_TYPES);
+
+export const employeeHandlers = createEmployeeHandlers((request) => {
+  const session = authenticate(request);
+  if (!session) return null;
+  const user = MOCK_USERS[session.email];
+  return user ? { userId: user.userId, empId: user.empId, username: user.email, roles: user.roles } : null;
+});
+
+handlers.push(...employeeHandlers);
+resetEmployeeState({ departments: MOCK_DEPARTMENTS, jobTitles: MOCK_JOB_TITLES, locations: MOCK_LOCATIONS });

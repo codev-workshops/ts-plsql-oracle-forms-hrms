@@ -39,6 +39,268 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
   },
+  "DependentRequest": {
+    "benefitsEnrolled": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "relationship": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+  },
+  "EmergencyContactRequest": {
+    "contactName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phonePrimary": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneSecondary": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "priorityOrder": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "relationship": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeCreateRequest": {
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "deptId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "employmentType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gender": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "hireDate": {
+      "required": true,
+      "rules": [
+        "-20501",
+      ],
+      "type": "date",
+    },
+    "initialSalary": {
+      "required": false,
+      "rules": [
+        "-20101",
+      ],
+      "type": "decimal",
+    },
+    "jobId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "maritalStatus": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "middleName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "nationality": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "notes": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneMobile": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneWork": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeListQuery": {
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "firstName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "hireDateTo": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "jobId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "q": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
   "EmployeeSearchQuery": {
     "fields": {
       "required": true,
@@ -64,6 +326,171 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": true,
       "rules": [],
       "type": "enum",
+    },
+  },
+  "EmployeeTerminateRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "reason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeTransferRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "deptId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "newJobId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "newLocationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "newManagerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "reasonCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeUpdateRequest": {
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "employmentType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gender": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "jobId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "maritalStatus": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "middleName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "nationality": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "notes": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneMobile": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneWork": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
     },
   },
   "GoalProgressRequest": {
@@ -244,6 +671,40 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": true,
       "rules": [],
       "type": "date",
+    },
+  },
+  "SalaryChangeRequest": {
+    "baseSalary": {
+      "required": true,
+      "rules": [
+        "-20101",
+      ],
+      "type": "decimal",
+    },
+    "changeReason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "currencyCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "payFrequency": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "salaryBasis": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
     },
   },
   "SelfAssessmentRequest": {
