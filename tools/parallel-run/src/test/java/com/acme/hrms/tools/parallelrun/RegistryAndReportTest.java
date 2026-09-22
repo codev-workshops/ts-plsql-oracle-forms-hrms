@@ -94,6 +94,7 @@ class RegistryAndReportTest {
         .containsAll(codes.keySet())
         .contains(
             "employee.create.number-from-sequence",
+            "employee.create.names-upper-trimmed",
             "employee.update.ok",
             "employee.terminate.ok",
             "employee.transfer.ok-same-dept-writes-history");
@@ -116,6 +117,25 @@ class RegistryAndReportTest {
         assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(legacy);
       }
     }
+  }
+
+  @Test
+  void transferHistoryScenarioTransfersAfterTheHireRow() {
+    Scenario s =
+        ScenarioRegistry.all().stream()
+            .filter(x -> x.id().equals("employee.transfer.ok-same-dept-writes-history"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(s.expect().fields()).containsEntry("[0].changeType", "TRANSFER");
+    List<Scenario.RestCall> setup = s.target().setup();
+    assertThat(setup).hasSize(2);
+    java.time.LocalDate hire =
+        java.time.LocalDate.parse((String) setup.get(0).body().get("hireDate"));
+    java.time.LocalDate transfer =
+        java.time.LocalDate.parse((String) setup.get(1).body().get("effectiveDate"));
+    // history is ORDER BY effective_date DESC, hist_id DESC: [0] is TRANSFER only if it is later
+    assertThat(transfer).isAfter(hire);
+    assertThat(s.legacy().plsql()).contains("date '" + transfer + "'");
   }
 
   @Test

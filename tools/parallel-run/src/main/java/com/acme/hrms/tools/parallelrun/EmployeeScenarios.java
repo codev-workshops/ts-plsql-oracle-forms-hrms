@@ -61,6 +61,25 @@ final class EmployeeScenarios {
                     "version", "0",
                     "email", "pr.create@company.com"))),
         new Scenario(
+            "employee.create.names-upper-trimmed",
+            MODULE,
+            plsql(
+                "declare v_id number; begin v_id := pkg_employee.create_employee('  Grace ',"
+                    + " 'hopper', date '2025-06-02', 30, 50, 31, 'CHI', 'FULL_TIME', 85000,"
+                    + " 'pr.names@company.com', :user);"
+                    + " select first_name, last_name into :firstName, :lastName from employees"
+                    + " where emp_id = v_id; end;",
+                List.of("firstName", "lastName")),
+            call(
+                "POST",
+                "/api/employees",
+                with(
+                    with(create("pr.names@company.com"), "firstName", "  Grace "),
+                    "lastName",
+                    "hopper"),
+                EXEC),
+            Outcome.ok(Map.of("firstName", "GRACE", "lastName", "HOPPER"))),
+        new Scenario(
             "employee.update.ok",
             MODULE,
             plsql(
@@ -138,7 +157,7 @@ final class EmployeeScenarios {
             MODULE,
             plsql(
                 "begin pkg_employee.transfer_employee(:emp_id, 30, null, null, null,"
-                    + " date '2025-06-01', null, null, :user); select count(*) into :count"
+                    + " date '2025-07-01', null, null, :user); select count(*) into :count"
                     + " from employee_history where emp_id = :emp_id and change_type = 'TRANSFER';"
                     + " end;",
                 List.of("count")),
@@ -149,7 +168,7 @@ final class EmployeeScenarios {
                         call(
                             "POST",
                             "/api/employees/{id}/transfer",
-                            Map.of("effectiveDate", "2025-06-01", "deptId", 30),
+                            Map.of("effectiveDate", TRANSFER_EFFECTIVE_DATE, "deptId", 30),
                             EXEC))),
             Outcome.ok(Map.of("[0].changeType", "TRANSFER"))),
         // ---- PKG_EMPLOYEE.validate_employee ----------------------------------------------
@@ -235,11 +254,20 @@ final class EmployeeScenarios {
             Outcome.error("-20504")));
   }
 
+  /** Hire date of every employee created by {@link #create(String)}. */
+  static final String HIRE_DATE = "2025-06-02";
+
+  /**
+   * History is served {@code ORDER BY effective_date DESC, hist_id DESC} (openapi.yaml), so the
+   * TRANSFER row is only {@code [0]} when the transfer is effective after the HIRE row.
+   */
+  static final String TRANSFER_EFFECTIVE_DATE = "2025-07-01";
+
   private static Map<String, Object> create(String email) {
     Map<String, Object> m = new HashMap<>();
     m.put("firstName", "PR");
     m.put("lastName", "CREATE");
-    m.put("hireDate", "2025-06-02");
+    m.put("hireDate", HIRE_DATE);
     m.put("deptId", 30);
     m.put("jobId", 50);
     m.put("managerEmpId", 31);

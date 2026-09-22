@@ -205,3 +205,19 @@ values (5003, 9001, 23, 21, 'MID_YEAR', 'SELF_REVIEW', 'SYSTEM', DATE '2024-06-1
 
 insert into performance_reviews (review_id, cycle_id, emp_id, reviewer_emp_id, review_type, status, overall_rating, rating_label, created_by, created_date)
 values (5004, 9001, 42, 41, 'MID_YEAR', 'COMPLETED', 4.0, 'Exceeds Expectations', 'SYSTEM', DATE '2024-06-05');
+
+-- Advance the sequences past the explicit primary keys inserted above.
+select setval('seq_leave_balance', max(balance_id)) from leave_balances
+  having max(balance_id) >= (select last_value from seq_leave_balance);
+select setval('seq_leave_request', max(request_id)) from leave_requests
+  having max(request_id) >= (select last_value from seq_leave_request);
+select setval('seq_pay_period', max(period_id)) from pay_periods
+  having max(period_id) >= (select last_value from seq_pay_period);
+select setval('seq_payroll_detail', max(detail_id)) from payroll_details
+  having max(detail_id) >= (select last_value from seq_payroll_detail);
+select setval('seq_payroll_run', max(run_id)) from payroll_runs
+  having max(run_id) >= (select last_value from seq_payroll_run);
+select setval('seq_perf_review', max(review_id)) from performance_reviews
+  having max(review_id) >= (select last_value from seq_perf_review);
+select setval('seq_review_cycle', max(cycle_id)) from review_cycles
+  having max(cycle_id) >= (select last_value from seq_review_cycle);

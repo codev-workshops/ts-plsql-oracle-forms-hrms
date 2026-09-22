@@ -164,6 +164,64 @@ class PgReconciliationQueriesTest {
   }
 
   /**
+   * Oracle applies the view's {@code WHERE EMPLOYMENT_STATUS = 'ACTIVE'} after {@code CONNECT BY}:
+   * the active reports of a terminated manager stay in VW_ORG_HIERARCHY (LEVEL counts the
+   * terminated node, SYS_CONNECT_BY_PATH names it) and CONNECT_BY_ISLEAF counts terminated
+   * children. tests/golden/scenarios/terminated-mid-manager.sql terminates emp 21, the only report
+   * of emp 20 and the manager of 22/23/24; the resulting capture must reconcile with the committed
+   * tests/golden/views-terminated-mid-manager.csv.
+   */
+  @Test
+  void orgHierarchyKeepsActiveReportsOfTerminatedManagerLikeOracle() throws Exception {
+    Path root = HrmsPostgres.repoRoot().resolve("tests/reconciliation");
+    Path scenario = HrmsPostgres.repoRoot().resolve("tests/golden/scenarios");
+    Path golden = HrmsPostgres.repoRoot().resolve("tests/golden/views-terminated-mid-manager.csv");
+    try {
+      for (String stmt :
+          HrmsPostgres.splitStatements(
+              java.nio.file.Files.readString(scenario.resolve("terminated-mid-manager.sql")))) {
+        jdbc.execute(stmt);
+      }
+      Map<String, Map<String, String>> rows = new HashMap<>();
+      try (Connection c = HrmsPostgres.dataSource().getConnection()) {
+        List<Cell> cells =
+            ReconcileMain.capture(c, List.of(ViewQuery.all(root).get(1)), AS_OF, false);
+        Map<Integer, Map<String, String>> byRow = new HashMap<>();
+        for (Cell x : cells) {
+          byRow.computeIfAbsent(x.rowNo(), k -> new HashMap<>()).put(x.column(), x.value());
+        }
+        byRow.values().forEach(r -> rows.put(r.get("EMP_ID"), r));
+      }
+      assertThat(rows).doesNotContainKey("21");
+      assertThat(rows.get("20")).containsEntry("IS_LEAF", "0").containsEntry("ORG_LEVEL", "3");
+      for (String report : List.of("22", "23", "24")) {
+        Map<String, String> r = rows.get(report);
+        assertThat(r).as("emp " + report + " must stay in the view").isNotNull();
+        assertThat(r).containsEntry("ORG_LEVEL", "5").containsEntry("MANAGER_EMP_ID", "21");
+        assertThat(r.get("ORG_PATH"))
+            .startsWith(" > JAMES RICHARDSON > SARAH CHEN > ROBERT KUMAR > JENNIFER PARK > ");
+      }
+      Integer active =
+          jdbc.queryForObject(
+              "select count(*) from employees where employment_status='ACTIVE'", Integer.class);
+      assertThat(rows).hasSize(active);
+
+      List<Cell> expected = Baseline.read(golden);
+      for (String v : ViewQuery.VIEWS) {
+        assertThat(expected.stream().anyMatch(x -> x.view().equals(v))).as(v).isTrue();
+      }
+      try (Connection c = HrmsPostgres.dataSource().getConnection()) {
+        List<Cell> actual = ReconcileMain.capture(c, ViewQuery.all(root), AS_OF, false);
+        Diff diff = Diff.of(expected, actual);
+        assertThat(diff.reconciled()).as(diff.toMarkdown()).isTrue();
+      }
+    } finally {
+      HrmsPostgres.resetSchema();
+      HrmsPostgres.loadFixtures(jdbc);
+    }
+  }
+
+  /**
    * TEST_STRATEGY §5 row 0: the committed golden baseline carries rows for every view and the
    * PostgreSQL queries reconcile against it byte-for-byte (tests/golden/README.md documents how the
    * file was produced).

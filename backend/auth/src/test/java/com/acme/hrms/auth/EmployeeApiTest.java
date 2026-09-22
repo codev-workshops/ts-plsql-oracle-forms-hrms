@@ -39,10 +39,6 @@ class EmployeeApiTest extends AuthApiTestBase {
         "update employees set employment_status = 'ACTIVE', active_flag = 'Y',"
             + " termination_date = null, termination_reason = null where emp_id in (1, 12)");
     jdbc.update("update user_accounts set status = 'ACTIVE' where emp_id = 12");
-    // the frozen seed inserts literal salary ids; move the sequence past them (as SalaryApiTest)
-    jdbc.queryForObject(
-        "select setval('seq_salary', coalesce((select max(salary_id) from salary_records), 0), true)",
-        Long.class);
     exec = token(EXEC_EMAIL);
     staff = token(STAFF_EMAIL);
   }

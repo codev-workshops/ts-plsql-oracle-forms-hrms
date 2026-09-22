@@ -117,6 +117,38 @@ class EmployeeServiceTest {
   }
 
   @Test
+  void namesAreStoredUpperTrimmedLikePkgEmployee() {
+    EmployeeDetail d =
+        service.create(
+            create(
+                c -> {
+                  c.setFirstName("  Grace ");
+                  c.setLastName("hopper");
+                }),
+            HR);
+    assertThat(d.firstName()).isEqualTo("GRACE");
+    assertThat(d.lastName()).isEqualTo("HOPPER");
+    assertThat(
+            jdbc.queryForObject(
+                "select first_name || ' ' || last_name from employees where emp_id = ?",
+                String.class,
+                d.id()))
+        .isEqualTo("GRACE HOPPER");
+    EmployeeDetail after =
+        service.update(
+            d.id(),
+            0,
+            update(
+                u -> {
+                  u.setFirstName(" grace ");
+                  u.setLastName("Brewster Murray Hopper ");
+                }),
+            HR);
+    assertThat(after.firstName()).isEqualTo("GRACE");
+    assertThat(after.lastName()).isEqualTo("BREWSTER MURRAY HOPPER");
+  }
+
+  @Test
   void createWithoutSalaryNeverTouchesSalaryService() {
     EmployeeDetail d = service.create(create(c -> {}), HR);
     verify(salaries, never()).createInitial(anyLong(), any(), any(), anyString());

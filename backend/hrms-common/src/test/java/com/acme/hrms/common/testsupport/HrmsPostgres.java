@@ -100,7 +100,7 @@ public final class HrmsPostgres {
     return p;
   }
 
-  static List<String> splitStatements(String script) {
+  public static List<String> splitStatements(String script) {
     StringBuilder current = new StringBuilder();
     List<String> out = new java.util.ArrayList<>();
     boolean inQuote = false;

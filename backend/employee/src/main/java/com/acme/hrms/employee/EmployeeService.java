@@ -27,6 +27,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
@@ -129,9 +130,9 @@ public class EmployeeService {
           employees.insert(
               new NewEmployee(
                   empNumber,
-                  r.getFirstName(),
+                  legacyName(r.getFirstName()),
                   r.getMiddleName(),
-                  r.getLastName(),
+                  legacyName(r.getLastName()),
                   r.getDateOfBirth(),
                   r.getGender(),
                   r.getMaritalStatus(),
@@ -230,9 +231,9 @@ public class EmployeeService {
               empId,
               expectedVersion,
               new EmployeeUpdate(
-                  r.getFirstName(),
+                  legacyName(r.getFirstName()),
                   r.getMiddleName(),
-                  r.getLastName(),
+                  legacyName(r.getLastName()),
                   r.getDateOfBirth(),
                   r.getGender(),
                   r.getMaritalStatus(),
@@ -658,6 +659,11 @@ public class EmployeeService {
   @Nullable
   private static Long toLong(@Nullable Integer v) {
     return v == null ? null : v.longValue();
+  }
+
+  /** {@code PKG_EMPLOYEE} stores {@code UPPER(TRIM(first_name / last_name))}. */
+  static String legacyName(String name) {
+    return name.trim().toUpperCase(Locale.ROOT);
   }
 
   private static String flag(boolean active) {
