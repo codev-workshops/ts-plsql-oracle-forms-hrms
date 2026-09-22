@@ -455,7 +455,7 @@ BRANCH_RESULT = {
         "head_sha": {"type": "string"},
         "level1_passed": {"type": "boolean", "description": "Level-1 tests green on this branch"},
         "summary": {"type": "string"},
-        "blockers": {"type": "string", "description": "Empty when none"},
+        "blockers": {"type": "string", "description": "STOP-SHIP ONLY: non-empty means you could NOT deliver a green, pushed branch (it halts the workflow). Deviations, renames, legacy divergences and 'untested-live' notes belong in `summary`, not here. Empty when the branch is delivered."},
     },
     "required": ["branch", "pr_url", "head_sha", "level1_passed", "summary", "blockers"],
 }
@@ -470,7 +470,7 @@ CONTRACT_RESULT = {
         "error_codes_path": {"type": "string"},
         "validation_schema_path": {"type": "string"},
         "summary": {"type": "string"},
-        "blockers": {"type": "string"},
+        "blockers": {"type": "string", "description": "STOP-SHIP ONLY: non-empty means you could NOT deliver a green, pushed branch (it halts the workflow). Deviations, renames, legacy divergences and 'untested-live' notes belong in `summary`, not here. Empty when the branch is delivered."},
     },
     "required": ["branch", "pr_url", "head_sha", "openapi_path", "error_codes_path", "validation_schema_path", "summary", "blockers"],
 }
