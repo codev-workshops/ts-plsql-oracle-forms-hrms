@@ -1,10 +1,20 @@
 package com.acme.hrms.validation.export;
 
+import com.acme.hrms.validation.constraints.HireDateWithinLimit;
+import com.acme.hrms.validation.constraints.Ssn;
 import com.acme.hrms.validation.dto.ChangePasswordRequest;
 import com.acme.hrms.validation.dto.EmployeeSearchQuery;
 import com.acme.hrms.validation.dto.LoginRequest;
 import com.acme.hrms.validation.dto.ProxyModule;
 import com.acme.hrms.validation.dto.SsoExchangeRequest;
+import com.acme.hrms.validation.dto.employee.DependentRequest;
+import com.acme.hrms.validation.dto.employee.EmergencyContactRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeListQuery;
+import com.acme.hrms.validation.dto.employee.EmployeeTerminateRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeTransferRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
+import com.acme.hrms.validation.dto.employee.SalaryChangeRequest;
 import com.acme.hrms.validation.dto.leave.BusinessDaysQuery;
 import com.acme.hrms.validation.dto.leave.LeaveApproveRequest;
 import com.acme.hrms.validation.dto.leave.LeaveCancelRequest;
@@ -52,8 +62,9 @@ import java.util.Map;
  * Emits {@code frontend/src/generated/validation-schema.json} (contracts/p0-foundation/README.md
  * "exporter output format", extended by contracts/p1-performance/README.md) from the Bean
  * Validation annotations of the request DTOs of every frozen phase (contracts/p2-leave/README.md
- * adds boolean fields and {@code custom} date rules) and {@link PasswordPolicy}. Usage: {@code java
- * ... ValidationSchemaExporter <output-file> [version]}.
+ * adds boolean fields and {@code custom} date rules; contracts/p3-employee/README.md adds {@code
+ * sensitive}, string {@code pattern} rules and the {@code HR.MAX_FUTURE_HIRE_DAYS} parameter) and
+ * {@link PasswordPolicy}. Usage: {@code java ... ValidationSchemaExporter <output-file> [version]}.
  */
 public final class ValidationSchemaExporter {
 
@@ -63,7 +74,8 @@ public final class ValidationSchemaExporter {
   public static final String MODULE_P0 = "p0-foundation";
   public static final String MODULE_P1 = "p1-performance";
   public static final String MODULE_P2 = "p2-leave";
-  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1, MODULE_P2);
+  public static final String MODULE_P3 = "p3-employee";
+  public static final List<String> MODULES = List.of(MODULE_P0, MODULE_P1, MODULE_P2, MODULE_P3);
   public static final int SESSION_TIMEOUT_MIN_DEFAULT = 30;
 
   /** DTO name -> (owning contract module, class); insertion order is the output order. */
@@ -85,6 +97,14 @@ public final class ValidationSchemaExporter {
     register(MODULE_P2, "LeaveApproveRequest", LeaveApproveRequest.class);
     register(MODULE_P2, "LeaveRejectRequest", LeaveRejectRequest.class);
     register(MODULE_P2, "BusinessDaysQuery", BusinessDaysQuery.class);
+    register(MODULE_P3, "EmployeeListQuery", EmployeeListQuery.class);
+    register(MODULE_P3, "EmployeeCreateRequest", EmployeeCreateRequest.class);
+    register(MODULE_P3, "EmployeeUpdateRequest", EmployeeUpdateRequest.class);
+    register(MODULE_P3, "EmployeeTerminateRequest", EmployeeTerminateRequest.class);
+    register(MODULE_P3, "EmployeeTransferRequest", EmployeeTransferRequest.class);
+    register(MODULE_P3, "SalaryChangeRequest", SalaryChangeRequest.class);
+    register(MODULE_P3, "DependentRequest", DependentRequest.class);
+    register(MODULE_P3, "EmergencyContactRequest", EmergencyContactRequest.class);
   }
 
   private static void register(String module, String name, Class<?> dto) {
@@ -121,6 +141,7 @@ public final class ValidationSchemaExporter {
     ObjectNode parameters = mapper.createObjectNode();
     parameters.put("SECURITY.PASSWORD_MIN_LENGTH", passwordMinLength);
     parameters.put("SECURITY.SESSION_TIMEOUT_MIN", SESSION_TIMEOUT_MIN_DEFAULT);
+    parameters.put(HireDateWithinLimit.PARAMETER, HireDateWithinLimit.DEFAULT_MAX_FUTURE_DAYS);
 
     ObjectNode root = mapper.createObjectNode();
     root.put("$schema", SCHEMA);
@@ -204,7 +225,7 @@ public final class ValidationSchemaExporter {
       if (digits != null) {
         n.put("scale", digits.fraction());
       }
-      if (meta != null && !meta.ruleId().isEmpty() && min != null && max != null) {
+      if (meta != null && !meta.ruleId().isEmpty() && min != null) {
         ArrayNode rules = n.putArray("rules");
         ObjectNode rmin = rules.addObject();
         rmin.put("id", meta.ruleId() + ".min");
@@ -212,22 +233,30 @@ public final class ValidationSchemaExporter {
         rmin.put("value", Double.parseDouble(min.value()));
         rmin.put("errorCode", meta.ruleErrorCode());
         rmin.put("message", meta.ruleMessage());
-        ObjectNode rmax = rules.addObject();
-        rmax.put("id", meta.ruleId() + ".max");
-        rmax.put("kind", "max");
-        rmax.put("value", Double.parseDouble(max.value()));
-        rmax.put("errorCode", meta.ruleErrorCode());
-        rmax.put("message", meta.ruleMessage());
+        if (max != null) {
+          ObjectNode rmax = rules.addObject();
+          rmax.put("id", meta.ruleId() + ".max");
+          rmax.put("kind", "max");
+          rmax.put("value", Double.parseDouble(max.value()));
+          rmax.put("errorCode", meta.ruleErrorCode());
+          rmax.put("message", meta.ruleMessage());
+        }
       }
     } else if (f.getType() == LocalDate.class) {
       n.put("type", "date");
       n.put("required", required);
       n.put("format", "date");
+      HireDateWithinLimit hireLimit = f.getAnnotation(HireDateWithinLimit.class);
       if (meta != null && !meta.ruleId().isEmpty()) {
         ObjectNode rule = n.putArray("rules").addObject();
         rule.put("id", meta.ruleId());
         rule.put("kind", "custom");
-        rule.put("value", meta.ruleValue());
+        if (hireLimit != null) {
+          rule.put("value", String.valueOf(hireLimit.maxFutureDays()));
+          rule.put("parameter", HireDateWithinLimit.PARAMETER);
+        } else {
+          rule.put("value", meta.ruleValue());
+        }
         rule.put("errorCode", meta.ruleErrorCode());
         rule.put("message", meta.ruleMessage());
       }
@@ -255,8 +284,20 @@ public final class ValidationSchemaExporter {
         n.put("format", "email");
       }
       Pattern pattern = f.getAnnotation(Pattern.class);
-      if (pattern != null) {
-        n.put("pattern", pattern.regexp());
+      String regex =
+          pattern != null
+              ? pattern.regexp()
+              : f.isAnnotationPresent(Ssn.class) ? Ssn.PATTERN : null;
+      if (regex != null) {
+        n.put("pattern", regex);
+      }
+      if (meta != null && !meta.ruleId().isEmpty() && regex != null && !isNewPassword) {
+        ObjectNode rule = n.putArray("rules").addObject();
+        rule.put("id", meta.ruleId());
+        rule.put("kind", "pattern");
+        rule.put("value", regex);
+        rule.put("errorCode", meta.ruleErrorCode());
+        rule.put("message", meta.ruleMessage());
       }
       if (isNewPassword) {
         ArrayNode rules = n.putArray("rules");
@@ -276,6 +317,9 @@ public final class ValidationSchemaExporter {
           rn.put("message", r.message());
         }
       }
+    }
+    if (meta != null && meta.sensitive()) {
+      n.put("sensitive", true);
     }
     if (meta != null) {
       if (!meta.requiredMessage().isEmpty()) {

@@ -1,7 +1,8 @@
 /**
  * Snapshot + format guard for the hrms-validation exporter output (VAL-03 regression guard,
  * TEST_STRATEGY.md §2.1). Contract: contracts/p0-foundation/README.md "validation-schema.json",
- * extended by contracts/p1-performance/README.md (decimal/date fields, per-DTO `module`, `modules`).
+ * extended by contracts/p1-performance/README.md (decimal/date fields, per-DTO `module`, `modules`)
+ * and contracts/p3-employee/README.md (`sensitive`, string `pattern` rules, rule `parameter`).
  *
  * This test fails when:
  *   - the exporter output shape changes (schemaVersion / envelope / field rule vocabulary), or
@@ -26,7 +27,7 @@ describe('frontend/src/generated/validation-schema.json', () => {
     expect(schema.generatorVersion).toMatch(/^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/);
     expect(schema.sourceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(schema.module).toBe('hrms');
-    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance', 'p2-leave']);
+    expect(schema.modules).toEqual(['p0-foundation', 'p1-performance', 'p2-leave', 'p3-employee']);
     expect(Object.keys(schema.dtos).length).toBeGreaterThan(0);
   });
 
@@ -47,7 +48,9 @@ describe('frontend/src/generated/validation-schema.json', () => {
           expect(rule.id).toMatch(/^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/);
           expect(String(rule.errorCode)).toMatch(LEGACY_OR_FRAMEWORK_CODE);
           expect(typeof rule.message).toBe('string');
+          if ('parameter' in rule) expect(schema.parameters).toHaveProperty(String(rule.parameter));
         }
+        if ('sensitive' in field) expect((field as { sensitive?: unknown }).sensitive).toBe(true);
       }
     }
   });
@@ -106,6 +109,42 @@ describe('frontend/src/generated/validation-schema.json', () => {
       'BusinessDaysQuery',
     ] as const) {
       expect(schema.dtos[dto].module).toBe('p2-leave');
+    }
+  });
+
+  it('pins the P3 employee rules (VAL-01 -20501 hire-date limit, VAL-02 server @Email, @Ssn masked, -20101 salary)', () => {
+    const create = schema.dtos.EmployeeCreateRequest.fields;
+    expect(create.hireDate.type).toBe('date');
+    expect(create.hireDate.rules.map((r) => [r.kind, r.value, r.errorCode, r.parameter])).toEqual([
+      ['custom', '90', '-20501', 'HR.MAX_FUTURE_HIRE_DAYS'],
+    ]);
+    expect(schema.parameters['HR.MAX_FUTURE_HIRE_DAYS']).toBe(90);
+    // VAL-02: the server @Email rule (format=email) wins; no PLL regex is exported for e-mail.
+    expect(create.email.format).toBe('email');
+    expect(create.email).not.toHaveProperty('pattern');
+    expect(create.ssn.sensitive).toBe(true);
+    expect(create.ssn.pattern).toBe('^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$');
+    expect(create.ssn.rules.map((r) => r.kind)).toEqual(['pattern']);
+    for (const phone of [create.phoneWork, create.phoneMobile]) {
+      expect(phone.pattern).toBe('^(?:\\D*\\d){10,11}\\D*$');
+    }
+    expect(Object.keys(create)).not.toContain('empNumber');
+    expect(Object.keys(schema.dtos.EmployeeUpdateRequest.fields)).not.toContain('empNumber');
+    expect(Object.keys(schema.dtos.EmployeeUpdateRequest.fields)).not.toContain('employmentStatus');
+    const salary = schema.dtos.SalaryChangeRequest.fields.baseSalary;
+    expect(salary.type).toBe('decimal');
+    expect(salary.rules.map((r) => [r.kind, r.value, r.errorCode])).toEqual([['min', 0.01, '-20101']]);
+    for (const dto of [
+      'EmployeeListQuery',
+      'EmployeeCreateRequest',
+      'EmployeeUpdateRequest',
+      'EmployeeTerminateRequest',
+      'EmployeeTransferRequest',
+      'SalaryChangeRequest',
+      'DependentRequest',
+      'EmergencyContactRequest',
+    ] as const) {
+      expect(schema.dtos[dto].module).toBe('p3-employee');
     }
   });
 

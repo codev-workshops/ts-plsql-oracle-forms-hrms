@@ -107,6 +107,47 @@ class ValidationSchemaExporterTest {
   }
 
   @Test
+  void p3EmployeeDtosPinLegacyRules() {
+    ObjectNode root = new ValidationSchemaExporter().export("x", 8);
+    assertThat(root.get("modules").get(3).asText()).isEqualTo("p3-employee");
+    assertThat(root.get("parameters").get("HR.MAX_FUTURE_HIRE_DAYS").asInt()).isEqualTo(90);
+    JsonNode dtos = root.get("dtos");
+    for (String dto :
+        new String[] {
+          "EmployeeListQuery",
+          "EmployeeCreateRequest",
+          "EmployeeUpdateRequest",
+          "EmployeeTerminateRequest",
+          "EmployeeTransferRequest",
+          "SalaryChangeRequest",
+          "DependentRequest",
+          "EmergencyContactRequest"
+        }) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p3-employee");
+    }
+    JsonNode create = dtos.get("EmployeeCreateRequest").get("fields");
+    assertThat(create.has("empNumber")).isFalse();
+    assertThat(dtos.get("EmployeeUpdateRequest").get("fields").has("employmentStatus")).isFalse();
+    JsonNode hire = create.get("hireDate").get("rules").get(0);
+    assertThat(hire.get("kind").asText()).isEqualTo("custom");
+    assertThat(hire.get("value").asText()).isEqualTo("90");
+    assertThat(hire.get("parameter").asText()).isEqualTo("HR.MAX_FUTURE_HIRE_DAYS");
+    assertThat(hire.get("errorCode").asText()).isEqualTo("-20501");
+    assertThat(create.get("email").get("format").asText()).isEqualTo("email");
+    assertThat(create.get("email").has("pattern")).isFalse();
+    JsonNode ssn = create.get("ssn");
+    assertThat(ssn.get("sensitive").asBoolean()).isTrue();
+    assertThat(ssn.get("pattern").asText()).isEqualTo("^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$");
+    assertThat(ssn.get("rules").get(0).get("kind").asText()).isEqualTo("pattern");
+    assertThat(create.get("phoneWork").get("pattern").asText())
+        .isEqualTo(create.get("phoneMobile").get("pattern").asText());
+    JsonNode salary = dtos.get("SalaryChangeRequest").get("fields").get("baseSalary");
+    assertThat(salary.get("min").doubleValue()).isEqualTo(0.01);
+    assertThat(salary.get("rules")).hasSize(1);
+    assertThat(salary.get("rules").get(0).get("errorCode").asText()).isEqualTo("-20101");
+  }
+
+  @Test
   void hashIsStable() {
     ValidationSchemaExporter e = new ValidationSchemaExporter();
     assertThat(e.export("a", 8).get("sourceHash")).isEqualTo(e.export("b", 8).get("sourceHash"));

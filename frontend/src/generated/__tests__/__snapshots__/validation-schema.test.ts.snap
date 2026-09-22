@@ -96,6 +96,494 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p0-foundation",
     },
+    "DependentRequest": {
+      "fields": {
+        "benefitsEnrolled": {
+          "messages": {
+            "format": "Benefits enrolment must be yes or no",
+          },
+          "required": false,
+          "type": "boolean",
+        },
+        "dateOfBirth": {
+          "format": "date",
+          "messages": {
+            "format": "Date of birth cannot be in the future",
+          },
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.dateNotFuture",
+              "kind": "custom",
+              "message": "Date of birth cannot be in the future",
+              "value": "today",
+            },
+          ],
+          "type": "date",
+        },
+        "firstName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "First name may not exceed 50 characters",
+            "required": "First name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "lastName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "Last name may not exceed 50 characters",
+            "required": "Last name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "relationship": {
+          "messages": {
+            "required": "Relationship is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "SPOUSE",
+            "CHILD",
+            "PARENT",
+            "DOMESTIC_PARTNER",
+            "OTHER",
+          ],
+        },
+        "ssn": {
+          "maxLength": 11,
+          "messages": {
+            "pattern": "SSN must be 9 digits (NNN-NN-NNNN)",
+          },
+          "pattern": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.ssn",
+              "kind": "pattern",
+              "message": "SSN must be 9 digits (NNN-NN-NNNN)",
+              "value": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            },
+          ],
+          "sensitive": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
+    },
+    "EmergencyContactRequest": {
+      "fields": {
+        "contactName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Contact name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "email": {
+          "format": "email",
+          "maxLength": 100,
+          "messages": {
+            "format": "Enter a valid e-mail address",
+          },
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "phonePrimary": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+            "required": "Primary phone is required",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneSecondary": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "priorityOrder": {
+          "max": 99,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "relationship": {
+          "maxLength": 30,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
+    },
+    "EmployeeCreateRequest": {
+      "fields": {
+        "addressLine1": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "addressLine2": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "city": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "countryCode": {
+          "messages": {
+            "pattern": "Country code must be 2-3 upper-case letters",
+          },
+          "pattern": "^[A-Z]{2,3}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "dateOfBirth": {
+          "format": "date",
+          "messages": {
+            "format": "Date of birth cannot be in the future",
+          },
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.dateNotFuture",
+              "kind": "custom",
+              "message": "Date of birth cannot be in the future",
+              "value": "today",
+            },
+          ],
+          "type": "date",
+        },
+        "deptId": {
+          "messages": {
+            "format": "Select an active department",
+            "required": "Department is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "email": {
+          "format": "email",
+          "maxLength": 100,
+          "messages": {
+            "format": "Enter a valid e-mail address",
+          },
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "employmentType": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "FULL_TIME",
+            "PART_TIME",
+            "CONTRACT",
+            "INTERN",
+          ],
+        },
+        "firstName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "First name may not exceed 50 characters",
+            "required": "First name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "gender": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "M",
+            "F",
+            "O",
+          ],
+        },
+        "hireDate": {
+          "format": "date",
+          "messages": {
+            "required": "Hire date is required",
+          },
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20501",
+              "id": "employee.hireDateLimit",
+              "kind": "custom",
+              "message": "Hire date cannot be more than 90 days in the future",
+              "parameter": "HR.MAX_FUTURE_HIRE_DAYS",
+              "value": "90",
+            },
+          ],
+          "type": "date",
+        },
+        "initialSalary": {
+          "messages": {},
+          "min": 0.01,
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "-20101",
+              "id": "salary.positive.min",
+              "kind": "min",
+              "message": "Salary must be positive",
+              "value": 0.01,
+            },
+          ],
+          "scale": 2,
+          "type": "decimal",
+        },
+        "jobId": {
+          "messages": {
+            "format": "Select an active job title",
+            "required": "Job title is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "lastName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "Last name may not exceed 50 characters",
+            "required": "Last name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "locationCode": {
+          "messages": {
+            "pattern": "Select a location",
+          },
+          "pattern": "^[A-Z0-9]{1,10}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "managerEmpId": {
+          "messages": {
+            "format": "Select an active manager (not the employee themselves)",
+          },
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "maritalStatus": {
+          "maxLength": 10,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "middleName": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "nationality": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "notes": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneMobile": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneWork": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "postalCode": {
+          "maxLength": 20,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "ssn": {
+          "maxLength": 11,
+          "messages": {
+            "pattern": "SSN must be 9 digits (NNN-NN-NNNN)",
+          },
+          "pattern": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.ssn",
+              "kind": "pattern",
+              "message": "SSN must be 9 digits (NNN-NN-NNNN)",
+              "value": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            },
+          ],
+          "sensitive": true,
+          "trim": true,
+          "type": "string",
+        },
+        "stateProvince": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
+    },
+    "EmployeeListQuery": {
+      "fields": {
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "firstName": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "hireDateTo": {
+          "format": "date",
+          "messages": {
+            "format": "hireDateFrom must be before or equal to hireDateTo",
+          },
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.hireDateRange",
+              "kind": "custom",
+              "message": "hireDateFrom must be before or equal to hireDateTo",
+              "value": "hireDateFrom",
+            },
+          ],
+          "type": "date",
+        },
+        "jobId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "lastName": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "locationCode": {
+          "messages": {},
+          "pattern": "^[A-Z0-9]{1,10}$",
+          "required": false,
+          "trim": false,
+          "type": "string",
+        },
+        "managerEmpId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "q": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "size": {
+          "max": 100,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "status": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "ACTIVE",
+            "ON_LEAVE",
+            "SUSPENDED",
+            "TERMINATED",
+          ],
+        },
+      },
+      "module": "p3-employee",
+    },
     "EmployeeSearchQuery": {
       "fields": {
         "fields": {
@@ -138,6 +626,298 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p0-foundation",
+    },
+    "EmployeeTerminateRequest": {
+      "fields": {
+        "comments": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "effectiveDate": {
+          "format": "date",
+          "messages": {
+            "required": "Termination date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+        "reason": {
+          "maxLength": 50,
+          "messages": {
+            "required": "Termination reason is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
+    },
+    "EmployeeTransferRequest": {
+      "fields": {
+        "comments": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "deptId": {
+          "messages": {
+            "format": "Select an active department",
+            "required": "Department is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "effectiveDate": {
+          "format": "date",
+          "messages": {
+            "required": "Effective date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+        "newJobId": {
+          "messages": {
+            "format": "Select an active job title",
+          },
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "newLocationCode": {
+          "messages": {
+            "pattern": "Select a location",
+          },
+          "pattern": "^[A-Z0-9]{1,10}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "newManagerEmpId": {
+          "messages": {
+            "format": "Select an active manager (not the employee themselves)",
+          },
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "reasonCode": {
+          "maxLength": 30,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
+    },
+    "EmployeeUpdateRequest": {
+      "fields": {
+        "addressLine1": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "addressLine2": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "city": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "countryCode": {
+          "messages": {
+            "pattern": "Country code must be 2-3 upper-case letters",
+          },
+          "pattern": "^[A-Z]{2,3}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "dateOfBirth": {
+          "format": "date",
+          "messages": {
+            "format": "Date of birth cannot be in the future",
+          },
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.dateNotFuture",
+              "kind": "custom",
+              "message": "Date of birth cannot be in the future",
+              "value": "today",
+            },
+          ],
+          "type": "date",
+        },
+        "email": {
+          "format": "email",
+          "maxLength": 100,
+          "messages": {
+            "format": "Enter a valid e-mail address",
+          },
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "employmentType": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "FULL_TIME",
+            "PART_TIME",
+            "CONTRACT",
+            "INTERN",
+          ],
+        },
+        "firstName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "First name may not exceed 50 characters",
+            "required": "First name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "gender": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "M",
+            "F",
+            "O",
+          ],
+        },
+        "jobId": {
+          "messages": {
+            "format": "Select an active job title",
+            "required": "Job title is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "lastName": {
+          "maxLength": 50,
+          "messages": {
+            "maxLength": "Last name may not exceed 50 characters",
+            "required": "Last name is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "managerEmpId": {
+          "messages": {
+            "format": "Select an active manager (not the employee themselves)",
+          },
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "maritalStatus": {
+          "maxLength": 10,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "middleName": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "nationality": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "notes": {
+          "maxLength": 4000,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneMobile": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneWork": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone number must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "postalCode": {
+          "maxLength": 20,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "ssn": {
+          "maxLength": 11,
+          "messages": {
+            "pattern": "SSN must be 9 digits (NNN-NN-NNNN)",
+          },
+          "pattern": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "employee.ssn",
+              "kind": "pattern",
+              "message": "SSN must be 9 digits (NNN-NN-NNNN)",
+              "value": "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            },
+          ],
+          "sensitive": true,
+          "trim": true,
+          "type": "string",
+        },
+        "stateProvince": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p3-employee",
     },
     "GoalProgressRequest": {
       "fields": {
@@ -484,6 +1264,75 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p1-performance",
     },
+    "SalaryChangeRequest": {
+      "fields": {
+        "baseSalary": {
+          "messages": {
+            "required": "Salary is required",
+          },
+          "min": 0.01,
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20101",
+              "id": "salary.positive.min",
+              "kind": "min",
+              "message": "Salary must be positive",
+              "value": 0.01,
+            },
+          ],
+          "scale": 2,
+          "type": "decimal",
+        },
+        "changeReason": {
+          "maxLength": 50,
+          "messages": {
+            "required": "Change reason is required",
+          },
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "currencyCode": {
+          "messages": {
+            "pattern": "Currency must be a 3-letter ISO code",
+          },
+          "pattern": "^[A-Z]{3}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "effectiveDate": {
+          "format": "date",
+          "messages": {
+            "required": "Effective date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+        "payFrequency": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "WEEKLY",
+            "BIWEEKLY",
+            "SEMIMONTHLY",
+            "MONTHLY",
+          ],
+        },
+        "salaryBasis": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "ANNUAL",
+            "HOURLY",
+          ],
+        },
+      },
+      "module": "p3-employee",
+    },
     "SelfAssessmentRequest": {
       "fields": {
         "selfAssessment": {
@@ -547,12 +1396,14 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
     "p0-foundation",
     "p1-performance",
     "p2-leave",
+    "p3-employee",
   ],
   "parameters": {
+    "HR.MAX_FUTURE_HIRE_DAYS": 90,
     "SECURITY.PASSWORD_MIN_LENGTH": 8,
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "599ea87923ee571149bbd951e3d060a8b639b654984a5fe11ea0d9adff4faf96",
+  "sourceHash": "3d32c90b729212dd1e722ef668cbf4bba627b4a5e0076747443ffd34dd85825b",
 }
 `;
