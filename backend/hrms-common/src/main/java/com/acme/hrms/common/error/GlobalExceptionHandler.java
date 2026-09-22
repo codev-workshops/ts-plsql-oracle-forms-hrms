@@ -144,7 +144,12 @@ public class GlobalExceptionHandler {
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-  public ResponseEntity<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+  public ResponseEntity<?> handleMethodNotSupported(
+      HttpRequestMethodNotSupportedException e, HttpServletRequest request) {
+    if (request.getRequestURI().startsWith("/api/employees/")
+        && "DELETE".equalsIgnoreCase(request.getMethod())) {
+      return render(ErrorCode.DIRECT_DELETION_NOT_ALLOWED, null, null, null, request, e, false);
+    }
     return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
   }
 
