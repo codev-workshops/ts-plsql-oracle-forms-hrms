@@ -53,10 +53,14 @@ public final class ScenarioRegistry {
    * Registry order is a fixture: the REST runner never resets the database, so scenarios whose
    * expectations are derived from the frozen seed population (performance review generation,
    * payroll totals over the 23 ACTIVE employees) run before {@code employee.*} hires / terminates
-   * anybody. {@link #POPULATION_SENSITIVE_MODULES} is guarded by RegistryAndReportTest.
+   * anybody, and the pure-read {@code reporting.*} / {@code integration.*} scenarios run before
+   * {@code performance.*} generates reviews that would show up in the pending-approvals report.
+   * {@link #POPULATION_SENSITIVE_MODULES} is guarded by RegistryAndReportTest.
    */
   public static List<Scenario> all(TargetFlags flags) {
     List<Scenario> all = new ArrayList<>(phase0(flags));
+    all.addAll(ReportingScenarios.all());
+    all.addAll(IntegrationScenarios.all());
     all.addAll(PerformanceScenarios.all());
     all.addAll(LeaveScenarios.all());
     all.addAll(SalaryScenarios.all());
@@ -67,7 +71,11 @@ public final class ScenarioRegistry {
 
   /** Modules whose recorded expectations assume the pristine seed employee population. */
   static final Set<String> POPULATION_SENSITIVE_MODULES =
-      Set.of(PerformanceScenarios.MODULE, PayrollScenarios.MODULE);
+      Set.of(
+          PerformanceScenarios.MODULE,
+          PayrollScenarios.MODULE,
+          ReportingScenarios.MODULE,
+          IntegrationScenarios.MODULE);
 
   /** Scenario ids that change the ACTIVE employee population (hire / terminate). */
   static boolean changesEmployeePopulation(Scenario s) {
@@ -180,8 +188,20 @@ public final class ScenarioRegistry {
             : Outcome.error("SSO_MODULE_NOT_LEGACY"));
   }
 
+  /**
+   * Contract-only codes with no legacy counterpart (error-codes.md: {@code -206xx}/{@code -207xx}
+   * were introduced by the P5 contract because PKG_INTEGRATION / HRMS_ADMIN raise nothing).
+   */
+  static final String NONE = "none";
+
+  /** Scenarios exercising those contract-only codes (target side diffed only). */
+  static final Set<String> CONTRACT_ONLY_SCENARIOS = Set.of("integration.gl-feed.run-not-approved");
+
   /** How the legacy column of the report was obtained when Oracle is not attached. */
   public static String legacySource(Scenario s) {
+    if (CONTRACT_ONLY_SCENARIOS.contains(s.id())) {
+      return NONE;
+    }
     return UNTESTED_LIVE_SCENARIOS.contains(s.id()) && s.legacy() != null
         ? UNTESTED_LIVE
         : RECORDED;
@@ -212,6 +232,9 @@ public final class ScenarioRegistry {
     }
     if (PayrollScenarios.MODULE.equals(s.module())) {
       return PayrollScenarios.legacyOutcome(s);
+    }
+    if (IntegrationScenarios.MODULE.equals(s.module())) {
+      return IntegrationScenarios.legacyOutcome(s);
     }
     return switch (s.id()) {
       case "auth.lockout.after-5-failures" -> Outcome.error("-20301"); // SEC-02: no lockout

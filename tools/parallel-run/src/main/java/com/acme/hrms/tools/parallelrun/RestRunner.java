@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Drives the target REST API (through the proxy, so module flags apply) and projects the JSON
@@ -41,15 +42,25 @@ public final class RestRunner {
    */
   static final List<String> CAPTURED_IDS =
       List.of(
-          "cycleId", "reviewId", "goalId", "requestId", "id", "dependentId", "contactId", "runId");
+          "cycleId",
+          "reviewId",
+          "goalId",
+          "requestId",
+          "id",
+          "dependentId",
+          "contactId",
+          "runId",
+          "jobId");
 
   /**
-   * Setup calls to a payroll {@code /status} resource are re-polled while the asynchronous Spring
-   * Batch job reports {@code CALCULATING} (COMPONENT_MAPPING.md §4: calculate returns 202).
+   * Setup calls to a payroll {@code /status} resource or a leave batch job ({@link
+   * LeaveScenarios#JOB_PATH}) are re-polled while the asynchronous Spring Batch job reports {@code
+   * CALCULATING} / {@code RUNNING} (COMPONENT_MAPPING.md §4: calculate returns 202; P5 openapi:
+   * accrual / carryover return 202 + BatchRunResult).
    */
   static final String ASYNC_STATUS_SUFFIX = "/status";
 
-  private static final String ASYNC_PENDING = "CALCULATING";
+  private static final Set<String> ASYNC_PENDING = Set.of("CALCULATING", "RUNNING");
   private static final int ASYNC_MAX_POLLS = 120;
   private static final long ASYNC_POLL_MILLIS = 500;
 
@@ -62,7 +73,7 @@ public final class RestRunner {
     context.clear();
     for (RestCall setup : s.target().setup()) {
       HttpResponse<String> resp = call(setup);
-      if (setup.path().endsWith(ASYNC_STATUS_SUFFIX)) {
+      if (isAsyncPoll(setup)) {
         resp = awaitSettled(setup, resp);
       }
       capture(resp);
@@ -71,11 +82,15 @@ public final class RestRunner {
     return project(resp, s.expect().fields().keySet());
   }
 
+  static boolean isAsyncPoll(RestCall c) {
+    return c.path().endsWith(ASYNC_STATUS_SUFFIX) || c.path().equals(LeaveScenarios.JOB_PATH);
+  }
+
   private HttpResponse<String> awaitSettled(RestCall status, HttpResponse<String> first)
       throws IOException, InterruptedException {
     HttpResponse<String> resp = first;
     for (int i = 0; i < ASYNC_MAX_POLLS && resp.statusCode() < 300; i++) {
-      if (!ASYNC_PENDING.equals(JSON.readTree(resp.body()).path("status").asText())) {
+      if (!ASYNC_PENDING.contains(JSON.readTree(resp.body()).path("status").asText())) {
         return resp;
       }
       Thread.sleep(ASYNC_POLL_MILLIS);
@@ -164,21 +179,16 @@ public final class RestRunner {
     }
     if (n.isArray()) {
       // List endpoints project their first element unless a wanted field explicitly selects an
-      // array index (salary history uses [1].endDate to inspect the closed prior row).
-      boolean indexed = wanted.stream().anyMatch(w -> w.matches("\\[\\d+\\]\\..+"));
-      if (!indexed) {
+      // element: by index (salary history uses [1].endDate to inspect the closed prior row) or
+      // by attribute (leave balances use [leaveTypeId=1].accrued to pick the PTO row).
+      boolean selected = wanted.stream().anyMatch(w -> w.matches(ELEMENT_SELECTOR));
+      if (!selected) {
         n = n.isEmpty() ? JSON.createObjectNode() : n.get(0);
       }
     }
     Map<String, String> fields = new LinkedHashMap<>();
     for (String w : wanted) {
       JsonNode v = w.contains(".") || w.contains("[") ? select(n, w) : n.path(w);
-      if (w.matches("\\[\\d+\\]\\..+")) {
-        int dot = w.indexOf('.');
-        int index = Integer.parseInt(w.substring(1, dot - 1));
-        String key = w.substring(dot + 1);
-        v = n.isArray() && index < n.size() ? n.get(index).path(key) : JSON.missingNode();
-      }
       if (v.isMissingNode() && w.equals("emp_id")) {
         v = n.path("user").path("empId");
       }
@@ -187,9 +197,13 @@ public final class RestRunner {
     return Outcome.ok(fields);
   }
 
+  /** A wanted field that starts with an element selector on the root array: {@code [..].x}. */
+  static final String ELEMENT_SELECTOR = "\\[[^\\]]+\\]\\..+";
+
   /**
-   * Dotted / indexed selector over the response, e.g. {@code summary.matched} or {@code
-   * content[0].errorCode}; a missing hop yields a missing node.
+   * Dotted / indexed / filtered selector over the response, e.g. {@code summary.matched}, {@code
+   * content[0].errorCode} or {@code [leaveTypeId=1].accrued} (first array element whose attribute
+   * renders as the given text); a missing hop yields a missing node.
    */
   static JsonNode select(JsonNode root, String selector) {
     JsonNode cur = root;
@@ -201,12 +215,30 @@ public final class RestRunner {
       }
       while (bracket >= 0) {
         int close = hop.indexOf(']', bracket);
-        int index = Integer.parseInt(hop.substring(bracket + 1, close));
-        cur = cur.isArray() && index < cur.size() ? cur.get(index) : JSON.missingNode();
+        cur = element(cur, hop.substring(bracket + 1, close));
         bracket = hop.indexOf('[', close);
       }
     }
     return cur;
+  }
+
+  private static JsonNode element(JsonNode array, String spec) {
+    if (!array.isArray()) {
+      return JSON.missingNode();
+    }
+    int eq = spec.indexOf('=');
+    if (eq < 0) {
+      int index = Integer.parseInt(spec);
+      return index < array.size() ? array.get(index) : JSON.missingNode();
+    }
+    String attr = spec.substring(0, eq);
+    String value = spec.substring(eq + 1);
+    for (JsonNode e : array) {
+      if (e.hasNonNull(attr) && text(e.get(attr)).equals(value)) {
+        return e;
+      }
+    }
+    return JSON.missingNode();
   }
 
   /** JSON numbers as Oracle's NUMBER getString renders them: no trailing zeros (5.00 → 5). */

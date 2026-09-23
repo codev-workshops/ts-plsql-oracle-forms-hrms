@@ -146,7 +146,13 @@ class SsoScenarioContractTest {
             .map(ScenarioRegistry::legacySource)
             .distinct()
             .toList();
-    assertThat(others).containsExactly(ScenarioRegistry.RECORDED);
+    // P5 contract (error-codes.md): -206xx/-207xx rows have no legacy leg -> "none"
+    assertThat(others).containsExactlyInAnyOrder(ScenarioRegistry.RECORDED, ScenarioRegistry.NONE);
+    assertThat(
+            ScenarioRegistry.all().stream()
+                .filter(x -> ScenarioRegistry.NONE.equals(ScenarioRegistry.legacySource(x)))
+                .map(Scenario::id))
+        .containsExactlyInAnyOrderElementsOf(ScenarioRegistry.CONTRACT_ONLY_SCENARIOS);
 
     DiffReport r = new DiffReport();
     r.add(

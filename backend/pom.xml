@@ -36,6 +36,9 @@
     <module>salary</module>
     <module>employee</module>
     <module>payroll</module>
+    <module>reporting</module>
+    <module>admin</module>
+    <module>integration</module>
     <module>auth</module>
     <module>../tools/parallel-run</module>
     <module>../tools/reconcile</module>
@@ -92,6 +95,21 @@
       <dependency>
         <groupId>com.acme.hrms</groupId>
         <artifactId>payroll</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.acme.hrms</groupId>
+        <artifactId>reporting</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.acme.hrms</groupId>
+        <artifactId>admin</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.acme.hrms</groupId>
+        <artifactId>integration</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

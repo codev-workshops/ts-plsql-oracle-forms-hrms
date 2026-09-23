@@ -257,4 +257,60 @@ class PgReconciliationQueriesTest {
       assertThat(diff.reconciled()).as(diff.toMarkdown()).isTrue();
     }
   }
+
+  /**
+   * CUTOVER_PLAN.md §9.2 / P5 contract VAL-05: the post-change re-baseline of VW_LEAVE_SUMMARY
+   * (tests/reconciliation/pg-p5) subtracts PENDING from AVAILABLE. Every other cell must be
+   * identical to the P0 baseline, and AVAILABLE must differ from it by exactly PENDING – so the
+   * committed P5 golden is provably derived from the P0 one (tests/golden/README.md). Regenerate
+   * with {@code -Dhrms.golden.update=true}.
+   */
+  @Test
+  void p5LeaveSummaryRebaselineSubtractsPendingFromAvailable() throws Exception {
+    Path repo = HrmsPostgres.repoRoot();
+    Path golden = repo.resolve("tests/golden/views-baseline-p5-leave-summary.csv");
+    ViewQuery p5 =
+        new ViewQuery(
+            "VW_LEAVE_SUMMARY",
+            repo.resolve("tests/reconciliation/oracle/vw_leave_summary.sql"),
+            repo.resolve("tests/reconciliation/pg-p5/vw_leave_summary.sql"));
+    List<Cell> actual;
+    try (Connection c = HrmsPostgres.dataSource().getConnection()) {
+      actual = ReconcileMain.capture(c, List.of(p5), AS_OF, false);
+    }
+    if (Boolean.getBoolean("hrms.golden.update")) {
+      Baseline.write(golden, actual);
+    }
+    List<Cell> expected = Baseline.read(golden);
+    Diff diff = Diff.of(expected, actual);
+    assertThat(diff.reconciled()).as(diff.toMarkdown()).isTrue();
+
+    Map<String, String> p0 = new HashMap<>();
+    for (Cell x : Baseline.read(repo.resolve("tests/golden/views-baseline.csv"))) {
+      if (x.view().equals("VW_LEAVE_SUMMARY")) {
+        p0.put(x.rowNo() + "/" + x.column(), x.value());
+      }
+    }
+    Map<String, String> p5Cells = new HashMap<>();
+    expected.forEach(x -> p5Cells.put(x.rowNo() + "/" + x.column(), x.value()));
+    assertThat(p5Cells.keySet()).isEqualTo(p0.keySet());
+    int shifted = 0;
+    for (Map.Entry<String, String> e : p5Cells.entrySet()) {
+      String key = e.getKey();
+      if (key.endsWith("/AVAILABLE")) {
+        String row = key.substring(0, key.indexOf('/'));
+        BigDecimal pending = new BigDecimal(p0.get(row + "/PENDING"));
+        BigDecimal legacy = new BigDecimal(p0.get(key));
+        assertThat(new BigDecimal(e.getValue()))
+            .as("row " + row)
+            .isEqualByComparingTo(legacy.subtract(pending));
+        if (pending.signum() != 0) {
+          shifted++;
+        }
+      } else {
+        assertThat(e.getValue()).as(key).isEqualTo(p0.get(key));
+      }
+    }
+    assertThat(shifted).as("seed rows with PENDING > 0").isEqualTo(3);
+  }
 }

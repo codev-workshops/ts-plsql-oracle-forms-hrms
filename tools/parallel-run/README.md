@@ -82,8 +82,10 @@ what `PayrollShadowRunner` diffs.
 
 Calculation is asynchronous (`POST …/calculate` → 202, Spring Batch): setup steps ending in
 `/status` are re-polled by `RestRunner` until the run leaves `CALCULATING`; `runId` is captured
-from the create response. Projections may use dotted / indexed selectors (`summary.matched`,
-`content[0].errorCode`).
+from the create response. Projections may use dotted / indexed / filtered selectors
+(`summary.matched`, `content[0].errorCode`, `[leaveTypeId=1].accrued` – the first array element
+whose attribute renders as the given text; the leave seed-year batch scenarios use it to pick the
+PTO row out of the name-ordered `GET /api/leave/balances/mine` list).
 
 * `payroll.run.create.closed-period` – run on CLOSED 202405 → `-20102`.
 * `payroll.run.calculate.seed-period` – fresh run on 202406: `CALCULATED`, 23 employees, 0 errors,

@@ -576,10 +576,15 @@ class LeaveApiTest extends AuthApiTestBase {
 
   @Test
   void deferredAdminRoutesAreNotMounted() throws Exception {
-    for (String p :
-        new String[] {"accrual/run", "carryover/run", "carryover/expire", "balances/adjust"}) {
+    for (String p : new String[] {"carryover/expire", "balances/adjust"}) {
       mvc.perform(json(post("/api/leave/admin/" + p), exec, Map.of()))
           .andExpect(status().isNotFound());
+    }
+    // P5 contract: the two P2 x-deferred batch paths are 301 aliases of /api/admin/leave/*
+    for (String p : new String[] {"accrual", "carryover"}) {
+      mvc.perform(json(post("/api/leave/admin/" + p + "/run"), exec, Map.of()))
+          .andExpect(status().isMovedPermanently())
+          .andExpect(header().string("Location", "/api/admin/leave/" + p));
     }
   }
 

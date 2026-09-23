@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.acme.hrms</groupId>
+    <artifactId>hrms-backend</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>integration</artifactId>
+  <name>integration</name>
+  <description>integration-module: owner of integration_log and integration_files; GL / benefits feed writers, time-attendance staging, object-storage output (contracts/p5-reporting-decommission)</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.acme.hrms</groupId>
+      <artifactId>hrms-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.acme.hrms</groupId>
+      <artifactId>hrms-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.acme.hrms</groupId>
+      <artifactId>hrms-audit</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.acme.hrms</groupId>
+      <artifactId>employee</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.acme.hrms</groupId>
+      <artifactId>hrms-common</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>
