@@ -81,8 +81,14 @@ produce the framework's plain 404, not an `ApiError` of this module.
 | BUG-04 | `expire_carryover` on a row where part of the carryover was already used | `adjustment -= carryoverFromPrev` (over-deduction), re-runnable | `adjustment -= GREATEST(0, carryoverFromPrev − usedFromCarryover)`, idempotent via `leave_accrual_log` (P5 route, declared here) |
 | BUG-05 | Range containing a holiday whose `HOLIDAY_DATE` falls on Saturday/Sunday | Weekend date skipped anyway → observed weekday counted as a business day | Observed weekday (Sat→Fri, Sun→Mon) excluded; `/business-days` reports `observedDate` |
 | BUG-06 | Submit `PM` half day when an `AM` half day exists on the same date (or vice versa) | `-20202` | `201`; `totalDays = .5` each |
+| LOG-01 | `process_carryover` / `expire_carryover` (P5 routes, declared in P2) | No `LEAVE_ACCRUAL_LOG` row (the package logs `'ACCRUAL'` only, `PKG_LEAVE.pkb:527`) | One `'CARRYOVER'` / `'EXPIRY'` row per `(empId, leaveTypeId)` – the idempotency record the architecture requires; **additional rows on the new side only**, no other table may differ |
 
-No other row may be whitelisted. The cases below are **not** behavioural divergences on the
+No other row may be whitelisted. LOG-01 is a technical exception (idempotency bookkeeping),
+not a behaviour fix: `LEAVE_BALANCES` written by `process_carryover` must match the package
+exactly – the carried amount is `LEAST(openingBalance + accrued − used + adjustment,
+carryoverMax)` **without** `− pending`, the same pre-pending `remaining` the package computes
+(`PKG_LEAVE.pkb:567-572`). VAL-05 (`available` subtracts `pending`) governs the API balance
+and the submit check, not this batch. The cases below are **not** behavioural divergences on the
 recorded scenario set: they are inputs the legacy package either never receives (Forms
 rejected them or no caller existed) or fails on in an undefined way, so the scenario
 registry records the *target* expectation for them (`legacy_source=recorded`, provenance
@@ -99,6 +105,12 @@ registry records the *target* expectation for them (`legacy_source=recorded`, pr
 | SCOPE-01 | `approve`/`reject` by a caller who is neither the designated approver nor `LEAVE:APPROVE`, or on their own request | Succeeded (no check in the package) | `403 FORBIDDEN` |
 | SCOPE-02 | `cancel` on another employee's request | `NO_DATA_FOUND` → unhandled `ORA-01403` | `403 FORBIDDEN` |
 | NOTIF-01 | `cancel` | No notification | No notification (COMPONENT_MAPPING.md §5 "notification to approver" is **not** adopted, to keep the `NOTIFICATION_QUEUE` diff empty) – listed so the decision is explicit |
+
+Not in this table because they are **parity**, not differences: the reject notification body is
+`Your leave request has been rejected. Reason: {comments}` (no date range, `PKG_LEAVE.pkb:309`);
+`approve`/`reject`/`cancel` write two `AUDIT_LOG` rows in order – `UPDATE` (`old_values`/
+`new_values` `null`, `PKG_AUDIT.log_action`) then `STATUS_CHANGE` (`{"status":"<old>"}` →
+`{"status":"<new>"}`, `TRG_LEAVE_REQUEST_AUDIT`); `submit` writes one `INSERT` row.
 
 LEGACY-DEFECT-AUTOAPPROVE is not in TECH_DEBT_REGISTRY.md; the contract freezes the target
 behaviour (`REQUIRES_APPROVAL='N'` → created as `APPROVED`) and the P2 gate must add it to
