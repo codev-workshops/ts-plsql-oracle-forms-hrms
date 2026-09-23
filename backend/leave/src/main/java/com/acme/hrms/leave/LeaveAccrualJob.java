@@ -30,6 +30,9 @@ public class LeaveAccrualJob {
     this.clock = clock;
   }
 
+  /** {@code PKG_LEAVE.process_carryover}'s pre-pending remaining balance of a {@code b} row. */
+  private static final String REMAINING = "(b.opening_balance + b.accrued - b.used + b.adjustment)";
+
   private static final String INIT_BALANCES =
       "insert into leave_balances (balance_id, emp_id, leave_type_id, calendar_year,"
           + " opening_balance, accrued, used, adjustment, pending, created_by, created_date)"
@@ -99,11 +102,11 @@ public class LeaveAccrualJob {
 
   /**
    * Year-end carryover: for every {@code year} row with a positive remaining balance ({@code
-   * available = opening + accrued - used + adjustment - pending}, VAL-05: the legacy ignored {@code
-   * pending}) create the {@code year+1} rows and set {@code carryoverFromPrev = openingBalance =
-   * LEAST(remaining, carryoverMax)} plus {@code carryoverExpiryDt = Jan 1 (year+1) +
-   * carryoverExpiry months}. One {@code CARRYOVER} log row per {@code (emp, type)} dated {@code Jan
-   * 1 (year+1)}.
+   * remaining = opening + accrued - used + adjustment}, without {@code pending}, exactly {@code
+   * PKG_LEAVE.pkb:567-572}; VAL-05 governs {@code available}, not this batch) create the {@code
+   * year+1} rows and set {@code carryoverFromPrev = openingBalance = LEAST(remaining,
+   * carryoverMax)} plus {@code carryoverExpiryDt = Jan 1 (year+1) + carryoverExpiry months}. One
+   * {@code CARRYOVER} log row per {@code (emp, type)} dated {@code Jan 1 (year+1)}.
    */
   @Transactional
   public BatchRunResult processCarryover(int year, String user) {
@@ -111,7 +114,7 @@ public class LeaveAccrualJob {
     int next = year + 1;
     LocalDate marker = LocalDate.of(next, 1, 1);
     String withRemaining =
-        "select b.emp_id from leave_balances b where b.calendar_year = ?" + " and b.available > 0";
+        "select b.emp_id from leave_balances b where b.calendar_year = ? and " + REMAINING + " > 0";
     jdbc.update(String.format(INIT_BALANCES, withRemaining), next, user, year, next);
 
     Integer skipped =
@@ -123,11 +126,17 @@ public class LeaveAccrualJob {
         jdbc.update(
             "with cand as ("
                 + " select b.emp_id, b.leave_type_id,"
-                + "  least(b.available, coalesce(lt.carryover_max, b.available)) as co,"
+                + "  least("
+                + REMAINING
+                + ", coalesce(lt.carryover_max, "
+                + REMAINING
+                + ")) as co,"
                 + "  case when lt.carryover_expiry is not null"
                 + "       then (?::date + (lt.carryover_expiry || ' months')::interval)::date end as expiry"
                 + " from leave_balances b join leave_types lt on lt.leave_type_id = b.leave_type_id"
-                + " where b.calendar_year = ? and b.available > 0"
+                + " where b.calendar_year = ? and "
+                + REMAINING
+                + " > 0"
                 + " and not exists (select 1 from leave_accrual_log l where l.emp_id = b.emp_id"
                 + "   and l.leave_type_id = b.leave_type_id and l.accrual_type = 'CARRYOVER'"
                 + "   and l.accrual_date = ?)"

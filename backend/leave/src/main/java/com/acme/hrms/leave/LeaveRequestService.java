@@ -33,8 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * {@code PKG_LEAVE.submit/cancel/approve/reject_leave_request} on PostgreSQL with the error
  * contract of contracts/p2-leave/error-codes.md. Audit and notification rows are written explicitly
- * here (no triggers); balance mutations go through {@link LeaveBalanceRepository} and are no-ops
- * without a balance row (QUIRK-02).
+ * here (no triggers): a status transition writes the package's {@code UPDATE} row followed by the
+ * {@code STATUS_CHANGE} row of {@code TRG_LEAVE_REQUEST_AUDIT}; balance mutations go through {@link
+ * LeaveBalanceRepository} and are no-ops without a balance row (QUIRK-02).
  */
 @Service
 public class LeaveRequestService {
@@ -382,12 +383,7 @@ public class LeaveRequestService {
         null,
         NotificationService.Type.EMAIL,
         REJECTED_SUBJECT,
-        "Your leave request from "
-            + US.format(after.startDate())
-            + " to "
-            + US.format(after.endDate())
-            + " has been rejected. Reason: "
-            + comments,
+        "Your leave request has been rejected. Reason: " + comments,
         NOTIFICATION_PRIORITY,
         TABLE,
         requestId,
@@ -413,6 +409,8 @@ public class LeaveRequestService {
   }
 
   private void auditStatus(LeaveRequest before, LeaveRequest after, CallerIdentity c) {
+    audit.log(
+        TABLE, after.requestId(), AuditService.Action.UPDATE, null, null, c.userId(), null, null);
     audit.log(
         TABLE,
         after.requestId(),
