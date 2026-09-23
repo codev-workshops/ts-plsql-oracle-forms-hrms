@@ -7,11 +7,6 @@ import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { AppRoutes } from '../../App';
 import { SESSION_EXPIRED_MESSAGE } from '../AuthContext';
 
-/**
- * App-level check of error-codes.md §3 invariant 4 / COMPONENT_MAPPING.md §7 `check_session`:
- * a 401 TOKEN_INVALID on a protected call is retried once through `/api/auth/refresh`; when
- * the refresh also fails the shell drops to /login with the "Session has expired" message.
- */
 describe('session expiry (AuthContext + axios interceptor + ProtectedRoute)', () => {
   const email = SEED_ACCOUNTS.executive.email;
 
