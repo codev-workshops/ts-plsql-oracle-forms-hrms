@@ -43,8 +43,10 @@ from the blocked full cutover verdict.
 Do **not** fix code or change production flags here; identify the failing
 side with reproduction evidence (`backend`, `frontend`, `both`,
 `contract`, `environment`, or `none`). A missing live runtime is
-`environment`, not a code defect. Do not mark a calendar sign-off pass
-from previous logs.
+`environment`, not a code defect, when a full-mode check cannot run.
+An explicitly skipped live check in implementation-only mode is an
+`evidence_gap`, not a local failure; use `failure_owner=none` if the
+local checks pass. Do not mark a calendar sign-off pass from previous logs.
 
 **Return via `provide_structured_output` (all fields required):**
 ```json
