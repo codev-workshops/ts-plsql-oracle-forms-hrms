@@ -31,12 +31,12 @@
 
 | PR | Branch | Review state |
 |---|---|---|
-| [#35](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/35) | `p5-reporting-decommission/contract` → `phase/p5-reporting-decommission` | ready for human review; commits contained in phase branch after fast-forward |
+| [#35](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/35) | `p5-reporting-decommission/contract` → `phase/p5-reporting-decommission` | closed as merged when the target branch fast-forwarded; no merge into P4 |
 | [#37](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/37) | `p5-reporting-decommission/backend` → `p5-reporting-decommission/contract` | ready for human review |
 | [#36](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/36) | `p5-reporting-decommission/frontend` → `p5-reporting-decommission/contract` | ready for human review |
-| [#38](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/38) | `p5-reporting-decommission/integration` → `phase/p5-reporting-decommission` | ready for human review; commits contained in phase branch after fast-forward |
+| [#38](https://github.com/codev-workshops/ts-plsql-oracle-forms-hrms/pull/38) | `p5-reporting-decommission/integration` → `phase/p5-reporting-decommission` | closed as merged when the target branch fast-forwarded, still labeled draft; mark-ready request denied (`FORBIDDEN`) |
 
-The phase stack is merged bottom-up by humans into `phase/p4-payroll`; this promotion did not merge it there.
+The remaining phase stack is intended for bottom-up human merges into `phase/p4-payroll`; this promotion did not merge it there.
 
 ## Post-promotion actions unblocked for humans
 
