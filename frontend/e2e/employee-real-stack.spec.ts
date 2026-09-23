@@ -28,7 +28,7 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
   test.skip(process.env.E2E_REAL_STACK !== '1', 'requires a running PostgreSQL-backed API without MSW');
   test.skip(!flag, 'requires employee=NEW_READONLY or employee=NEW');
 
-  test('read-only search/detail and JWT row scope', async ({ page, request }) => {
+  test('read-only search/detail and scoped tabs', async ({ page, request }) => {
     const staffToken = await login(page, SEED_ACCOUNTS.staff.email);
     await page.goto('/employees');
     await expect(page.getByRole('table', { name: 'Employees' })).toBeVisible();
@@ -59,6 +59,10 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
     await expect(page.getByRole('tab', { name: 'Salary' })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Dependents' })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Contacts' })).toHaveCount(0);
+  });
+
+  test('rejects out-of-scope related reads and invalid JWTs', async ({ page, request }) => {
+    const staffToken = await login(page, SEED_ACCOUNTS.staff.email);
     for (const path of ['salary', 'salary/history', 'dependents', 'contacts']) {
       const forbidden = await request.get(`/api/employees/${SEED_ACCOUNTS.manager.empId}/${path}`, {
         headers: { Authorization: `Bearer ${staffToken}` },
