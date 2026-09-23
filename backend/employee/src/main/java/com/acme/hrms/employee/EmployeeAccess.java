@@ -3,10 +3,12 @@ package com.acme.hrms.employee;
 import com.acme.hrms.common.error.ErrorCode;
 import com.acme.hrms.common.error.HrmsException;
 import com.acme.hrms.common.format.OracleNumber;
+import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
-import com.acme.hrms.validation.constraints.HireDateWithinLimit;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeListQuery;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
@@ -20,7 +22,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Row scope, proxy write guard and the legacy-coded body checks that must win over generic Bean
- * Validation ({@code -20010}, {@code -20501}, {@code -20101}; error-codes.md §3 step 5).
+ * Validation ({@code -20010}, {@code -20501}, {@code -20101}; error-codes.md §3 step 5). Unknown
+ * body properties ({@code additionalProperties: false}) are rejected in the same step, after the
+ * legacy-coded checks and before Bean Validation.
  */
 @Component
 public class EmployeeAccess {
@@ -28,14 +32,17 @@ public class EmployeeAccess {
   public static final String EDIT = "EMPLOYEE:EDIT";
 
   private final Validator validator;
+  private final SystemParameterService parameters;
   private final Clock clock;
   private final String moduleFlag;
 
   public EmployeeAccess(
       Validator validator,
+      SystemParameterService parameters,
       Clock clock,
       @Value("${hrms.proxy.modules.employee:LEGACY}") String moduleFlag) {
     this.validator = validator;
+    this.parameters = parameters;
     this.clock = clock;
     this.moduleFlag = moduleFlag;
   }
@@ -73,11 +80,21 @@ public class EmployeeAccess {
     if (body == null) {
       throw new HrmsException(ErrorCode.VALIDATION_FAILED, "Malformed request body", "body");
     }
+    if (body instanceof StrictRequest strict) {
+      strict.requireNoUnknownProperties();
+    }
     Set<ConstraintViolation<T>> violations = validator.validate(body);
     if (!violations.isEmpty()) {
       throw new ConstraintViolationException(violations);
     }
     return body;
+  }
+
+  /** Bean Validation first; the range rule then reports on {@code hireDateTo} (openapi.yaml). */
+  public EmployeeListQuery validateList(EmployeeListQuery query) {
+    validate(query);
+    query.requireHireDateRange();
+    return query;
   }
 
   public EmployeeCreateRequest validateCreate(@Nullable EmployeeCreateRequest body) {
@@ -108,16 +125,21 @@ public class EmployeeAccess {
     }
   }
 
-  /** {@code TRG_EMP_BEFORE_INSERT}: {@code -20501} (VAL-01 single limit of 90 days). */
+  /**
+   * {@code TRG_EMP_BEFORE_INSERT}: {@code -20501} against the single VAL-01 limit {@code
+   * SYSTEM_PARAMETERS HR.MAX_FUTURE_HIRE_DAYS} (default 90).
+   */
   void requireHireDateWithinLimit(@Nullable LocalDate hireDate) {
-    requireHireDateWithinLimit(hireDate, clock);
+    requireHireDateWithinLimit(hireDate, parameters.maxFutureHireDays(), clock);
   }
 
-  static void requireHireDateWithinLimit(@Nullable LocalDate hireDate, Clock clock) {
-    if (hireDate != null
-        && hireDate.isAfter(
-            LocalDate.now(clock).plusDays(HireDateWithinLimit.DEFAULT_MAX_FUTURE_DAYS))) {
-      throw new HrmsException(ErrorCode.HIRE_DATE_TOO_FAR, "hireDate");
+  static void requireHireDateWithinLimit(
+      @Nullable LocalDate hireDate, int maxFutureDays, Clock clock) {
+    if (hireDate != null && hireDate.isAfter(LocalDate.now(clock).plusDays(maxFutureDays))) {
+      throw new HrmsException(
+          ErrorCode.HIRE_DATE_TOO_FAR,
+          "Hire date cannot be more than " + maxFutureDays + " days in the future",
+          "hireDate");
     }
   }
 

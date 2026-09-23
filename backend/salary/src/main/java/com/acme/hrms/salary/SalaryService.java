@@ -94,7 +94,14 @@ public class SalaryService {
                 outOfBand,
                 actor));
     SalaryRecord created = records.findById(id).orElseThrow();
-    publish(empId, req.getEffectiveDate(), oldSalary, newSalary, req.getChangeReason(), actor);
+    publish(
+        empId,
+        req.getEffectiveDate(),
+        oldSalary,
+        newSalary,
+        req.getChangeReason(),
+        actor,
+        SalaryChangeEvent.Kind.CHANGE);
     auditInsert(id, empId, newSalary, req.getEffectiveDate(), actor);
     return created;
   }
@@ -128,7 +135,7 @@ public class SalaryService {
                 assertWithinGrade(salary, employee.gradeMin(), employee.gradeMax()),
                 actor));
     SalaryRecord created = records.findById(id).orElseThrow();
-    publish(empId, effectiveDate, null, salary, "INITIAL", actor);
+    publish(empId, effectiveDate, null, salary, "INITIAL", actor, SalaryChangeEvent.Kind.INITIAL);
     auditInsert(id, empId, salary, effectiveDate, actor);
     return created;
   }
@@ -229,10 +236,11 @@ public class SalaryService {
       BigDecimal oldSalary,
       BigDecimal newSalary,
       String reason,
-      String actor) {
+      String actor,
+      SalaryChangeEvent.Kind kind) {
     for (SalaryChangeListener listener : listeners) {
       listener.onSalaryChanged(
-          new SalaryChangeEvent(empId, date, oldSalary, newSalary, reason, actor));
+          new SalaryChangeEvent(empId, date, oldSalary, newSalary, reason, actor, kind));
     }
   }
 

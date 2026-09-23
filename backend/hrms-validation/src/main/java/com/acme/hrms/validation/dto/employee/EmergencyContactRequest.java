@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /** Body of POST/PUT /api/employees/{id}/contacts (EMERGENCY_CONTACTS). */
-public class EmergencyContactRequest {
+public class EmergencyContactRequest extends StrictRequest {
 
   @NotBlank
   @Size(max = 100)
