@@ -224,7 +224,14 @@ class EmployeeApiTest extends AuthApiTestBase {
     mvc.perform(get("/api/employees/" + id).header("Authorization", "Bearer " + exec))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.employmentStatus").value("ACTIVE"))
-        .andExpect(jsonPath("$.deptId").value(30));
+        .andExpect(jsonPath("$.deptId").value(30))
+        .andExpect(jsonPath("$.locationCode").value("CHI"));
+
+    Map<String, Object> login = new HashMap<>();
+    login.put("username", EXEC_EMAIL);
+    login.put("password", PASSWORD);
+    login.put("hireDate", null);
+    mvc.perform(json(post("/api/auth/login"), null, login)).andExpect(status().isOk());
   }
 
   @Test
