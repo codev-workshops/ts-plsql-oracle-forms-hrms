@@ -43,36 +43,24 @@ final class LeaveScenarios {
   static final int TENURE_GATED_TYPE = 99;
 
   /**
-   * Batch endpoints are declared in the contract but mounted in P5 only (openapi.yaml, "deferred").
-   * Their P2 contract outcome therefore is {@code 404} without a body ({@link #NOT_MOUNTED}); the
-   * legacy leg is still recorded (PKG_LEAVE batch procedures on the seed year) and the P5 target
-   * outcome is kept in {@link #P5_CONTRACT} so the row can be flipped to a normal {@code PASS}
-   * check when the routes are mounted. Until then the report shows the row as {@code DEFERRED}.
-   *
-   * <p>P5 mounts {@code /api/leave/admin/accrual/run} and {@code /api/leave/admin/carryover/run}
-   * only as {@code 301} aliases of the asynchronous {@code POST /api/admin/leave/accrual|carryover}
-   * jobs (job row returned, balances written on the executor) and drops {@code carryover/expire}
-   * from the contract, so these rows cannot be projected synchronously by the REST runner and stay
-   * {@code DEFERRED}; the {@link #P5_CONTRACT} balances are asserted in Level 1 (backend/auth
-   * AdminReferenceApiTest) instead.
+   * Batch endpoints declared by the P2 contract but not mounted by any target. P5 mounts the
+   * accrual and carryover jobs asynchronously ({@code POST /api/admin/leave/accrual|carryover},
+   * {@code 202} + job row, polled on {@link #JOB_PATH}; the P2 paths are {@code 301} aliases) and
+   * drops {@code carryover/expire} from the contract, so only the BUG-04 row keeps the P2 outcome
+   * {@code 404} without a body ({@link #NOT_MOUNTED}) and is reported {@code DEFERRED}; its legacy
+   * leg is still recorded and its P5 balances are kept in {@link #P5_CONTRACT} (asserted in Level
+   * 1, backend/leave LeaveAccrualJobTest).
    */
-  static final Set<String> DEFERRED_TO_P5 =
-      Set.of(
-          "leave.batch.accrual.seed-year",
-          "leave.batch.carryover.seed-year",
-          "leave.batch.carryover.expire.bug-04");
+  static final Set<String> DEFERRED_TO_P5 = Set.of("leave.batch.carryover.expire.bug-04");
 
   static final Outcome NOT_MOUNTED = Outcome.error("HTTP_404");
 
-  /** P5 target outcomes of the deferred batch scenarios on the seed year (balance 9001). */
+  /** Job status resource of the P5 leave batch API; polled by the REST runner until settled. */
+  static final String JOB_PATH = "/api/admin/leave/jobs/{jobId}";
+
+  /** P5 target outcome of the deferred expire scenario on the seed year (balance 9001). */
   static final Map<String, Outcome> P5_CONTRACT =
       Map.of(
-          // accrued 7.5 + 1.25 (PTO MONTHLY), available 5 + 8.75 - 3
-          "leave.batch.accrual.seed-year",
-          Outcome.ok(Map.of("accrued", "8.75", "available", "10.75")),
-          // available 9.5 capped at carryover_max 5
-          "leave.batch.carryover.seed-year",
-          Outcome.ok(Map.of("carryoverFromPrev", "5", "openingBalance", "5")),
           // BUG-04: carryover 5, used 3 → only the remaining 2 are forfeited (legacy forfeits 5)
           "leave.batch.carryover.expire.bug-04",
           Outcome.ok(Map.of("adjustment", "-2", "carryoverFromPrev", "0")));
@@ -303,7 +291,7 @@ final class LeaveScenarios {
             call("POST", "/api/leave/requests/999999/approve", Map.of(), MANAGER),
             // legacy: NO_DATA_FOUND (ORA-01403) from the SELECT ... INTO; contract 404 code
             Outcome.error("LEAVE_REQUEST_NOT_FOUND")),
-        // --- batch jobs on the seed year (P5 endpoints, deferred) -------------------------------
+        // --- batch jobs on the seed year (P5 async job API; balance 9001 = emp 2 / PTO / 2024) ---
         new Scenario(
             "leave.batch.accrual.seed-year",
             MODULE,
@@ -312,12 +300,17 @@ final class LeaveScenarios {
                     + "select accrued, available into :accrued, :available from leave_balances"
                     + " where emp_id = 2 and leave_type_id = 1 and calendar_year = 2024; end;",
                 List.of("accrued", "available")),
-            call(
-                "POST",
-                "/api/leave/admin/accrual/run",
-                Map.of("accrualDate", "2024-07-31"),
-                MANAGER),
-            NOT_MOUNTED),
+            balances(2024)
+                .withSetup(
+                    List.of(
+                        call(
+                            "POST",
+                            "/api/admin/leave/accrual",
+                            Map.of("accrualDate", "2024-07-31"),
+                            MANAGER),
+                        call("GET", JOB_PATH, null, MANAGER))),
+            // accrued 7.5 + 1.25 (PTO MONTHLY), available 5 + 8.75 - 3
+            Outcome.ok(Map.of("accrued", "8.75", "available", "10.75"))),
         new Scenario(
             "leave.batch.carryover.seed-year",
             MODULE,
@@ -327,8 +320,13 @@ final class LeaveScenarios {
                     + " :openingBalance from leave_balances"
                     + " where emp_id = 2 and leave_type_id = 1 and calendar_year = 2025; end;",
                 List.of("carryoverFromPrev", "openingBalance")),
-            call("POST", "/api/leave/admin/carryover/run", Map.of("year", 2024), MANAGER),
-            NOT_MOUNTED),
+            balances(2025)
+                .withSetup(
+                    List.of(
+                        call("POST", "/api/admin/leave/carryover", Map.of("year", 2024), MANAGER),
+                        call("GET", JOB_PATH, null, MANAGER))),
+            // available 10.75 after the accrual above, capped at carryover_max 5
+            Outcome.ok(Map.of("carryoverFromPrev", "5", "openingBalance", "5"))),
         new Scenario(
             "leave.batch.carryover.expire.bug-04",
             MODULE,

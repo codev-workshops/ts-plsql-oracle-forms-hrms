@@ -65,20 +65,6 @@ final class IntegrationScenarios {
                     "recordCount", "16",
                     "sha256", GL_SHA256))),
         new Scenario(
-            "integration.gl-feed.run-not-approved",
-            MODULE,
-            // legacy writes the file regardless of status (no RAISE): legacy_source=none
-            null,
-            post("/api/integration/gl-feed", Map.of("runId", CALCULATED_RUN), EXEC),
-            Outcome.error("-20701")),
-        new Scenario(
-            "integration.gl-feed.run-not-found",
-            MODULE,
-            plsql("begin pkg_integration.generate_gl_journal(4242, :user); end;", List.of()),
-            post("/api/integration/gl-feed", Map.of("runId", 4242), EXEC),
-            // legacy: NO_DATA_FOUND from the SELECT ... INTO; contract 404 code
-            Outcome.error("RUN_NOT_FOUND")),
-        new Scenario(
             "integration.benefits-feed.seed",
             MODULE,
             utlFile(
@@ -104,9 +90,25 @@ final class IntegrationScenarios {
                 "begin :feed := 'GL_JOURNAL';"
                     + " :status := pkg_integration.get_integration_status('GL_JOURNAL'); end;",
                 List.of("feed", "status")),
-            // list ordered GL_JOURNAL, BENEFITS_FEED, TIME_ATTENDANCE: first element projected
+            // list ordered GL_JOURNAL, BENEFITS_FEED, TIME_ATTENDANCE: first element projected.
+            // Status = latest INTEGRATION_LOG row per feed, so this runs right after the successful
+            // feeds and before the -20701 / RUN_NOT_FOUND scenarios, which each log a FAILED row.
             get("/api/integration/status", EXEC),
-            Outcome.ok(Map.of("feed", "GL_JOURNAL", "status", "SUCCESS"))));
+            Outcome.ok(Map.of("feed", "GL_JOURNAL", "status", "SUCCESS"))),
+        new Scenario(
+            "integration.gl-feed.run-not-approved",
+            MODULE,
+            // legacy writes the file regardless of status (no RAISE): legacy_source=none
+            null,
+            post("/api/integration/gl-feed", Map.of("runId", CALCULATED_RUN), EXEC),
+            Outcome.error("-20701")),
+        new Scenario(
+            "integration.gl-feed.run-not-found",
+            MODULE,
+            plsql("begin pkg_integration.generate_gl_journal(4242, :user); end;", List.of()),
+            post("/api/integration/gl-feed", Map.of("runId", 4242), EXEC),
+            // legacy: NO_DATA_FOUND from the SELECT ... INTO; contract 404 code
+            Outcome.error("RUN_NOT_FOUND")));
   }
 
   /** Legacy expectations where the contract deliberately diverges (error-codes.md). */

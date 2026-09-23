@@ -53,13 +53,15 @@ public final class ScenarioRegistry {
    * Registry order is a fixture: the REST runner never resets the database, so scenarios whose
    * expectations are derived from the frozen seed population (performance review generation,
    * payroll totals over the 23 ACTIVE employees) run before {@code employee.*} hires / terminates
-   * anybody. {@link #POPULATION_SENSITIVE_MODULES} is guarded by RegistryAndReportTest.
+   * anybody, and the pure-read {@code reporting.*} / {@code integration.*} scenarios run before
+   * {@code performance.*} generates reviews that would show up in the pending-approvals report.
+   * {@link #POPULATION_SENSITIVE_MODULES} is guarded by RegistryAndReportTest.
    */
   public static List<Scenario> all(TargetFlags flags) {
     List<Scenario> all = new ArrayList<>(phase0(flags));
-    all.addAll(PerformanceScenarios.all());
     all.addAll(ReportingScenarios.all());
     all.addAll(IntegrationScenarios.all());
+    all.addAll(PerformanceScenarios.all());
     all.addAll(LeaveScenarios.all());
     all.addAll(SalaryScenarios.all());
     all.addAll(PayrollScenarios.all());

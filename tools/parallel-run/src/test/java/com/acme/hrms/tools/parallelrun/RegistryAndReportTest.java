@@ -3,6 +3,7 @@ package com.acme.hrms.tools.parallelrun;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.acme.hrms.tools.parallelrun.Scenario.Outcome;
+import com.acme.hrms.tools.parallelrun.Scenario.RestCall;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -162,9 +163,9 @@ class RegistryAndReportTest {
             "leave.submit.date-order", "-20210",
             "leave.submit.too-far-in-past", "-20211",
             "leave.submit.no-business-days", "-20212");
+    List<Scenario> all = ScenarioRegistry.all();
     Map<String, Scenario> byId =
-        ScenarioRegistry.all().stream()
-            .collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
+        all.stream().collect(java.util.stream.Collectors.toMap(Scenario::id, s -> s));
     assertThat(byId.keySet())
         .containsAll(codes.keySet())
         .contains(
@@ -177,8 +178,6 @@ class RegistryAndReportTest {
             "leave.reject.ok.releases-pending",
             "leave.reject.comments-required",
             "leave.request.not-found",
-            "leave.batch.accrual.seed-year",
-            "leave.batch.carryover.seed-year",
             "leave.batch.carryover.expire.bug-04");
     codes.forEach(
         (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
@@ -202,13 +201,40 @@ class RegistryAndReportTest {
         .containsEntry("adjustment", "-2");
     assertThat(ScenarioRegistry.legacyOutcome(bug04).fields()).containsEntry("adjustment", "-5");
 
-    // batch admin routes are P5: target must 404 until then, row is DEFERRED not FAIL
+    // P5 remediation round 1: accrual / carryover are mounted as async jobs (202 + job row),
+    // re-recorded against the /api/admin/leave job API and polled until settled
+    assertThat(LeaveScenarios.DEFERRED_TO_P5)
+        .containsExactly("leave.batch.carryover.expire.bug-04");
+    Scenario accrual = byId.get("leave.batch.accrual.seed-year");
+    Scenario carryover = byId.get("leave.batch.carryover.seed-year");
+    assertThat(accrual.expect().fields())
+        .containsEntry("accrued", "8.75")
+        .containsEntry("available", "10.75");
+    assertThat(carryover.expect().fields())
+        .containsEntry("carryoverFromPrev", "5")
+        .containsEntry("openingBalance", "5");
+    for (Scenario s : List.of(accrual, carryover)) {
+      assertThat(s.target().path()).as(s.id()).startsWith("/api/leave/balances/mine?year=");
+      RestCall job = s.target().setup().get(0);
+      assertThat(job.method()).isEqualTo("POST");
+      assertThat(job.path()).startsWith("/api/admin/leave/");
+      RestCall poll = s.target().setup().get(1);
+      assertThat(poll.path()).isEqualTo(LeaveScenarios.JOB_PATH);
+      assertThat(RestRunner.isAsyncPoll(poll)).as(s.id()).isTrue();
+    }
+    assertThat(RestRunner.CAPTURED_IDS).contains("jobId");
+    assertThat(accrual.target().setup().get(0).body()).containsEntry("accrualDate", "2024-07-31");
+    assertThat(carryover.target().setup().get(0).body()).containsEntry("year", 2024);
+    // accrual writes the 2024 balance the carryover reads: order is a fixture
+    assertThat(all.indexOf(accrual)).isLessThan(all.indexOf(carryover));
+
+    // carryover/expire is dropped from the P5 contract: target must 404, row is DEFERRED not FAIL
     for (String id : LeaveScenarios.DEFERRED_TO_P5) {
       assertThat(ScenarioRegistry.legacySource(byId.get(id))).isEqualTo(ScenarioRegistry.RECORDED);
       assertThat(byId.get(id).expect()).isEqualTo(LeaveScenarios.NOT_MOUNTED);
       assertThat(LeaveScenarios.P5_CONTRACT).containsKey(id);
     }
-    for (Scenario s : ScenarioRegistry.all()) {
+    for (Scenario s : all) {
       if (s.module().equals(LeaveScenarios.MODULE)
           && !LeaveScenarios.DEFERRED_TO_P5.contains(s.id())) {
         assertThat(ScenarioRegistry.legacySource(s))
@@ -225,12 +251,16 @@ class RegistryAndReportTest {
     Outcome notMounted = LeaveScenarios.NOT_MOUNTED;
     r.add(
         new DiffReport.Row(
-            "leave.batch.accrual.seed-year",
+            "leave.batch.carryover.expire.bug-04",
             notMounted,
-            Outcome.ok(Map.of("accrued", "8.75")),
+            Outcome.ok(Map.of("adjustment", "-5")),
             null,
             notMounted));
+    // mounted P5 job rows are ordinary PASS / TARGET-DIFF checks, never DEFERRED
+    Outcome accrued = Outcome.ok(Map.of("accrued", "8.75", "available", "10.75"));
+    r.add(new DiffReport.Row("leave.batch.accrual.seed-year", accrued, accrued, null, accrued));
     assertThat(r.rows().get(0).verdict()).isEqualTo("DEFERRED");
+    assertThat(r.rows().get(1).verdict()).isEqualTo("PASS");
     assertThat(r.passed()).isTrue();
     assertThat(r.toMarkdown()).contains("1 deferred").contains("endpoint mounted in P5");
   }
@@ -297,6 +327,29 @@ class RegistryAndReportTest {
     assertThat(byId.get("reporting.employee-directory.seed").expect().fields())
         .containsEntry("page.totalElements", "23")
         .containsEntry("content[0].empNumber", "EMP-000001");
+    // dept 20 has 6 ACTIVE employees on the seed (VW_ACTIVE_EMPLOYEES baseline)
+    assertThat(byId.get("reporting.employee-directory.dept-filter").expect().fields())
+        .containsEntry("page.totalElements", "6")
+        .containsEntry("content[0].empNumber", "EMP-000002");
+    // pending approvals are ordered (submittedDate, itemType, itemId): review 5001 of 2024-06-10
+    // precedes leave 1001 of 2024-06-20; PERFORMANCE is exposed as itemType REVIEW
+    assertThat(byId.get("reporting.pending-approvals.seed").expect().fields())
+        .containsEntry("page.totalElements", "5")
+        .containsEntry("summary.leave", "3")
+        .containsEntry("summary.review", "2")
+        .containsEntry("content[0].itemType", "REVIEW")
+        .containsEntry("content[0].itemId", "5001");
+    // status = latest INTEGRATION_LOG row per feed: the SUCCESS check must precede the failing
+    // gl-feed scenarios, which each log a FAILED GL_JOURNAL row
+    assertThat(byId.get("integration.status.after-feeds").expect().fields())
+        .containsEntry("feed", "GL_JOURNAL")
+        .containsEntry("status", "SUCCESS");
+    int statusIdx = all.indexOf(byId.get("integration.status.after-feeds"));
+    assertThat(statusIdx)
+        .isGreaterThan(all.indexOf(byId.get("integration.gl-feed.approved-run")))
+        .isGreaterThan(all.indexOf(byId.get("integration.benefits-feed.seed")))
+        .isLessThan(all.indexOf(byId.get("integration.gl-feed.run-not-approved")))
+        .isLessThan(all.indexOf(byId.get("integration.gl-feed.run-not-found")));
     assertThat(byId.get("reporting.org-hierarchy.seed").expect().fields())
         .containsEntry("content[0].orgPath", "JAMES RICHARDSON");
     assertThat(byId.get("integration.gl-feed.approved-run").expect().fields())
@@ -318,6 +371,19 @@ class RegistryAndReportTest {
             .as(s.id())
             .isIn(ScenarioRegistry.RECORDED, ScenarioRegistry.NONE);
       }
+    }
+    // performance.* generate-reviews adds MANAGER_REVIEW rows to the pending-approvals view:
+    // every reporting.* / integration.* read runs before the first performance.* scenario
+    int firstPerformance =
+        all.indexOf(
+            all.stream()
+                .filter(s -> PerformanceScenarios.MODULE.equals(s.module()))
+                .findFirst()
+                .get());
+    for (int i = firstPerformance; i < all.size(); i++) {
+      assertThat(all.get(i).module())
+          .as(all.get(i).id())
+          .isNotIn(ReportingScenarios.MODULE, IntegrationScenarios.MODULE);
     }
     // seed-population reports/feeds run before anybody is hired or terminated
     int firstPopulationChange =

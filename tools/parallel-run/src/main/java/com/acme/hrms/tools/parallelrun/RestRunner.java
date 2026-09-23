@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Drives the target REST API (through the proxy, so module flags apply) and projects the JSON
@@ -41,15 +42,25 @@ public final class RestRunner {
    */
   static final List<String> CAPTURED_IDS =
       List.of(
-          "cycleId", "reviewId", "goalId", "requestId", "id", "dependentId", "contactId", "runId");
+          "cycleId",
+          "reviewId",
+          "goalId",
+          "requestId",
+          "id",
+          "dependentId",
+          "contactId",
+          "runId",
+          "jobId");
 
   /**
-   * Setup calls to a payroll {@code /status} resource are re-polled while the asynchronous Spring
-   * Batch job reports {@code CALCULATING} (COMPONENT_MAPPING.md §4: calculate returns 202).
+   * Setup calls to a payroll {@code /status} resource or a leave batch job ({@link
+   * LeaveScenarios#JOB_PATH}) are re-polled while the asynchronous Spring Batch job reports {@code
+   * CALCULATING} / {@code RUNNING} (COMPONENT_MAPPING.md §4: calculate returns 202; P5 openapi:
+   * accrual / carryover return 202 + BatchRunResult).
    */
   static final String ASYNC_STATUS_SUFFIX = "/status";
 
-  private static final String ASYNC_PENDING = "CALCULATING";
+  private static final Set<String> ASYNC_PENDING = Set.of("CALCULATING", "RUNNING");
   private static final int ASYNC_MAX_POLLS = 120;
   private static final long ASYNC_POLL_MILLIS = 500;
 
@@ -62,7 +73,7 @@ public final class RestRunner {
     context.clear();
     for (RestCall setup : s.target().setup()) {
       HttpResponse<String> resp = call(setup);
-      if (setup.path().endsWith(ASYNC_STATUS_SUFFIX)) {
+      if (isAsyncPoll(setup)) {
         resp = awaitSettled(setup, resp);
       }
       capture(resp);
@@ -71,11 +82,15 @@ public final class RestRunner {
     return project(resp, s.expect().fields().keySet());
   }
 
+  static boolean isAsyncPoll(RestCall c) {
+    return c.path().endsWith(ASYNC_STATUS_SUFFIX) || c.path().equals(LeaveScenarios.JOB_PATH);
+  }
+
   private HttpResponse<String> awaitSettled(RestCall status, HttpResponse<String> first)
       throws IOException, InterruptedException {
     HttpResponse<String> resp = first;
     for (int i = 0; i < ASYNC_MAX_POLLS && resp.statusCode() < 300; i++) {
-      if (!ASYNC_PENDING.equals(JSON.readTree(resp.body()).path("status").asText())) {
+      if (!ASYNC_PENDING.contains(JSON.readTree(resp.body()).path("status").asText())) {
         return resp;
       }
       Thread.sleep(ASYNC_POLL_MILLIS);

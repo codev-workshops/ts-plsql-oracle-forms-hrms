@@ -24,7 +24,8 @@ import java.util.Map;
  * legacyAvailable}. {@code orgPath} drops the leading {@code " > "} of {@code SYS_CONNECT_BY_PATH}.
  *
  * <p>All scenarios are pure reads on the seed population and therefore run before {@code
- * performance.*}, {@code payroll.*} and {@code employee.*} (ScenarioRegistry order).
+ * performance.*} (generate-reviews adds MANAGER_REVIEW rows to the pending-approvals view), {@code
+ * payroll.*} and {@code employee.*} (ScenarioRegistry order).
  */
 final class ReportingScenarios {
 
@@ -69,7 +70,8 @@ final class ReportingScenarios {
                     + " from vw_active_employees where dept_id = 20",
                 List.of("page.totalElements", "content[0].empNumber")),
             get("/api/reports/employee-directory?asOf=" + AS_OF + "&deptId=20", EXEC),
-            Outcome.ok(Map.of("page.totalElements", "1", "content[0].empNumber", "EMP-000002"))),
+            // dept 20 (Engineering): emp 2 and 20..24 are ACTIVE on the seed
+            Outcome.ok(Map.of("page.totalElements", "6", "content[0].empNumber", "EMP-000002"))),
         new Scenario(
             "reporting.employee-directory.invalid-dept",
             MODULE,
@@ -217,9 +219,14 @@ final class ReportingScenarios {
             "reporting.pending-approvals.seed",
             MODULE,
             view(
+                // first row in contract order (submittedDate, itemType, itemId): review 5001
+                // (2024-06-10) precedes leave 1001 (2024-06-20); PERFORMANCE is REVIEW in the API
                 "select count(*), sum(decode(approval_type, 'LEAVE', 1, 0)),"
-                    + " sum(decode(approval_type, 'PERFORMANCE', 1, 0)), min(approval_type),"
-                    + " min(decode(approval_type, 'LEAVE', item_id))"
+                    + " sum(decode(approval_type, 'PERFORMANCE', 1, 0)),"
+                    + " min(decode(approval_type, 'PERFORMANCE', 'REVIEW', approval_type))"
+                    + " keep (dense_rank first order by request_date, approval_type, item_id),"
+                    + " min(item_id)"
+                    + " keep (dense_rank first order by request_date, approval_type, item_id)"
                     + " into :page.totalElements, :summary.leave, :summary.review,"
                     + " :content[0].itemType, :content[0].itemId from vw_pending_approvals",
                 List.of(
@@ -234,8 +241,8 @@ final class ReportingScenarios {
                     "page.totalElements", "5",
                     "summary.leave", "3",
                     "summary.review", "2",
-                    "content[0].itemType", "LEAVE",
-                    "content[0].itemId", "1001"))),
+                    "content[0].itemType", "REVIEW",
+                    "content[0].itemId", "5001"))),
         new Scenario(
             "reporting.pending-approvals.leave-only",
             MODULE,
