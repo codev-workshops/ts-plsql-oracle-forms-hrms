@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import type { TokenResponse } from '../src/api/types';
+import type { EmployeeDetail, TokenResponse } from '../src/api/types';
 import { SEED_ACCOUNTS, SEED_PASSWORD } from './seed-accounts';
 
 const flag = process.env.VITE_MODULE_FLAGS?.match(/(?:^|[,;])employee=(NEW_READONLY|NEW)(?:$|[,;])/)?.[1];
@@ -124,17 +124,26 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
       const terminate = page.getByRole('dialog', { name: 'Terminate employee' });
       await terminate.getByLabel('Effective date *').fill(iso(14));
       await terminate.getByLabel('Reason *').fill('RESIGNED');
+      const terminationResponse = page.waitForResponse((response) =>
+        response.url().endsWith(`/api/employees/${empId}/terminate`) && response.request().method() === 'POST',
+      );
       await terminate.getByRole('button', { name: 'Confirm termination' }).click();
-      await expect(page.getByTestId('emp-status')).toHaveText('Terminated');
-      terminated = true;
+      terminated = (await terminationResponse).ok();
+      expect(terminated).toBe(true);
+      await expect(page.locator('.employee-header .badge')).toHaveText('TERMINATED');
     } finally {
       if (empId !== null && !terminated) {
-        const cleanup = await request.post(`/api/employees/${empId}/terminate`, {
+        const current = await request.get(`/api/employees/${empId}`, {
           headers: { Authorization: `Bearer ${token}` },
-          data: { effectiveDate: iso(14), reason: 'RESIGNED' },
-          failOnStatusCode: false,
         });
-        expect(cleanup.status(), `Could not terminate isolated test employee ${empId}`).toBe(200);
+        if (!current.ok() || (await current.json() as EmployeeDetail).employmentStatus !== 'TERMINATED') {
+          const cleanup = await request.post(`/api/employees/${empId}/terminate`, {
+            headers: { Authorization: `Bearer ${token}` },
+            data: { effectiveDate: iso(14), reason: 'RESIGNED' },
+            failOnStatusCode: false,
+          });
+          expect(cleanup.status(), `Could not terminate isolated test employee ${empId}`).toBe(200);
+        }
       }
     }
   });
