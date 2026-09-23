@@ -2,11 +2,69 @@
 
 exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the pages depend on 1`] = `
 {
+  "AccrualRunRequest": {
+    "accrualDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+  },
   "AcknowledgeRequest": {
     "employeeComments": {
       "required": false,
       "rules": [],
       "type": "string",
+    },
+  },
+  "AuditLogSearchQuery": {
+    "actionType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "changedBy": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "from": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "recordId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "tableName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "to": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+  },
+  "BenefitsFeedRequest": {
+    "effectiveDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
     },
   },
   "BusinessDaysQuery": {
@@ -23,6 +81,13 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "date",
     },
   },
+  "CarryoverRunRequest": {
+    "year": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
   "ChangePasswordRequest": {
     "currentPassword": {
       "required": true,
@@ -37,6 +102,43 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
         "-20312",
       ],
       "type": "string",
+    },
+  },
+  "DepartmentRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "costCenter": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "deptCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "deptName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "parentDeptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
     },
   },
   "DependentRequest": {
@@ -105,6 +207,33 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "string",
+    },
+  },
+  "EmployeeCompensationQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "gradeId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
     },
   },
   "EmployeeCreateRequest": {
@@ -240,6 +369,33 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "string",
+    },
+  },
+  "EmployeeDirectoryQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
     },
   },
   "EmployeeListQuery": {
@@ -493,6 +649,13 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
   },
+  "GlFeedRequest": {
+    "runId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
   "GoalProgressRequest": {
     "comments": {
       "required": false,
@@ -535,6 +698,109 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "decimal",
+    },
+  },
+  "IntegrationFileListQuery": {
+    "feed": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "from": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "to": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+  },
+  "JobGradeRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "gradeCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gradeName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "maxSalary": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "minSalary": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "overtimeEligible": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
+  "JobTitleRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "eeoCategory": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "flsaStatus": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "gradeId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "jobCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "jobFamily": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "jobTitle": {
+      "required": true,
+      "rules": [],
+      "type": "string",
     },
   },
   "LeaveApproveRequest": {
@@ -594,6 +860,162 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "date",
     },
   },
+  "LeaveSummaryQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "leaveTypeId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "year": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "LeaveTypeRequest": {
+    "accrualFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "accrualFrequency": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "accrualRate": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "carryoverExpiry": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "carryoverMax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "leaveTypeCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "leaveTypeName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "maxBalance": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "minTenureDays": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "paidFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "requiresApproval": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "requiresDocument": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
+  "LocationRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneNumber": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "timezone": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
   "LoginRequest": {
     "password": {
       "required": true,
@@ -634,6 +1056,33 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "string",
+    },
+  },
+  "OrgHierarchyQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "maxLevel": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "rootEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
     },
   },
   "PayPeriodListQuery": {
@@ -680,6 +1129,28 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "enum",
     },
   },
+  "PayrollLatestQuery": {
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "periodId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
   "PayrollRunCreateRequest": {
     "runType": {
       "required": true,
@@ -699,6 +1170,38 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": true,
       "rules": [],
       "type": "string",
+    },
+  },
+  "PendingApprovalsQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "itemType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "mine": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
     },
   },
   "ReviewCycleRequest": {
@@ -794,6 +1297,72 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": false,
       "rules": [],
       "type": "string",
+    },
+  },
+  "SystemParameterRequest": {
+    "dataType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "editableFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "paramCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "paramDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "paramGroup": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "paramValue": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SystemParameterUpdateRequest": {
+    "paramDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "paramValue": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "TimeAttendanceLine": {
+    "empNumber": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "hoursOvertime": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "hoursRegular": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "workDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
     },
   },
 }

@@ -1,13 +1,14 @@
 import { Link } from 'react-router-dom';
-import { MODULE_FLAGS } from '../app/AppShell';
 import { useAuth } from '../app/AuthContext';
+import { useModuleFlags } from '../app/ModuleFlagsContext';
 import { visibleTiles } from '../app/modules';
 
 /** Replaces HRMS_MENU `WELCOME_TEXT` + the six module buttons (COMPONENT_MAPPING.md §2). */
 export function HomePage() {
   const { user } = useAuth();
+  const flags = useModuleFlags();
   if (!user) return null;
-  const tiles = visibleTiles(user.roles, MODULE_FLAGS);
+  const tiles = visibleTiles(user.roles, flags);
 
   return (
     <section className="home-page">
