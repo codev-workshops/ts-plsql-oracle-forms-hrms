@@ -146,11 +146,20 @@ test.describe('P1 performance write golden path (real stack)', () => {
   });
 
   test.afterAll(async () => {
-    if (cycle) {
-      const closed = await admin.post(`/api/performance/cycles/${cycle.cycleId}/close`);
-      expect(closed.status(), await closed.text()).toBe(200);
+    if (!cycle) {
+      await admin?.dispose();
+      return;
     }
-    await admin?.dispose();
+    let closed = await admin.post(`/api/performance/cycles/${cycle.cycleId}/close`);
+    if (closed.status() === 401) {
+      await admin.dispose();
+      admin = await apiAs(reviewer.email);
+      closed = await admin.post(`/api/performance/cycles/${cycle.cycleId}/close`);
+    }
+    const closeStatus = closed.status();
+    const closeBody = await closed.text();
+    await admin.dispose();
+    expect(closeStatus, closeBody).toBe(200);
   });
 
   test('reviewee self-assesses and adds a goal, reviewer rates, reviewee completes goal and acknowledges', async ({ page }) => {
@@ -225,6 +234,7 @@ test.describe('P1 performance write golden path (real stack)', () => {
 
     // Reconciliation stays interpretable: nothing this run created is left in MANAGER_REVIEW.
     const after = await admin.get(`/api/performance/cycles/${cycle.cycleId}/reviews`, { params: { size: 100 } });
+    expect(after.status(), await after.text()).toBe(200);
     const { content } = (await after.json()) as { content: ReviewRow[] };
     expect(content.find((row) => row.reviewId === review.reviewId)?.status).toBe('ACKNOWLEDGED');
     expect(content.filter((row) => row.status === 'MANAGER_REVIEW')).toEqual([]);
