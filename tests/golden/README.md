@@ -103,3 +103,24 @@ Golden-oracle mode OFF: the legacy leg of the payroll gate is *recorded*, not ca
 Regenerate both with `python3 tests/golden/payroll/generate_recorded.py 202406`; when an Oracle
 instance becomes available, run the legacy package and diff its `PAYROLL_DETAILS` against
 `202406.json` – any difference is a finding against the transcription.
+
+## Phase 5 – reporting / integration (`views-baseline-p5-leave-summary.csv`, `feeds/`)
+
+Golden-oracle mode OFF: PostgreSQL is the only leg; the Oracle capture stays `untested-live`.
+
+* `views-baseline-p5-leave-summary.csv` – VAL-05 re-baseline of `VW_LEAVE_SUMMARY` after Phase 5:
+  `AVAILABLE` subtracts `PENDING` (`tests/reconciliation/pg-p5/vw_leave_summary.sql`), matching
+  `leave_balances.available`, `PKG_LEAVE` and `GET /api/reports/leave-summary.available`. Produced
+  from `tools/fixtures/pg/*.sql` on Testcontainers PostgreSQL 16 by
+  `tools/reconcile … PgReconciliationQueriesTest#p5LeaveSummaryRebaselineSubtractsPendingFromAvailable
+  -Dhrms.golden.update=true` (`--as-of 2024-06-30`). The same test proves every non-`AVAILABLE`
+  cell equals `views-baseline.csv` and every `AVAILABLE` equals legacy `AVAILABLE − PENDING`
+  (3 seed rows shift). `views-baseline.csv` is left untouched: it is the legacy-faithful P0 oracle
+  and the API's `legacyAvailable`.
+* `feeds/gl_journal_9001.txt`, `feeds/benefits_20240630.txt` – exact bytes of the Java GL journal
+  (payroll run 9001, pipe-delimited H/D/T) and benefits census (`2024-06-30`, SSN `***-**-dddd`)
+  writers over the seed, produced by `backend/auth …/IntegrationApiTest -Dhrms.golden.update=true`;
+  their SHA-256 is the recorded expectation of the `integration.*` scenarios in
+  `tools/parallel-run`. Layout follows `plsql/packages/PKG_INTEGRATION.pkb` `UTL_FILE` output;
+  when an Oracle instance is available, run `generate_gl_journal(9001)` / `export_benefits_feed` and
+  diff – any difference is a finding against the Java writer.

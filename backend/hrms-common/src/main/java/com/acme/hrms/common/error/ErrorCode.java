@@ -105,6 +105,32 @@ public enum ErrorCode {
       "MISSING_TAX_RATE",
       HttpStatus.UNPROCESSABLE_ENTITY,
       "No tax rate for tax year %s and state %s"),
+  // ---- P5 reporting / admin / integration (contracts/p5-reporting-decommission/error-codes.md)
+  REFERENCE_CODE_CONFLICT("-20601", HttpStatus.CONFLICT, "Reference code already exists: %s"),
+  REFERENCE_IN_USE("-20602", HttpStatus.UNPROCESSABLE_ENTITY, "%s %s has %d active %s"),
+  REFERENCE_VALUE_RULE("-20603", HttpStatus.BAD_REQUEST, "%s"),
+  INVALID_GRADE_OR_LOCATION("-20604", HttpStatus.BAD_REQUEST, "Invalid or inactive %s: %s"),
+  DEPARTMENT_CYCLE(
+      "-20605", HttpStatus.BAD_REQUEST, "Parent department chain would create a cycle: %s"),
+  PARAMETER_NOT_EDITABLE(
+      "-20606", HttpStatus.UNPROCESSABLE_ENTITY, "System parameter %s is not editable"),
+  RUN_NOT_EXPORTABLE(
+      "-20701", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot export GL feed for run in status: %s"),
+  JOB_ALREADY_RUNNING("-20702", HttpStatus.CONFLICT, "A %s job for %s is already running"),
+  DUPLICATE_ATTENDANCE_LINE(
+      "-20703", HttpStatus.UNPROCESSABLE_ENTITY, "Duplicate employee/date in file: %s %s"),
+  IMPORT_REJECTED(
+      "-20704",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "No valid rows in time-attendance file (%d lines rejected)"),
+  NOT_ACCEPTABLE(
+      "NOT_ACCEPTABLE", HttpStatus.NOT_ACCEPTABLE, "Accept must be application/json or text/csv"),
+  REFERENCE_NOT_FOUND("REFERENCE_NOT_FOUND", HttpStatus.NOT_FOUND, "Reference row not found"),
+  JOB_NOT_FOUND("JOB_NOT_FOUND", HttpStatus.NOT_FOUND, "Leave job not found"),
+  FILE_NOT_FOUND("FILE_NOT_FOUND", HttpStatus.NOT_FOUND, "Integration file not found"),
+  PAYLOAD_TOO_LARGE("PAYLOAD_TOO_LARGE", HttpStatus.PAYLOAD_TOO_LARGE, "Upload exceeds 5 MiB"),
+  UNSUPPORTED_MEDIA_TYPE(
+      "UNSUPPORTED_MEDIA_TYPE", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Upload part must be text/csv"),
   INTERNAL_ERROR(
       "INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
 

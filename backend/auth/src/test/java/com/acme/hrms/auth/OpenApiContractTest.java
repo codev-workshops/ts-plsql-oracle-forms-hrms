@@ -42,15 +42,28 @@ class OpenApiContractTest extends AuthApiTestBase {
     assertThat(p2).hasSize(16);
     assertThat(p2Deferred).hasSize(4).allMatch(op -> op.startsWith("POST /api/leave/admin/"));
     Set<String> p4 = operations("p4-payroll");
+    Set<String> p5 = operations("p5-reporting-decommission");
     assertThat(p3).hasSize(16).doesNotContain("DELETE /api/employees/{id}");
     assertThat(p4).hasSize(12).allMatch(op -> op.contains(" /api/payroll/"));
+    assertThat(p5)
+        .hasSize(55)
+        .allMatch(
+            op ->
+                op.contains(" /api/reports/")
+                    || op.contains(" /api/admin/")
+                    || op.contains(" /api/integration/")
+                    || op.startsWith("POST /api/leave/admin/"));
+    assertThat(p5)
+        .containsAll(
+            Set.of("POST /api/leave/admin/accrual/run", "POST /api/leave/admin/carryover/run"));
     Set<String> contract = new TreeSet<>(p0);
     contract.addAll(p1);
     contract.addAll(p2);
     contract.addAll(p3);
     contract.addAll(p4);
     contract.removeAll(p2Deferred);
-    assertThat(contract).hasSize(67);
+    contract.addAll(p5);
+    assertThat(contract).hasSize(122);
 
     Set<String> served = new TreeSet<>();
     for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mappings.getHandlerMethods().entrySet()) {

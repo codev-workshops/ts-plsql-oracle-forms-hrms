@@ -1,5 +1,6 @@
 package com.acme.hrms.common.error;
 
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
 
@@ -8,6 +9,7 @@ public class HrmsException extends RuntimeException {
 
   private final ErrorCode code;
   @Nullable private final String field;
+  @Nullable private final List<ApiError.Detail> details;
 
   public HrmsException(ErrorCode code) {
     this(code, code.defaultMessage(), null, null);
@@ -23,9 +25,19 @@ public class HrmsException extends RuntimeException {
 
   public HrmsException(
       ErrorCode code, String message, @Nullable String field, @Nullable Throwable cause) {
+    this(code, message, field, null, cause);
+  }
+
+  public HrmsException(
+      ErrorCode code,
+      String message,
+      @Nullable String field,
+      @Nullable List<ApiError.Detail> details,
+      @Nullable Throwable cause) {
     super(message, cause);
     this.code = code;
     this.field = field;
+    this.details = details == null ? null : List.copyOf(details);
   }
 
   public ErrorCode code() {
@@ -40,5 +52,10 @@ public class HrmsException extends RuntimeException {
   @Nullable
   public String field() {
     return field;
+  }
+
+  @Nullable
+  public List<ApiError.Detail> details() {
+    return details;
   }
 }

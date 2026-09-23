@@ -20,6 +20,12 @@ spring:
   mvc:
     problemdetails:
       enabled: false
+    format:
+      date: iso
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 7MB
 
 server:
   port: 8080

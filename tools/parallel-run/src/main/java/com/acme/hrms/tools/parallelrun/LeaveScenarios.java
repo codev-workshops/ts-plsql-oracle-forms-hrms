@@ -48,6 +48,13 @@ final class LeaveScenarios {
    * legacy leg is still recorded (PKG_LEAVE batch procedures on the seed year) and the P5 target
    * outcome is kept in {@link #P5_CONTRACT} so the row can be flipped to a normal {@code PASS}
    * check when the routes are mounted. Until then the report shows the row as {@code DEFERRED}.
+   *
+   * <p>P5 mounts {@code /api/leave/admin/accrual/run} and {@code /api/leave/admin/carryover/run}
+   * only as {@code 301} aliases of the asynchronous {@code POST /api/admin/leave/accrual|carryover}
+   * jobs (job row returned, balances written on the executor) and drops {@code carryover/expire}
+   * from the contract, so these rows cannot be projected synchronously by the REST runner and stay
+   * {@code DEFERRED}; the {@link #P5_CONTRACT} balances are asserted in Level 1 (backend/auth
+   * AdminReferenceApiTest) instead.
    */
   static final Set<String> DEFERRED_TO_P5 =
       Set.of(

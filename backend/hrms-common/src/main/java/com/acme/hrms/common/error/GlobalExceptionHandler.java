@@ -19,6 +19,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -46,7 +47,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(HrmsException.class)
   public ResponseEntity<ApiError> handleHrms(HrmsException e, HttpServletRequest request) {
     ResponseEntity<ApiError> response =
-        render(e.code(), e.getMessage(), e.field(), null, request, e, false);
+        render(e.code(), e.getMessage(), e.field(), e.details(), request, e, false);
     if (e.status() != e.code().status()) {
       response =
           ResponseEntity.status(e.status()).headers(response.getHeaders()).body(response.getBody());
@@ -140,6 +141,12 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiError> handleAuthentication(
       AuthenticationException e, HttpServletRequest request) {
     return render(ErrorCode.TOKEN_INVALID, null, null, null, request, e, false);
+  }
+
+  @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+  public ResponseEntity<ApiError> handleNotAcceptable(
+      HttpMediaTypeNotAcceptableException e, HttpServletRequest request) {
+    return render(ErrorCode.NOT_ACCEPTABLE, null, null, null, request, e, false);
   }
 
   @ExceptionHandler(NoResourceFoundException.class)

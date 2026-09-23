@@ -42,12 +42,22 @@ class ErrorCodeTest {
     // P4 codes that are recorded as PAYROLL_DETAILS ERROR rows and re-raised by the payslip route:
     // "| `MISSING_TAX_RATE` | detail row (422 via payslip) |". Legacy -2010x rows in this form keep
     // their P3 route status in the enum (the payslip route overrides to 422 per exception).
+    // P5 per-line time-attendance codes: "| `-20703` | per-line (422 body via `-20704` when total)
+    // |".
     Pattern detailRow =
         Pattern.compile(
-            "^\\|\\s*`([A-Z][A-Z0-9_]+)`\\s*\\|\\s*detail row \\((\\d{3}) via payslip\\)\\s*\\|");
+            "^\\|\\s*`(-20\\d{3}|[A-Z][A-Z0-9_]+)`\\s*\\|\\s*"
+                + "(?:detail row \\((\\d{3}) via payslip\\)|per-line \\((\\d{3}) body via `-20\\d{3}` when total\\))"
+                + "\\s*\\|");
     Set<String> matched = new TreeSet<>();
     for (String contract :
-        List.of("p0-foundation", "p1-performance", "p2-leave", "p3-employee", "p4-payroll")) {
+        List.of(
+            "p0-foundation",
+            "p1-performance",
+            "p2-leave",
+            "p3-employee",
+            "p4-payroll",
+            "p5-reporting-decommission")) {
       List<String> lines =
           Files.readAllLines(root.resolve("contracts/" + contract + "/error-codes.md"));
       for (String line : lines) {
@@ -62,9 +72,10 @@ class ErrorCodeTest {
         Matcher d = detailRow.matcher(line);
         if (d.find()) {
           ErrorCode code = ErrorCode.fromValue(d.group(1));
+          String status = d.group(2) != null ? d.group(2) : d.group(3);
           assertThat(code.status())
               .as("status of %s in %s", d.group(1), contract)
-              .isEqualTo(HttpStatus.valueOf(Integer.parseInt(d.group(2))));
+              .isEqualTo(HttpStatus.valueOf(Integer.parseInt(status)));
           matched.add(d.group(1));
         }
       }

@@ -282,6 +282,55 @@ class RegistryAndReportTest {
   }
 
   @Test
+  void phase5RegistersReportingAndIntegrationSets() {
+    List<Scenario> all = ScenarioRegistry.all();
+    Map<String, Scenario> byId = new java.util.HashMap<>();
+    all.forEach(s -> byId.put(s.id(), s));
+    Map<String, String> codes =
+        Map.of(
+            "reporting.employee-directory.invalid-dept", "-20003",
+            "reporting.org-hierarchy.invalid-root", "-20001",
+            "integration.gl-feed.run-not-approved", "-20701",
+            "integration.gl-feed.run-not-found", "RUN_NOT_FOUND");
+    codes.forEach(
+        (id, code) -> assertThat(byId.get(id).expect().errorCode()).as(id).isEqualTo(code));
+    assertThat(byId.get("reporting.employee-directory.seed").expect().fields())
+        .containsEntry("page.totalElements", "23")
+        .containsEntry("content[0].empNumber", "EMP-000001");
+    assertThat(byId.get("reporting.org-hierarchy.seed").expect().fields())
+        .containsEntry("content[0].orgPath", "JAMES RICHARDSON");
+    assertThat(byId.get("integration.gl-feed.approved-run").expect().fields())
+        .containsEntry("recordCount", "16")
+        .containsEntry("sha256", IntegrationScenarios.GL_SHA256);
+    assertThat(byId.get("integration.benefits-feed.seed").expect().fields())
+        .containsEntry("recordCount", "23")
+        .containsEntry("sha256", IntegrationScenarios.BENEFITS_SHA256);
+    for (Scenario s : all) {
+      if (ReportingScenarios.MODULE.equals(s.module())) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isEqualTo(ScenarioRegistry.RECORDED);
+        assertThat(s.legacy()).as(s.id()).isNotNull();
+        assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(s.expect());
+      }
+      if (IntegrationScenarios.MODULE.equals(s.module())) {
+        assertThat(ScenarioRegistry.legacySource(s))
+            .as(s.id())
+            .isIn(ScenarioRegistry.RECORDED, ScenarioRegistry.NONE);
+      }
+    }
+    // seed-population reports/feeds run before anybody is hired or terminated
+    int firstPopulationChange =
+        all.indexOf(
+            all.stream().filter(ScenarioRegistry::changesEmployeePopulation).findFirst().get());
+    for (int i = firstPopulationChange; i < all.size(); i++) {
+      assertThat(all.get(i).module())
+          .as(all.get(i).id())
+          .isNotIn(ReportingScenarios.MODULE, IntegrationScenarios.MODULE);
+    }
+  }
+
+  @Test
   void phase4RegistersThePayrollSet() {
     Map<String, String> codes =
         Map.of(
