@@ -94,8 +94,8 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
       await page.getByLabel('Last name *').fill(marker);
       await page.getByLabel('E-mail').fill(`${marker.toLowerCase()}@example.com`);
       await page.getByLabel('Hire date *').fill(hireDate);
-      await page.getByLabel('Department *').selectOption({ label: 'FIN – Finance' });
-      await page.getByLabel('Job title *').selectOption({ label: 'Analyst (G3)' });
+      await page.getByLabel('Department *').selectOption({ label: 'FIN – Finance & Accounting' });
+      await page.getByLabel('Job title *').selectOption({ label: 'QA Analyst (G3)' });
       await page.getByLabel('Initial salary').fill('50000');
       await page.getByRole('button', { name: 'Create employee' }).click();
       await expect(page).toHaveURL(/\/employees\/\d+$/);
@@ -113,12 +113,12 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
       await page.getByRole('button', { name: 'Transfer' }).click();
       const transfer = page.getByRole('dialog', { name: 'Transfer employee' });
       await transfer.getByLabel('Effective date *').fill(hireDate);
-      await transfer.getByLabel('New department *').selectOption({ label: 'ENG – Engineering' });
+      await transfer.getByLabel('New department *').selectOption({ label: 'IT – Information Technology' });
       await transfer.getByRole('button', { name: 'Confirm transfer' }).click();
-      await expect(page.getByText(/transferred to Engineering/)).toBeVisible();
+      await expect(page.getByText(/transferred to Information Technology/)).toBeVisible();
 
       await page.getByRole('tab', { name: 'History' }).click();
-      await expect(page.getByRole('table', { name: 'Employment history' })).toContainText('Engineering');
+      await expect(page.getByRole('table', { name: 'Employment history' })).toContainText('Information Technology');
 
       await page.getByRole('button', { name: 'Terminate' }).click();
       const terminate = page.getByRole('dialog', { name: 'Terminate employee' });
