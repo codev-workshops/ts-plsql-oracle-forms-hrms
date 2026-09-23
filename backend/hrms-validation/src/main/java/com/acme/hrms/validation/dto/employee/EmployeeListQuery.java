@@ -1,19 +1,25 @@
 package com.acme.hrms.validation.dto.employee;
 
+import com.acme.hrms.common.error.ApiError;
+import com.acme.hrms.common.error.ErrorCode;
+import com.acme.hrms.common.error.HrmsException;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Query of GET /api/employees (Enter-Query replacement, COMPONENT_MAPPING.md §3.1; parameter names
  * reserved by the P0 contract). No client-supplied identity is involved.
  */
 public class EmployeeListQuery {
+
+  static final String HIRE_DATE_RANGE_MESSAGE =
+      "hireDateFrom must be before or equal to hireDateTo";
 
   @Size(max = EmployeeRules.NAME_MAX)
   @FieldMeta(trim = true)
@@ -45,11 +51,11 @@ public class EmployeeListQuery {
   private LocalDate hireDateFrom;
 
   @FieldMeta(
-      formatMessage = "hireDateFrom must be before or equal to hireDateTo",
+      formatMessage = HIRE_DATE_RANGE_MESSAGE,
       ruleId = "employee.hireDateRange",
       ruleValue = "hireDateFrom",
       ruleErrorCode = "VALIDATION_FAILED",
-      ruleMessage = "hireDateFrom must be before or equal to hireDateTo")
+      ruleMessage = HIRE_DATE_RANGE_MESSAGE)
   private LocalDate hireDateTo;
 
   @Min(0)
@@ -155,8 +161,16 @@ public class EmployeeListQuery {
     this.size = size;
   }
 
-  @AssertTrue(message = "hireDateFrom must be before or equal to hireDateTo")
-  public boolean isHireDateRangeValid() {
-    return hireDateFrom == null || hireDateTo == null || !hireDateFrom.isAfter(hireDateTo);
+  /** {@code 400 VALIDATION_FAILED} on {@code hireDateTo} when {@code hireDateFrom > hireDateTo}. */
+  public void requireHireDateRange() {
+    if (hireDateFrom == null || hireDateTo == null || !hireDateFrom.isAfter(hireDateTo)) {
+      return;
+    }
+    throw new HrmsException(
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.VALIDATION_FAILED.defaultMessage(),
+        "hireDateTo",
+        List.of(new ApiError.Detail("hireDateTo", "HireDateRange", HIRE_DATE_RANGE_MESSAGE)),
+        null);
   }
 }

@@ -6,6 +6,7 @@ import com.acme.hrms.common.format.OracleNumber;
 import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
+import com.acme.hrms.validation.dto.employee.EmployeeListQuery;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
 import com.acme.hrms.validation.dto.employee.StrictRequest;
 import jakarta.validation.ConstraintViolation;
@@ -87,6 +88,13 @@ public class EmployeeAccess {
       throw new ConstraintViolationException(violations);
     }
     return body;
+  }
+
+  /** Bean Validation first; the range rule then reports on {@code hireDateTo} (openapi.yaml). */
+  public EmployeeListQuery validateList(EmployeeListQuery query) {
+    validate(query);
+    query.requireHireDateRange();
+    return query;
   }
 
   public EmployeeCreateRequest validateCreate(@Nullable EmployeeCreateRequest body) {

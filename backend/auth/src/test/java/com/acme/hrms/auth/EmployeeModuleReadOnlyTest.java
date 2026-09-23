@@ -47,6 +47,13 @@ class EmployeeModuleReadOnlyTest extends AuthApiTestBase {
         .andExpect(status().isOk());
     mvc.perform(get("/api/employees/1").header("Authorization", "Bearer " + staff))
         .andExpect(status().isOk());
+    mvc.perform(
+            get("/api/employees?hireDateFrom=2025-06-30&hireDateTo=2025-06-01")
+                .header("Authorization", "Bearer " + staff))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDateTo"))
+        .andExpect(jsonPath("$.details[0].field").value("hireDateTo"));
   }
 
   private MockHttpServletRequestBuilder json(

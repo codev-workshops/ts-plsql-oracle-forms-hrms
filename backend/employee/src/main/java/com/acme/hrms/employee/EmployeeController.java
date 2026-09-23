@@ -64,7 +64,7 @@ public class EmployeeController {
       @RequestParam(required = false) @Nullable String fields,
       @RequestParam(required = false, defaultValue = "false") boolean excludeSelf) {
     CallerIdentity caller = CurrentCaller.require();
-    access.validate(query);
+    access.validateList(query);
     if (fields != null && !SUMMARY_FIELDS.equals(fields)) {
       throw new HrmsException(
           ErrorCode.VALIDATION_FAILED, "Only fields=" + SUMMARY_FIELDS + " is accepted", "fields");
