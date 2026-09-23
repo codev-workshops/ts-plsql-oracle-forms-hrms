@@ -25,17 +25,27 @@ async function dismissAllToasts(page: Page): Promise<void> {
   await expect(page.getByText('Password changed')).toHaveCount(0);
 }
 
-/** Real stack only: put the seed password back if the executive account is left rotated. */
+/**
+ * Real stack only: make sure the executive account is back on the seed password.
+ * At most 4 requests; never puts credential values into error text.
+ */
 async function restoreSeedPassword(request: APIRequestContext): Promise<void> {
-  const login = await request.post('/api/auth/login', { data: { username: SEED_ACCOUNTS.executive.email, password: ROTATED_PASSWORD } });
-  if (!login.ok()) return;
-  const { accessToken } = (await login.json()) as { accessToken: string };
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const restored = await request.put('/api/auth/password', { headers, data: { currentPassword: ROTATED_PASSWORD, newPassword: SEED_PASSWORD } });
-  await request.post('/api/auth/logout', { headers });
-  if (restored.status() !== 204) {
-    throw new Error(`seed password for ${SEED_ACCOUNTS.executive.email} is still '${ROTATED_PASSWORD}': restore PUT returned ${restored.status()}`);
+  const account = SEED_ACCOUNTS.executive.email;
+  const rotatedLogin = await request.post('/api/auth/login', { data: { username: account, password: ROTATED_PASSWORD } });
+  if (rotatedLogin.ok()) {
+    const { accessToken } = (await rotatedLogin.json()) as { accessToken: string };
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const restored = await request.put('/api/auth/password', { headers, data: { currentPassword: ROTATED_PASSWORD, newPassword: SEED_PASSWORD } });
+    await request.post('/api/auth/logout', { headers });
+    if (restored.status() !== 204) throw new Error(`seed password restore for ${account} failed: PUT /api/auth/password ${restored.status()}`);
+    return;
   }
+  const seedLogin = await request.post('/api/auth/login', { data: { username: account, password: SEED_PASSWORD } });
+  if (!seedLogin.ok()) {
+    throw new Error(`seed password for ${account} not restored: login with rotated password ${rotatedLogin.status()}, with seed password ${seedLogin.status()}`);
+  }
+  const { accessToken } = (await seedLogin.json()) as { accessToken: string };
+  await request.post('/api/auth/logout', { headers: { Authorization: `Bearer ${accessToken}` } });
 }
 
 test.describe('P0 golden path', () => {
