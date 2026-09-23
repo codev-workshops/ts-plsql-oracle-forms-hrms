@@ -235,7 +235,7 @@ export function EmployeeForm(props: Props) {
           {text('maritalStatus', { maxLength: 10 })}
           {text('nationality', { maxLength: 50 })}
           <Field id="emp-ssn" label={isEdit ? 'New SSN (leave blank to keep)' : 'SSN'} error={errors.ssn}>
-            <input id="emp-ssn" value={values.ssn} maxLength={11} autoComplete="off" placeholder="NNN-NN-NNNN" onChange={(e) => set('ssn', e.target.value)} disabled={!editable} aria-invalid={errors.ssn ? true : undefined} />
+            <input id="emp-ssn" type={getDto(isEdit ? 'EmployeeUpdateRequest' : 'EmployeeCreateRequest').fields.ssn.sensitive ? 'password' : 'text'} value={values.ssn} maxLength={11} autoComplete="off" placeholder="NNN-NN-NNNN" onChange={(e) => set('ssn', e.target.value)} disabled={!editable} aria-invalid={errors.ssn ? true : undefined} />
           </Field>
           {text('email', { type: 'email', maxLength: 100 })}
           {text('phoneWork', { maxLength: 30 })}

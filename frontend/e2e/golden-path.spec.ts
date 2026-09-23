@@ -12,6 +12,15 @@ import { SEED_ACCOUNTS, SEED_PASSWORD } from './seed-accounts';
 const ROTATED_PASSWORD = 'Stronger9!';
 const REAL_STACK = process.env.E2E_REAL_STACK === '1';
 
+/**
+ * Proxy flag of the employee module (CUTOVER_PLAN.md §7.1). The P0 default is LEGACY; once
+ * P3 promotes the module to NEW_READONLY/NEW the `/employees` route is mounted, so the deep
+ * link entered before login is honoured after login and the tile becomes a real link.
+ */
+type EmployeeFlag = 'LEGACY' | 'NEW_READONLY' | 'NEW';
+const EMPLOYEE_FLAG: EmployeeFlag = (process.env.VITE_MODULE_FLAGS?.match(/(?:^|[,;])\s*employee=(LEGACY|NEW_READONLY|NEW)\s*(?:$|[,;])/)?.[1] as EmployeeFlag | undefined) ?? 'LEGACY';
+const EMPLOYEE_PROMOTED = EMPLOYEE_FLAG !== 'LEGACY';
+
 /** Click Save and wait for this submission's own `PUT /api/auth/password` 204. */
 async function saveAndAwaitPasswordChange(page: Page): Promise<void> {
   const changed = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/api/auth/password') && r.status() === 204);
@@ -49,7 +58,7 @@ async function restoreSeedPassword(request: APIRequestContext): Promise<void> {
 }
 
 test.describe('P0 golden path', () => {
-  test('login, authority-filtered tiles, legacy tiles disabled (P0-D1), logout', async ({ page }) => {
+  test(`login, authority-filtered tiles, employees tile at employee=${EMPLOYEE_FLAG} (P0-D1 when LEGACY), logout`, async ({ page }) => {
     await page.goto('/employees');
     await expect(page).toHaveURL(/\/login$/);
 
@@ -57,14 +66,41 @@ test.describe('P0 golden path', () => {
     await page.getByLabel('Password').fill(SEED_PASSWORD);
     await page.getByLabel('Password').press('Enter');
 
+    if (EMPLOYEE_PROMOTED) {
+      // Promoted module: the pre-login deep link is honoured and the module page renders with
+      // flag-specific write semantics (read-only banner only at NEW_READONLY).
+      await expect(page).toHaveURL(/\/employees$/);
+      await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible();
+      await expect(page.getByRole('table', { name: 'Employees' })).toBeVisible();
+      await expect(page.getByTestId('read-only-banner')).toHaveCount(EMPLOYEE_FLAG === 'NEW_READONLY' ? 1 : 0);
+      await expect(page.getByTestId('user-info')).toContainText('DAVID MARTINEZ');
+      await page.getByRole('link', { name: 'HRMS' }).click();
+    } else {
+      // LEGACY: no `/employees` route is mounted, so the deep link falls through to home.
+      await expect(page).toHaveURL(/\/$/);
+    }
+
     await expect(page.getByRole('heading', { name: 'Welcome, DAVID MARTINEZ' })).toBeVisible();
     const employees = page.getByTestId('tile-employees');
-    await expect(employees).toHaveAttribute('data-legacy', 'true');
-    await expect(employees).toHaveAttribute('aria-disabled', 'true');
-    await expect(employees).not.toHaveAttribute('href', /.*/);
-    await expect(employees).toContainText('Not available in this environment');
-    await employees.click();
-    await expect(page).toHaveURL(/\/$/);
+    if (EMPLOYEE_PROMOTED) {
+      await expect(employees).toHaveAttribute('href', '/employees');
+      await expect(employees).not.toHaveAttribute('data-legacy', /.*/);
+      await expect(employees).not.toHaveAttribute('aria-disabled', /.*/);
+      await expect(employees).not.toContainText('Not available in this environment');
+      await employees.click();
+      await expect(page).toHaveURL(/\/employees$/);
+      await expect(page.getByRole('table', { name: 'Employees' })).toBeVisible();
+      await page.getByRole('link', { name: 'HRMS' }).click();
+      await expect(page.getByRole('heading', { name: 'Welcome, DAVID MARTINEZ' })).toBeVisible();
+    } else {
+      // P0-D1 (golden-oracle mode OFF): the legacy tile is disabled and never navigates into Forms.
+      await expect(employees).toHaveAttribute('data-legacy', 'true');
+      await expect(employees).toHaveAttribute('aria-disabled', 'true');
+      await expect(employees).not.toHaveAttribute('href', /.*/);
+      await expect(employees).toContainText('Not available in this environment');
+      await employees.click();
+      await expect(page).toHaveURL(/\/$/);
+    }
     await expect(page.getByTestId('tile-payroll')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Logout' }).click();
