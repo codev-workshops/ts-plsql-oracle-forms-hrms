@@ -177,10 +177,12 @@ implementation branches or change a frozen contract under running children.
 For a **fresh managed verification of this repo's existing P0–P5 code**, do
 not reset or overwrite historical `phase/*` and `<slug>/*` branches. Pin
 `phase/p5-reporting-decommission` as the audit base and create
-`managed/<run-id>/<slug>/{contract,backend,frontend,integration}` only for
+`managed/<run-id>/<slug>-{contract,backend,frontend,integration}` only for
 actual changes, with PRs into a `managed/<run-id>/<slug>` phase branch
 anchored at that base; use existing SHA + child report when no diff exists.
-The P3 salary branch precedes employee as above. Integration PRs target
+Git cannot store a branch both at `<slug>` and beneath `<slug>/`, so use
+these sibling suffixes rather than `<slug>/<role>`. The P3
+`<slug>-backend-salary` branch precedes employee as above. Integration PRs target
 the managed phase branch; remediation appends commits to the failing side.
 If the previous phase is blocked, retain reports but do not advance to the
 next phase or treat an old `phase/*` promotion as a current approval.
