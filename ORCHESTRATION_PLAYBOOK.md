@@ -112,6 +112,23 @@ must match TEST_STRATEGY.md §4 exactly, not be silently whitelisted.
    calendar gate. Phase branches are promoted only after these checks; never
    auto-merge the phase stack into `main`.
 
+### Implementation-only track (explicitly requested for the current run)
+
+The operator may authorize continued **development**, but not cutover, when
+Oracle/Forms execution is out of scope. In that track, retain the same
+contract → backend/frontend → integration child ordering and immutable SHA
+joins for P0–P5. Integration runs applicable JUnit, Vitest, generated-schema
+checks, PostgreSQL-backed API tests and real-stack Playwright; it records
+Oracle-dependent L2/L3, Forms SSO, CDC and calendar checks as `untested-live`
+or deferred, never `pass`. The parent may start the next phase's **development**
+only after the previous phase's local implementation checks pass; record
+`implementation-ready` separately from the unchanged full cutover gate
+(`BLOCKED`). Keep existing phase/managed branches and PRs as development
+artifacts, not evidence of live promotion. No production flag flip, Oracle
+destructive operation, payroll promotion or decommissioning follows from an
+implementation-only result. A later cutover still requires every original
+gate and named approval above, with fresh live evidence.
+
 ### Calendar and operational pauses
 
 | Boundary | Evidence and decision required before continuing |
