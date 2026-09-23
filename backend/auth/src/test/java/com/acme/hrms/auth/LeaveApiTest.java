@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -349,7 +350,11 @@ class LeaveApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.reason").value("Cancelled by employee"));
     assertThat(balance(9001, "pending")).isEqualByComparingTo("0");
     assertThat(balance(9001, "used")).isEqualByComparingTo("3");
-    assertThat(auditCount("LEAVE_REQUESTS", id, "STATUS_CHANGE")).isEqualTo(1);
+    assertThat(auditTrail(id))
+        .containsExactly(
+            "INSERT|null|{\"status\":\"PENDING\"}",
+            "UPDATE|null|null",
+            "STATUS_CHANGE|{\"status\":\"PENDING\"}|{\"status\":\"CANCELLED\"}");
     assertThat(
             jdbc.queryForObject(
                 "select count(*) from notification_queue where reference_id = ?"
@@ -412,7 +417,9 @@ class LeaveApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.approvalDate").isNotEmpty());
     assertThat(balance(9007, "pending")).isEqualByComparingTo("0");
     assertThat(balance(9007, "used")).isEqualByComparingTo("7");
-    assertThat(auditCount("LEAVE_REQUESTS", 1001, "STATUS_CHANGE")).isEqualTo(1);
+    assertThat(auditTrail(1001))
+        .containsExactly(
+            "UPDATE|null|null", "STATUS_CHANGE|{\"status\":\"PENDING\"}|{\"status\":\"APPROVED\"}");
     assertThat(notificationBody(22, "Leave Request Approved"))
         .isEqualTo("Your leave request from 07/08/2024 to 07/12/2024 has been approved.");
 
@@ -494,11 +501,14 @@ class LeaveApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.approvalComments").value("Release week"));
     assertThat(balance(9001, "pending")).isEqualByComparingTo("0");
     assertThat(balance(9001, "used")).isEqualByComparingTo("3");
-    assertThat(auditCount("LEAVE_REQUESTS", id, "STATUS_CHANGE")).isEqualTo(1);
+    assertThat(auditTrail(id))
+        .containsExactly(
+            "INSERT|null|{\"status\":\"PENDING\"}",
+            "UPDATE|null|null",
+            "STATUS_CHANGE|{\"status\":\"PENDING\"}|{\"status\":\"REJECTED\"}");
+    // PKG_LEAVE.pkb:309 - no date range in the reject body
     assertThat(notificationBody(2, "Leave Request Rejected"))
-        .isEqualTo(
-            "Your leave request from 07/08/2024 to 07/09/2024 has been rejected. Reason: Release"
-                + " week");
+        .isEqualTo("Your leave request has been rejected. Reason: Release week");
     // cancel a REJECTED one -> -20204
     mvc.perform(
             post("/api/leave/requests/" + id + "/cancel")
@@ -638,6 +648,15 @@ class LeaveApiTest extends AuthApiTestBase {
             recordId,
             action);
     return n == null ? 0 : n;
+  }
+
+  /** {@code action|old|new} per audit_log row of the request, in insertion order. */
+  private List<String> auditTrail(long recordId) {
+    return jdbc.query(
+        "select action_type, old_values, new_values from audit_log"
+            + " where table_name = 'LEAVE_REQUESTS' and record_id = ? order by audit_id",
+        (rs, i) -> rs.getString(1) + "|" + rs.getString(2) + "|" + rs.getString(3),
+        recordId);
   }
 
   private int notificationCount(long recipientEmpId, String subject) {

@@ -133,6 +133,29 @@ class LeaveAccrualJobTest {
   }
 
   @Test
+  void carryoverUsesPrePendingRemainingLikeLegacy() {
+    // PKG_LEAVE.pkb:567-572 - remaining = opening + accrued - used + adjustment, pending ignored
+    // seed 9007 emp 22 PTO 2024: 3+7.5-2+0 = 8.5 remaining, pending 5 (available 3.5), max 5 -> 5
+    // seed 9008 emp 23 PTO 2024: 0+7.5 = 7.5 remaining; pending 8 -> available -0.5 but still 5
+    jdbc.update("update leave_balances set pending = 8 where balance_id = 9008");
+
+    BatchRunResult run = job.processCarryover(2024, "batch");
+
+    assertThat((BigDecimal) bal(22, 1, 2025).get("carryover_from_prev")).isEqualByComparingTo("5");
+    assertThat((BigDecimal) bal(22, 1, 2025).get("opening_balance")).isEqualByComparingTo("5");
+    assertThat((BigDecimal) bal(23, 1, 2025).get("carryover_from_prev")).isEqualByComparingTo("5");
+    assertThat(
+            jdbc.queryForObject(
+                "select accrual_amount from leave_accrual_log where emp_id = 23"
+                    + " and leave_type_id = 1 and accrual_type = 'CARRYOVER'",
+                BigDecimal.class))
+        .isEqualByComparingTo("5");
+    // the 2024 rows are untouched: pending stays where it was
+    assertThat((BigDecimal) bal(22, 1, 2024).get("pending")).isEqualByComparingTo("5");
+    assertThat(run.processed()).isEqualTo(logRows("CARRYOVER"));
+  }
+
+  @Test
   void expiryDeductsOnlyUnusedCarryoverOnce() {
     // seed 9001 emp 2 PTO 2024: carryover 5, used 3 -> forfeit 2 (legacy forfeited 5)
     // seed 9009 emp 31 PTO 2024: carryover 5, used 6 -> forfeit 0
