@@ -48,6 +48,17 @@ export const SEED_ACCOUNTS = {
     role: 'STAFF',
     mustChangePassword: false,
   },
+  /** STAFF whose `manager_id` is the executive (emp 1): the only seeded reviewee/reviewer pair with two logins. */
+  staffOfExecutive: {
+    email: 'sarah.chen@company.com',
+    displayName: 'SARAH CHEN',
+    empId: 2,
+    empNumber: 'EMP-000002',
+    firstName: 'SARAH',
+    lastName: 'CHEN',
+    role: 'STAFF',
+    mustChangePassword: false,
+  },
   firstLogin: {
     email: 'emily.johnson@company.com',
     displayName: 'EMILY JOHNSON',
