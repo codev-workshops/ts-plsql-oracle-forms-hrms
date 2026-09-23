@@ -43,12 +43,19 @@ info:
       (which omits `- pending`). The API and the UI use the table formula; the view is left
       unchanged until Phase 5 and reconciled with the documented `pending` offset.
     * Blank strings are normalised to `null` at the API boundary before validation.
-    * Every state-changing operation writes `audit_log` rows (`hrms-audit`) and, where
+    * Every state-changing operation writes exactly the `audit_log` rows (`hrms-audit`) that
+      `PKG_LEAVE` **plus** `TRG_LEAVE_REQUEST_AUDIT` wrote, in the same order, and, where
       `PKG_LEAVE` did, a `notification_queue` row (`hrms-notification`) with the frozen
       subject/body strings in `x-notification`, so Level 2 diffs on `AUDIT_LOG` /
-      `NOTIFICATION_QUEUE` are empty. Numbers inside those strings are rendered the way Oracle
-      renders `NUMBER || VARCHAR2` (`0.5` -> `.5`, `3` -> `3`, `2.5` -> `2.5`); dates as
-      `MM/DD/YYYY`.
+      `NOTIFICATION_QUEUE` are empty. The legacy status transitions (`approve`, `reject`,
+      `cancel`) therefore produce **two** `audit_log` rows: `UPDATE` from
+      `PKG_AUDIT.log_action(…, 'UPDATE', p_user)` (`old_values`/`new_values` `null`), then
+      `STATUS_CHANGE` from the `AFTER UPDATE OF STATUS` trigger with
+      `old_values = {"status":"<old>"}`, `new_values = {"status":"<new>"}`; `submit` produces
+      one `INSERT` row (the trigger does not fire on insert). Numbers inside notification
+      strings are rendered the way Oracle renders `NUMBER || VARCHAR2` (`0.5` -> `.5`,
+      `3` -> `3`, `2.5` -> `2.5`); dates as `MM/DD/YYYY`; the reject body carries **no** date
+      range (`PKG_LEAVE.pkb:309`), only the approve body does.
     * **Declared, intentional differences vs legacy** (the *only* rows the Level 2 diff may
       whitelist for this phase; every other diff is a defect):
       - `BUG-04` `expire_carryover` deducts `GREATEST(0, carryoverFromPrev - usedFromCarryover)`
@@ -56,6 +63,12 @@ info:
       - `BUG-05` `businessDays()` treats a holiday falling on Saturday as observed on the
         preceding Friday and one falling on Sunday as observed on the following Monday.
       - `BUG-06` two half-day requests (`AM` + `PM`) on the same date are **not** an overlap.
+      - `LOG-01` (technical exception, not a behaviour fix): `process_carryover` and
+        `expire_carryover` write one `leave_accrual_log` row per `(empId, leaveTypeId)`
+        (`accrual_type` `'CARRYOVER'` / `'EXPIRY'`) for idempotent re-runs; the package only
+        logs `'ACCRUAL'` (`PKG_LEAVE.pkb:527`). The new side therefore has *additional*
+        `LEAVE_ACCRUAL_LOG` rows for those two batches; `LEAVE_BALANCES` and every other
+        table must still diff empty (outside BUG-04).
     * **Contract rules outside the legacy scenario set** (not whitelist rows; the scenario
       registry records the target expectation, see `error-codes.md` §5):
       `LEGACY-DEFECT-AUTOAPPROVE` (found while reading `PKG_LEAVE.pkb`; not in
@@ -309,7 +322,9 @@ paths:
         (legacy default; the original reason is **overwritten**, as in the package),
         `modified_by`, `modified_date`. Balance row `(empId, leaveTypeId, year(startDate))`:
         was `PENDING` → `pending -= totalDays`; was `APPROVED` → `used -= totalDays`
-        (QUIRK-02: no row → no-op). `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS {old}->CANCELLED`.
+        (QUIRK-02: no row → no-op). `x-audit` (two rows, in this order):
+        `UPDATE LEAVE_REQUESTS {id}` (old/new `null`), then
+        `STATUS_CHANGE LEAVE_REQUESTS {id} {"status":"{old}"}->{"status":"CANCELLED"}`.
         **No notification** is enqueued (legacy did not; COMPONENT_MAPPING.md §5 "notification
         to approver" is therefore *not* part of this contract).
       x-preauthorize: isAuthenticated()
@@ -356,7 +371,8 @@ paths:
         Effects: `status = 'APPROVED'`, `approver_emp_id = jwt.empId` (QUIRK-03), `approval_date
         = now`, `approval_comments = comments`, `modified_by`, `modified_date`. Balance row
         `(empId, leaveTypeId, year(startDate))`: `pending -= totalDays`, `used += totalDays`.
-        `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS PENDING->APPROVED`.
+        `x-audit` (two rows, in this order): `UPDATE LEAVE_REQUESTS {id}` (old/new `null`), then
+        `STATUS_CHANGE LEAVE_REQUESTS {id} {"status":"PENDING"}->{"status":"APPROVED"}`.
         `x-notification`: to the employee, subject `Leave Request Approved`, body
         `Your leave request from {MM/DD/YYYY} to {MM/DD/YYYY} has been approved.`
       x-preauthorize: isAuthenticated()
@@ -400,9 +416,12 @@ paths:
 
         Effects: `status = 'REJECTED'`, `approver_emp_id = jwt.empId`, `approval_date = now`,
         `approval_comments = comments`, `modified_by`, `modified_date`. Balance row:
-        `pending -= totalDays`. `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS PENDING->REJECTED`.
+        `pending -= totalDays`. `x-audit` (two rows, in this order):
+        `UPDATE LEAVE_REQUESTS {id}` (old/new `null`), then
+        `STATUS_CHANGE LEAVE_REQUESTS {id} {"status":"PENDING"}->{"status":"REJECTED"}`.
         `x-notification`: to the employee, subject `Leave Request Rejected`, body
-        `Your leave request from {MM/DD/YYYY} to {MM/DD/YYYY} has been rejected. Reason: {comments}`
+        `Your leave request has been rejected. Reason: {comments}` (`PKG_LEAVE.pkb:309` - unlike
+        approve, the legacy body has no date range).
       x-preauthorize: isAuthenticated()
       parameters:
         - $ref: '#/components/parameters/RequestId'
@@ -663,9 +682,13 @@ paths:
       x-phase: P5
       x-deferred: true
       description: |
-        Declared, not mounted in Phase 2. Creates the `year + 1` balance rows with
-        `carryoverFromPrev = LEAST(available, carryoverMax)`; idempotent through
-        `leave_accrual_log` (`'CARRYOVER'`).
+        Declared, not mounted in Phase 2. For every `year` row with
+        `remaining = openingBalance + accrued - used + adjustment` (**without** `- pending`,
+        exactly `PKG_LEAVE.pkb:567-572`; VAL-05 applies to `available`, not to this batch)
+        `> 0`, creates the `year + 1` balance rows (`initialize_balances`) and sets
+        `carryoverFromPrev = openingBalance = LEAST(remaining, carryoverMax)` (`carryoverMax`
+        `null` → uncapped) and `carryoverExpiryDt = Jan 1 (year + 1) + carryoverExpiry months`.
+        Idempotent through `leave_accrual_log` (`'CARRYOVER'`, LOG-01).
       x-preauthorize: hasAuthority('LEAVE:ADMIN')
       requestBody:
         required: true
