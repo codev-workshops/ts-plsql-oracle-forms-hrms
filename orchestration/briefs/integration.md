@@ -6,6 +6,7 @@
 **Backend and frontend heads:** `<ref>@<SHA>, <ref>@<SHA>`.
 **P3 salary head:** `<ref>@<SHA or not applicable>`.
 **Playbook/brief source ref:** `<ref containing ORCHESTRATION_PLAYBOOK.md>`.
+**Execution mode:** `<full|implementation-only, with parent authorization>`.
 **Legacy Oracle and PostgreSQL runtime/fixture provenance:** `<endpoints,
 not secrets; label if absent>`. **Phase-specific expected divergences and
 views:** `<paste contract brief and TEST_STRATEGY.md §5 row>`.
@@ -33,7 +34,11 @@ gates. P0 specifically requires two DB seeds, golden utPLSQL, SSO bridge
 into Forms and CDC smoke; P4 uses `PayrollShadowRunner` at `(RUN, EMP_ID,
 ELEMENT_ID)` granularity with zero-cent-or-signed-off differences, not
 a synthetic-period substitute for three production periods. P5 checks
-all six views before any re-baseline.
+all six views before any re-baseline. In authorized implementation-only
+mode, skip Oracle/Forms/utPLSQL/CDC execution entirely and run PostgreSQL
+API/recorded-fixture diagnostics instead; do not promote those to L2/L3
+cross-database passes. Return local implementation readiness separately
+from the blocked full cutover verdict.
 
 Do **not** fix code or change production flags here; identify the failing
 side with reproduction evidence (`backend`, `frontend`, `both`,
@@ -45,8 +50,11 @@ from previous logs.
 ```json
 {
   "phase": "<P0–P5>", "role": "integration",
+  "execution_mode": "full|implementation-only",
   "status": "success|failed|blocked", "merged_sha": "<40-hex>",
   "contract_sha": "<40-hex>", "level1": "pass|fail|untested-live",
+  "implementation_ready": true,
+  "pg_api": "pass|fail|not-run", "pg_reconcile": "pass|fail|not-run",
   "level2": "pass|fail|untested-live", "level3": "pass|fail|untested-live",
   "e2e": "pass|fail|untested-live",
   "phase_specific": "pass|fail|untested-live",
@@ -58,6 +66,10 @@ from previous logs.
   "blockers": ["<action needed>"]
 }
 ```
-`success` means **all five** checks passed with independent evidence and
-no blockers; report a technically green but unsigned calendar gate as an
-approval pause to the parent, never as an authorized live flip.
+`success` means **all five** full-gate checks passed with independent evidence
+and no blockers. In implementation-only mode, `implementation_ready=true`
+requires local Level 1, PostgreSQL API, real-stack E2E and applicable local
+phase-specific checks to pass; return `status=blocked` for the full cutover
+gate with missing live evidence in `evidence_gaps`, not a failed local test.
+Report a technically green but unsigned calendar gate as an approval pause
+to the parent, never as an authorized live flip.
