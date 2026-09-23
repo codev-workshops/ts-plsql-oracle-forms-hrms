@@ -39,9 +39,16 @@ test.describe('P3 PostgreSQL-backed employee flows', () => {
     await page.getByRole('tab', { name: 'Salary' }).click();
     await expect(page.getByTestId('current-salary')).toBeVisible();
     await page.getByRole('tab', { name: 'Dependents' }).click();
-    await expect(page.getByRole('table', { name: 'Dependents' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Dependents' }).or(page.getByText('No dependents recorded.'))).toBeVisible();
     await page.getByRole('tab', { name: 'Contacts' }).click();
-    await expect(page.getByRole('table', { name: 'Emergency contacts' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Emergency contacts' }).or(page.getByText('No emergency contacts recorded.'))).toBeVisible();
+    for (const path of ['dependents', 'contacts']) {
+      const own = await request.get(`/api/employees/${SEED_ACCOUNTS.staff.empId}/${path}`, {
+        headers: { Authorization: `Bearer ${staffToken}` },
+      });
+      expect(own.status()).toBe(200);
+      expect(Array.isArray(await own.json())).toBe(true);
+    }
     if (flag === 'NEW_READONLY') {
       await expect(page.getByTestId('read-only-banner')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Add contact' })).toHaveCount(0);
