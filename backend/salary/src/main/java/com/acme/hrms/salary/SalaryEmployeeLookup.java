@@ -39,6 +39,10 @@ public class SalaryEmployeeLookup {
         .findFirst();
   }
 
+  public void lock(long empId) {
+    jdbc.query("select emp_id from employees where emp_id = ? for update", rs -> {}, empId);
+  }
+
   private static Long nullableLong(@Nullable Object value) {
     return value instanceof Number number ? number.longValue() : null;
   }

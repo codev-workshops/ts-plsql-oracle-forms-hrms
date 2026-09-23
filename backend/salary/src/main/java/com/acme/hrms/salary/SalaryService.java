@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,8 +61,16 @@ public class SalaryService {
   public SalaryRecord change(long empId, SalaryChangeRequest request, String actor) {
     access.requireWritable();
     SalaryChangeRequest req = access.validate(request);
-    EmployeeRef employee = requireActive(empId);
+    requireActive(empId);
     SalaryRecord previous = records.findActive(empId).orElse(null);
+    employees.lock(empId);
+    EmployeeRef employee = requireActive(empId);
+    SalaryRecord current = records.findActive(empId).orElse(null);
+    if (!Objects.equals(
+        previous == null ? null : previous.salaryId(),
+        current == null ? null : current.salaryId())) {
+      throw new HrmsException(ErrorCode.CONFLICT);
+    }
     validateEffectiveDate(req.getEffectiveDate(), employee, previous);
 
     BigDecimal newSalary = req.getBaseSalary().setScale(2, RoundingMode.HALF_UP);
