@@ -39,6 +39,17 @@ child's PR alone or from prose if structured output is missing.
 | P4 Payroll | After P3 exit; Java engine reads salary-module, not employee-service. | CUTOVER_PLAN.md §8; COMPONENT_MAPPING.md §4 | Tax boundaries/authz/JUnit; `PayrollShadowRunner` legacy Oracle vs Java PostgreSQL per `(RUN, EMP_ID, ELEMENT_ID)`; `VW_PAYROLL_LATEST` to the cent; human shadow gate. |
 | P5 Reporting / decommission | After P4 shadow promotion **and** three-period rollback window. | CUTOVER_PLAN.md §9; COMPONENT_MAPPING.md §§7–8 and reporting/integration targets | Report/admin tests; Oracle ref-cursor vs REST row diff; final six-view pass **before** SQL re-baseline; 30-day zero-hit gate before decommission. |
 
+For **every** row above, give each child that row's CUTOVER_PLAN section
+and TEST_STRATEGY §5 acceptance row, plus this role-specific assignment:
+
+| Child | CUTOVER_PLAN responsibility | TEST_STRATEGY responsibility |
+|---|---|---|
+| Contract | Phase §4–9 API/flags and §1 ARCH ordering | §2.1 exported schema; §5 phase's API/error and L1 expectations |
+| Backend | Phase §4–9 service/table ownership and §2 one-writer rules | §5 L1 JUnit/schema and L2 scenario registration; §7 harness |
+| Frontend | Phase §4–9 app shell/module flows and flag visibility | §5 Vitest and golden-path E2E coverage; §2.1 generated schema |
+| Integration | Phase §4–9 acceptance/rollback readiness | §5 full L1/L2/L3 + E2E and phase-specific verdict; §2 live comparison |
+| Remediation | Phase §4–9 failure/rollback rules; §2 rule 6 on live rollback | §5 failing criterion and **all** criteria on the fresh rerun |
+
 The target Spring Boot application uses PostgreSQL only; Oracle stays the
 independent golden oracle / Forms store during coexistence. Never replace L2
 with a PostgreSQL-only recorded fixture run or L3 with a single-database
