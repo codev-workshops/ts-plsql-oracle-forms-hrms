@@ -129,6 +129,137 @@ class SalaryApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.outOfGradeBand").value(true));
   }
 
+  /** x-history [SALARY_CHANGE]: one employee_history row per accepted change, none on rejection. */
+  @Test
+  void changeWritesSalaryChangeHistoryWithOldNewReasonAndActor() throws Exception {
+    // changeReason maxLength=50 (frozen contract) is stored verbatim in both tables
+    String reason = "MARKET-ADJUSTMENT-Q3-2025-RETENTION-BAND-REVIEW-XY";
+    assertThat(reason).hasSize(50);
+    jdbc.update("delete from employee_history where emp_id = 1");
+    jdbc.update("delete from salary_records where emp_id = 1");
+
+    // no prior active salary: old_salary is null
+    mvc.perform(
+            json(
+                post("/api/employees/1/salary"),
+                exec,
+                Map.of(
+                    "effectiveDate", "2025-01-01",
+                    "baseSalary", 100000,
+                    "changeReason", "INITIAL")))
+        .andExpect(status().isCreated());
+    mvc.perform(
+            json(
+                post("/api/employees/1/salary"),
+                exec,
+                Map.of(
+                    "effectiveDate", "2025-06-01", "baseSalary", 110000, "changeReason", reason)))
+        .andExpect(status().isCreated());
+    // rejected (before hire date / previous effective date): nothing written
+    mvc.perform(
+            json(
+                post("/api/employees/1/salary"),
+                exec,
+                Map.of(
+                    "effectiveDate", "2025-01-15",
+                    "baseSalary", 120000,
+                    "changeReason", "MERIT")))
+        .andExpect(status().isBadRequest());
+
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1", Integer.class))
+        .isEqualTo(2);
+    String actor =
+        jdbc.queryForObject(
+            "select created_by from salary_records where emp_id = 1 and active_flag = 'Y'",
+            String.class);
+    assertThat(actor).isNotBlank();
+    assertThat(
+            jdbc.queryForObject(
+                "select change_reason from salary_records where emp_id = 1 and active_flag = 'Y'",
+                String.class))
+        .isEqualTo(reason);
+    assertThat(
+            jdbc.queryForList(
+                "select change_type, old_salary, new_salary, reason_code, created_by,"
+                    + " old_dept_id, new_job_id from employee_history where emp_id = 1"
+                    + " order by hist_id"))
+        .satisfiesExactly(
+            first -> {
+              assertThat(first.get("change_type")).isEqualTo("SALARY_CHANGE");
+              assertThat(first.get("old_salary")).isNull();
+              assertThat((java.math.BigDecimal) first.get("new_salary"))
+                  .isEqualByComparingTo("100000");
+              assertThat(first.get("reason_code")).isEqualTo("INITIAL");
+              assertThat(first.get("created_by")).isEqualTo(actor);
+              assertThat(first.get("old_dept_id")).isNull();
+              assertThat(first.get("new_job_id")).isNull();
+            },
+            second -> {
+              assertThat(second.get("change_type")).isEqualTo("SALARY_CHANGE");
+              assertThat((java.math.BigDecimal) second.get("old_salary"))
+                  .isEqualByComparingTo("100000");
+              assertThat((java.math.BigDecimal) second.get("new_salary"))
+                  .isEqualByComparingTo("110000");
+              assertThat(second.get("reason_code")).isEqualTo(reason);
+              assertThat(second.get("created_by")).isEqualTo(actor);
+            });
+
+    // history API: salary read scope sees amounts, plain EMPLOYEE:VIEW gets them masked
+    mvc.perform(get("/api/employees/1/history").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].changeType").value("SALARY_CHANGE"))
+        .andExpect(jsonPath("$[0].oldSalary").value("100000.00"))
+        .andExpect(jsonPath("$[0].newSalary").value("110000.00"))
+        .andExpect(jsonPath("$[0].reasonCode").value(reason))
+        .andExpect(jsonPath("$[1].oldSalary").doesNotExist())
+        .andExpect(jsonPath("$[1].newSalary").value("100000.00"));
+    mvc.perform(get("/api/employees/1/history").header("Authorization", "Bearer " + staff))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].changeType").value("SALARY_CHANGE"))
+        .andExpect(jsonPath("$[0].oldSalary").doesNotExist())
+        .andExpect(jsonPath("$[0].newSalary").doesNotExist());
+  }
+
+  /** POST /api/employees with initialSalary is x-history [HIRE] only, never SALARY_CHANGE. */
+  @Test
+  void initialSalaryOnHireWritesHireHistoryOnly() throws Exception {
+    long id =
+        body(mvc.perform(
+                    json(
+                        post("/api/employees"),
+                        exec,
+                        Map.ofEntries(
+                            Map.entry("firstName", "Sal"),
+                            Map.entry("lastName", "Hist"),
+                            Map.entry("email", "sal.hist@company.com"),
+                            Map.entry("hireDate", "2025-06-02"),
+                            Map.entry("deptId", 30),
+                            Map.entry("jobId", 50),
+                            Map.entry("managerEmpId", 31),
+                            Map.entry("locationCode", "CHI"),
+                            Map.entry("employmentType", "FULL_TIME"),
+                            Map.entry("ssn", "123-45-6789"),
+                            Map.entry("initialSalary", 85000))))
+                .andExpect(status().isCreated())
+                .andReturn())
+            .get("id")
+            .asLong();
+    assertThat(
+            jdbc.queryForList(
+                "select change_type from employee_history where emp_id = ? order by hist_id",
+                String.class,
+                id))
+        .containsExactly("HIRE");
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = ?", Integer.class, id))
+        .isEqualTo(1);
+  }
+
   @Test
   void concurrentSalaryPostsReturnConflictWithoutRollingBackTheWinner() throws Exception {
     assertConcurrentSalaryOutcome();
