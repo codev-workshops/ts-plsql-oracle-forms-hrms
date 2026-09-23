@@ -422,7 +422,9 @@ public class EmployeeService {
 
   @Transactional
   public Dependent addDependent(long empId, DependentRequest r, CallerIdentity caller) {
-    requireWritableSubject(empId);
+    EmployeeRow subject = require(empId);
+    EmployeeAccess.requireSelfOrEdit(empId, caller);
+    requireNotTerminated(subject);
     DependentRow row = dependents.insert(empId, dependentWrite(r, true, caller.userId()));
     audit.log(
         "EMPLOYEE_DEPENDENTS",
@@ -439,11 +441,13 @@ public class EmployeeService {
   @Transactional
   public Dependent updateDependent(
       long empId, long dependentId, DependentRequest r, CallerIdentity caller) {
-    requireWritableSubject(empId);
+    EmployeeRow subject = require(empId);
     DependentRow before =
         dependents
             .findActive(empId, dependentId)
             .orElseThrow(() -> new HrmsException(ErrorCode.DEPENDENT_NOT_FOUND));
+    EmployeeAccess.requireSelfOrEdit(empId, caller);
+    requireNotTerminated(subject);
     boolean active = r.getActive() == null || r.getActive();
     DependentRow after = dependents.update(dependentId, dependentWrite(r, active, caller.userId()));
     audit.log(
@@ -494,7 +498,9 @@ public class EmployeeService {
 
   @Transactional
   public EmergencyContact addContact(long empId, EmergencyContactRequest r, CallerIdentity caller) {
-    requireWritableSubject(empId);
+    EmployeeRow subject = require(empId);
+    EmployeeAccess.requireSelfOrEdit(empId, caller);
+    requireNotTerminated(subject);
     EmergencyContact row = contacts.insert(empId, contactWrite(r, true, caller.userId()));
     audit.log(
         "EMERGENCY_CONTACTS",
@@ -511,11 +517,13 @@ public class EmployeeService {
   @Transactional
   public EmergencyContact updateContact(
       long empId, long contactId, EmergencyContactRequest r, CallerIdentity caller) {
-    requireWritableSubject(empId);
+    EmployeeRow subject = require(empId);
     EmergencyContact before =
         contacts
             .findActive(empId, contactId)
             .orElseThrow(() -> new HrmsException(ErrorCode.CONTACT_NOT_FOUND));
+    EmployeeAccess.requireSelfOrEdit(empId, caller);
+    requireNotTerminated(subject);
     boolean active = r.getActive() == null || r.getActive();
     EmergencyContact after = contacts.update(contactId, contactWrite(r, active, caller.userId()));
     audit.log(
@@ -556,8 +564,8 @@ public class EmployeeService {
   }
 
   /** Sub-resource writes on a terminated employee are refused like any other write (-20503). */
-  private void requireWritableSubject(long empId) {
-    if (require(empId).terminated()) {
+  private static void requireNotTerminated(EmployeeRow subject) {
+    if (subject.terminated()) {
       throw new HrmsException(ErrorCode.TERMINATED_REACTIVATION);
     }
   }

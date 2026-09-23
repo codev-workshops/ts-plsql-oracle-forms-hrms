@@ -177,16 +177,71 @@ class EmployeeApiTest extends AuthApiTestBase {
   }
 
   @Test
-  void staffCannotWriteAndReadOnlyFlagBlocksWrites() throws Exception {
+  void staffCannotCreateEmployeesButSelfServesDependentsAndContacts() throws Exception {
     mvc.perform(json(post("/api/employees"), staff, newEmployee("api.staff@company.com")))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-    mvc.perform(
-            json(
-                post("/api/employees/2/dependents"),
-                staff,
-                Map.of("firstName", "A", "lastName", "B", "relationship", "CHILD")))
-        .andExpect(status().isForbidden());
+
+    // staff (emp 2, EMPLOYEE:VIEW) writes its own rows, HR (EMPLOYEE:EDIT) writes anyone's
+    MvcResult dep =
+        mvc.perform(json(post("/api/employees/2/dependents"), staff, dependent("A")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.firstName").value("A"))
+            .andReturn();
+    long dependentId = body(dep).get("dependentId").asLong();
+    mvc.perform(json(put("/api/employees/2/dependents/" + dependentId), staff, dependent("B")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.firstName").value("B"));
+    mvc.perform(json(post("/api/employees/2/contacts"), staff, contact()))
+        .andExpect(status().isCreated());
+    mvc.perform(json(post("/api/employees/1/dependents"), staff, dependent("X")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(json(post("/api/employees/1/contacts"), staff, contact()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(json(put("/api/employees/1/dependents/" + dependentId), staff, dependent("X")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DEPENDENT_NOT_FOUND"));
+    mvc.perform(json(post("/api/employees/2/dependents"), exec, dependent("HR")))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
+  void employeeRoutesRequireEmployeeViewAuthority() throws Exception {
+    jdbc.update("delete from role_permissions where role_id = 1 and authority = 'EMPLOYEE:VIEW'");
+    try {
+      String noView = token(STAFF_EMAIL);
+      for (String path :
+          new String[] {
+            "/api/employees",
+            "/api/employees/2",
+            "/api/employees/2/history",
+            "/api/employees/2/dependents",
+            "/api/employees/2/contacts"
+          }) {
+        mvc.perform(get(path).header("Authorization", "Bearer " + noView))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+      }
+      mvc.perform(json(post("/api/employees/2/dependents"), noView, dependent("A")))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+      mvc.perform(json(post("/api/employees/2/contacts"), noView, contact()))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    } finally {
+      jdbc.update("insert into role_permissions (role_id, authority) values (1, 'EMPLOYEE:VIEW')");
+    }
+  }
+
+  static Map<String, Object> dependent(String firstName) {
+    return Map.of("firstName", firstName, "lastName", "CHEN", "relationship", "CHILD");
+  }
+
+  static Map<String, Object> contact() {
+    return Map.of(
+        "contactName", "Pat Chen", "relationship", "SPOUSE", "phonePrimary", "3125550100");
   }
 
   private static Map<String, Object> newEmployee(String email) {
