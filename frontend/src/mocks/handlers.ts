@@ -53,6 +53,7 @@ export const MOCK_USERS: Record<string, CurrentUser> = {
   [SEED_ACCOUNTS.executive.email]: seedUser(SEED_ACCOUNTS.executive, 'ua-1', 1, 'CEO'),
   [SEED_ACCOUNTS.manager.email]: seedUser(SEED_ACCOUNTS.manager, 'ua-2', 20, 'Manager'),
   [SEED_ACCOUNTS.staff.email]: seedUser(SEED_ACCOUNTS.staff, 'ua-3', 10, 'Analyst'),
+  [SEED_ACCOUNTS.staffOfExecutive.email]: seedUser(SEED_ACCOUNTS.staffOfExecutive, 'ua-5', 20, 'Chief Financial Officer'),
   [SEED_ACCOUNTS.firstLogin.email]: seedUser(SEED_ACCOUNTS.firstLogin, 'ua-4', 10, null),
 };
 

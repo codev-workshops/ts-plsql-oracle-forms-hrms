@@ -12,6 +12,9 @@ import { defineConfig } from '@playwright/test';
  *    `E2E_REAL_STACK=1 npm run e2e`. Accounts are defined in e2e/seed-accounts.ts.
  *    Set `E2E_BASE_URL` to point at an already-running frontend/proxy (e.g. the nginx
  *    edge on http://localhost:8000) instead of letting Playwright start Vite.
+ *    Real-stack specs share the mutable seeded accounts (e.g. the P0 password rotation closes
+ *    every other session of the executive), so they run on a single worker; mock runs stay
+ *    parallel because each browser context has its own msw state.
  *
  * P0-D1: legacy-tile navigation into Oracle Forms is skipped in both modes.
  */
@@ -22,6 +25,7 @@ const startViteServer = !process.env.E2E_BASE_URL;
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  workers: realStack ? 1 : undefined,
   use: { baseURL, trace: 'retain-on-failure' },
   webServer: startViteServer
     ? {
