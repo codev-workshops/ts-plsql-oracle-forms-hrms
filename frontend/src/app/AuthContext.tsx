@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
-import { bindSessionHandlers, setAccessToken } from '../api/http';
+import { bindSessionHandlers, refreshAccessToken, setAccessToken } from '../api/http';
 import type { Authority, CurrentUser, LoginRequest, TokenResponse } from '../api/types';
 
 /**
  * Replaces `:GLOBAL.session_id / current_user / current_emp_id` (COMPONENT_MAPPING.md §1, §7).
  * Identity is whatever the server derived from the JWT; the token itself is held in memory
  * by `api/http.ts` and never persisted. On mount we try one silent refresh (HttpOnly cookie)
- * to restore a session after a reload.
+ * to restore a session after a reload. The refresh goes through the single-flight
+ * `refreshAccessToken` so a StrictMode double effect (or a concurrent 401 replay) never sends
+ * the same rotating `hrms_refresh` token twice — the server treats that as a replay.
  */
 
 export type AuthStatus = 'initialising' | 'anonymous' | 'authenticated';
@@ -48,8 +50,7 @@ export function AuthProvider({ children, initialUser = null }: { children: React
   useEffect(() => {
     if (status !== 'initialising') return;
     let cancelled = false;
-    api.auth
-      .refresh()
+    refreshAccessToken()
       .then((t) => {
         if (cancelled) return;
         setUser(t.user);
