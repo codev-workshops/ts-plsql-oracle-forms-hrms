@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,12 @@ class EmployeeModuleReadOnlyTest extends AuthApiTestBase {
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("MODULE_READ_ONLY"));
     mvc.perform(json(put("/api/employees/2/dependents/1"), staff, EmployeeApiTest.dependent("A")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("MODULE_READ_ONLY"));
+    // the module flag wins over an unknown body property (error-codes.md §3 step 3 before 5)
+    Map<String, Object> unknown = new HashMap<>(EmployeeApiTest.contact());
+    unknown.put("contactId", null);
+    mvc.perform(json(post("/api/employees/2/contacts"), staff, unknown))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("MODULE_READ_ONLY"));
     mvc.perform(get("/api/employees/2/dependents").header("Authorization", "Bearer " + staff))

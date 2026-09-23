@@ -10,7 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /** Body of POST/PUT /api/employees/{id}/dependents (EMPLOYEE_DEPENDENTS). */
-public class DependentRequest {
+public class DependentRequest extends StrictRequest {
 
   @NotBlank
   @Size(max = EmployeeRules.NAME_MAX)

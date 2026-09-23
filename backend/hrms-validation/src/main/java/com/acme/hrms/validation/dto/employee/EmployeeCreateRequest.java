@@ -21,7 +21,7 @@ import java.time.LocalDate;
  * accepted: it is assigned from SEQ_EMP_NUMBER. Initial salary travels with the hire and is written
  * by salary-module in the same transaction.
  */
-public class EmployeeCreateRequest {
+public class EmployeeCreateRequest extends StrictRequest {
 
   @NotBlank
   @Size(max = EmployeeRules.NAME_MAX)

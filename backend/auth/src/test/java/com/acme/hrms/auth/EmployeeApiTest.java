@@ -105,6 +105,163 @@ class EmployeeApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.code").value("-20502"));
   }
 
+  /**
+   * LIFECYCLE-02 / {@code additionalProperties: false}: any property outside the request schema is
+   * {@code 400 VALIDATION_FAILED}, whatever its value, and nothing is written.
+   */
+  @Test
+  void unknownRequestPropertiesAreRejectedWithoutWriting() throws Exception {
+    MvcResult created =
+        mvc.perform(json(post("/api/employees"), exec, newEmployee("api.strict@company.com")))
+            .andExpect(status().isCreated())
+            .andReturn();
+    long id = body(created).get("id").asLong();
+    String etag = created.getResponse().getHeader("ETag");
+    int audits = jdbc.queryForObject("select count(*) from audit_log", Integer.class);
+    int history = jdbc.queryForObject("select count(*) from employee_history", Integer.class);
+
+    Map<String, Object> frozen = update("STRICT", "api.strict@company.com");
+    frozen.put("hireDate", "2020-01-01");
+    frozen.put("employmentStatus", "TERMINATED");
+    mvc.perform(json(put("/api/employees/" + id), exec, frozen).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDate"))
+        .andExpect(jsonPath("$.details[0].field").value("hireDate"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"))
+        .andExpect(jsonPath("$.traceId").isString());
+
+    for (String property : new String[] {"empNumber", "deptId", "terminationDate", "activeFlag"}) {
+      Map<String, Object> unknown = update("STRICT", "api.strict@company.com");
+      unknown.put(property, null);
+      mvc.perform(json(put("/api/employees/" + id), exec, unknown).header("If-Match", etag))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+          .andExpect(jsonPath("$.field").value(property));
+    }
+
+    // error-codes.md §3: authority, required If-Match and -20010 all win over the unknown property
+    mvc.perform(json(put("/api/employees/" + id), staff, frozen).header("If-Match", etag))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(json(put("/api/employees/" + id), exec, frozen))
+        .andExpect(status().isPreconditionRequired())
+        .andExpect(jsonPath("$.code").value("PRECONDITION_REQUIRED"));
+    Map<String, Object> blankName = update("", "api.strict@company.com");
+    blankName.put("hireDate", "2020-01-01");
+    mvc.perform(json(put("/api/employees/" + id), exec, blankName).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20010"))
+        .andExpect(jsonPath("$.field").value("firstName"));
+    Map<String, Object> blankCreate = newEmployee("api.strict3@company.com");
+    blankCreate.put("lastName", " ");
+    blankCreate.put("empNumber", "EMP-999999");
+    mvc.perform(json(post("/api/employees"), exec, blankCreate))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20010"))
+        .andExpect(jsonPath("$.field").value("lastName"));
+    // ... and the unknown property still wins over generic Bean Validation of known fields
+    Map<String, Object> badEmail = update("STRICT", "not-an-email");
+    badEmail.put("hireDate", "2020-01-01");
+    mvc.perform(json(put("/api/employees/" + id), exec, badEmail).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDate"));
+
+    Map<String, Object> salary = new HashMap<>();
+    salary.put("baseSalary", "85000.00");
+    salary.put("effectiveDate", "2025-07-01");
+    salary.put("changeReason", "MERIT");
+    salary.put("changePct", null);
+    int salaries = jdbc.queryForObject("select count(*) from salary_records", Integer.class);
+    mvc.perform(json(post("/api/employees/" + id + "/salary"), staff, salary))
+        .andExpect(status().isForbidden());
+    mvc.perform(json(post("/api/employees/" + id + "/salary"), exec, salary))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("changePct"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"));
+    assertThat(jdbc.queryForObject("select count(*) from salary_records", Integer.class))
+        .isEqualTo(salaries);
+
+    mvc.perform(get("/api/employees/" + id).header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(header().string("ETag", etag))
+        .andExpect(jsonPath("$.firstName").value("API"))
+        .andExpect(jsonPath("$.hireDate").value("2025-06-02"))
+        .andExpect(jsonPath("$.employmentStatus").value("ACTIVE"));
+    assertThat(jdbc.queryForObject("select count(*) from audit_log", Integer.class))
+        .isEqualTo(audits);
+    assertThat(jdbc.queryForObject("select count(*) from employee_history", Integer.class))
+        .isEqualTo(history);
+
+    // the same rule on create and on the nested dependent / contact schemas
+    Map<String, Object> create = newEmployee("api.strict2@company.com");
+    create.put("empNumber", "EMP-999999");
+    mvc.perform(json(post("/api/employees"), exec, create))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("empNumber"));
+    create = newEmployee("api.strict2@company.com");
+    create.put("employmentStatus", null);
+    mvc.perform(json(post("/api/employees"), exec, create))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("employmentStatus"));
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employees where lower(email) = 'api.strict2@company.com'",
+                Integer.class))
+        .isZero();
+
+    Map<String, Object> dep = new HashMap<>(dependent("A"));
+    dep.put("empId", 1);
+    mvc.perform(json(post("/api/employees/" + id + "/dependents"), exec, dep))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("empId"));
+    Map<String, Object> contact = new HashMap<>(contact());
+    contact.put("contactId", 7);
+    mvc.perform(json(post("/api/employees/" + id + "/contacts"), exec, contact))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("contactId"));
+    Map<String, Object> terminate = new HashMap<>();
+    terminate.put("effectiveDate", "2025-06-30");
+    terminate.put("reason", "VOLUNTARY");
+    terminate.put("employmentStatus", "TERMINATED");
+    mvc.perform(json(post("/api/employees/" + id + "/terminate"), exec, terminate))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    mvc.perform(
+            json(
+                post("/api/employees/" + id + "/transfer"),
+                exec,
+                Map.of("deptId", 30, "effectiveDate", "2025-07-01", "hireDate", "2025-07-01")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDate"));
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employee_dependents where emp_id = " + id, Integer.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from emergency_contacts where emp_id = " + id, Integer.class))
+        .isZero();
+    mvc.perform(get("/api/employees/" + id).header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.employmentStatus").value("ACTIVE"))
+        .andExpect(jsonPath("$.deptId").value(30))
+        .andExpect(jsonPath("$.locationCode").value("CHI"));
+
+    Map<String, Object> login = new HashMap<>();
+    login.put("username", EXEC_EMAIL);
+    login.put("password", PASSWORD);
+    login.put("hireDate", null);
+    mvc.perform(json(post("/api/auth/login"), null, login)).andExpect(status().isOk());
+  }
+
   @Test
   void deleteIsRefusedWithTheTriggerCode() throws Exception {
     mvc.perform(delete("/api/employees/2").header("Authorization", "Bearer " + exec))
@@ -267,7 +424,6 @@ class EmployeeApiTest extends AuthApiTestBase {
     m.put("email", email);
     m.put("jobId", 50);
     m.put("managerEmpId", 31);
-    m.put("locationCode", "CHI");
     m.put("employmentType", "FULL_TIME");
     return m;
   }

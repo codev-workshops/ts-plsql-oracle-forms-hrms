@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /** Body of POST /api/employees/{id}/terminate (PKG_EMPLOYEE.terminate_employee). */
-public class EmployeeTerminateRequest {
+public class EmployeeTerminateRequest extends StrictRequest {
 
   @NotNull
   @FieldMeta(requiredMessage = "Termination date is required")
