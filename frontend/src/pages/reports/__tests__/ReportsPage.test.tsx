@@ -38,6 +38,25 @@ describe('ReportsPage – gating and tabs', () => {
     await screen.findByRole('heading', { name: 'Reports' });
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Employee Directory', 'Org Hierarchy', 'Compensation', 'Leave Summary', 'Latest Payroll', 'Pending Approvals']);
   });
+
+  it('switches Employee Directory -> Compensation -> Leave Summary via the tabs without carrying the previous page into the new summary', async () => {
+    const user = userEvent.setup();
+    renderReportsAs(manager, '/reports/employee-directory');
+    await screen.findByRole('table', { name: 'Employee Directory' });
+    expect(screen.getByTestId('directory-summary')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Compensation' }));
+    expect(await screen.findByRole('table', { name: 'Employee Compensation' })).toHaveTextContent('1.0417');
+    expect(screen.getByTestId('compensation-summary')).toBeInTheDocument();
+    expect(screen.queryByTestId('directory-summary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Leave Summary' }));
+    expect(await screen.findByRole('table', { name: 'Leave Summary' })).toHaveTextContent('DAVID MARTINEZ');
+    expect(screen.getByTestId('leave-summary-totals')).toBeInTheDocument();
+    expect(screen.queryByTestId('compensation-summary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
 
 describe('Employee directory', () => {

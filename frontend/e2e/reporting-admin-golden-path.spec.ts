@@ -35,6 +35,13 @@ test.describe('P5 reporting + admin golden path (mock stack)', () => {
     await page.getByRole('button', { name: 'Export CSV' }).click();
     expect((await download).suggestedFilename()).toMatch(/^employee-directory.*\.csv$/);
 
+    await page.getByRole('tab', { name: 'Compensation' }).click();
+    await expect(page.getByRole('table', { name: 'Employee Compensation' })).toBeVisible();
+    await expect(page.getByTestId('compensation-summary')).toBeVisible();
+    await page.getByRole('tab', { name: 'Leave Summary' }).click();
+    await expect(page.getByRole('table', { name: 'Leave Summary' })).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+
     await page.getByRole('tab', { name: 'Pending Approvals' }).click();
     await expect(page.getByRole('table', { name: 'Pending Approvals' })).toBeVisible();
   });
