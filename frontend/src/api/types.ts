@@ -917,3 +917,536 @@ export interface PayrollRegisterDownload {
   filename: string;
   csv: string;
 }
+
+// ---------------------------------------------------------------------------
+// contracts/p5-reporting-decommission/openapi.yaml (components.schemas)
+// ---------------------------------------------------------------------------
+
+/** Four-decimal ratio (`compaRatio`). */
+export type Rate = string;
+/** Leave days with two decimals (`NUMBER(6,2)`). */
+export type Days = string;
+/** `TRUNC(MONTHS_BETWEEN(...)/12, 1)` – one decimal. */
+export type Years = string;
+/** `ROUND(x*100/NULLIF(denominator,0), 1)`; null when the denominator is 0. */
+export type Percent = string | null;
+
+export interface PageMeta {
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface AuditColumns {
+  activeFlag: boolean;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+/** `GET …/{report}.csv` – the streamed body plus the server-chosen filename. */
+export interface CsvDownload {
+  filename: string;
+  csv: string;
+}
+
+// --- reports ---------------------------------------------------------------
+export interface EmployeeDirectoryQuery {
+  asOf?: string;
+  deptId?: number;
+  locationCode?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface EmployeeDirectoryRow {
+  empId: number;
+  empNumber: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email?: string | null;
+  phoneWork?: string | null;
+  hireDate: string;
+  tenureYears: Years;
+  deptId: number;
+  deptCode: string;
+  deptName: string;
+  costCenter?: string | null;
+  jobId: number;
+  jobCode: string;
+  jobTitle: string;
+  jobFamily?: string | null;
+  gradeId: number;
+  gradeCode: string;
+  gradeName: string;
+  locationCode?: string | null;
+  locationName?: string | null;
+  city?: string | null;
+  stateProvince?: string | null;
+  managerEmpId?: number | null;
+  managerName?: string | null;
+}
+
+export interface HeadcountByDepartment {
+  deptId: number;
+  deptCode: string;
+  deptName: string;
+  locationCode?: string | null;
+  headcount: number;
+  avgTenureYears: Years;
+}
+
+export interface EmployeeDirectoryPage {
+  asOf: string;
+  content: EmployeeDirectoryRow[];
+  page: PageMeta;
+  summary: { totalHeadcount: number; headcountByDepartment: HeadcountByDepartment[] };
+}
+
+export interface OrgHierarchyQuery {
+  asOf?: string;
+  rootEmpId?: number;
+  maxLevel?: number;
+  page?: number;
+  size?: number;
+}
+
+export interface OrgHierarchyRow {
+  empId: number;
+  empNumber: string;
+  fullName: string;
+  jobTitle: string;
+  deptName: string;
+  managerEmpId?: number | null;
+  managerName?: string | null;
+  orgLevel: number;
+  orgPath: string;
+  isLeaf: boolean;
+  directReports?: number;
+  cycle: boolean;
+}
+
+export interface OrgHierarchyPage {
+  asOf: string;
+  content: OrgHierarchyRow[];
+  page: PageMeta;
+}
+
+export interface EmployeeCompensationQuery {
+  asOf?: string;
+  deptId?: number;
+  gradeId?: number;
+  page?: number;
+  size?: number;
+}
+
+export interface EmployeeCompensationRow {
+  empId: number;
+  empNumber: string;
+  fullName: string;
+  deptId?: number;
+  deptName: string;
+  jobTitle: string;
+  gradeId?: number;
+  gradeCode: string;
+  baseSalary: Money;
+  currencyCode: string;
+  payFrequency: string;
+  effectiveDate: string;
+  yearsInGrade: Years;
+  minSalary: Money;
+  maxSalary: Money;
+  compaRatio: Rate;
+}
+
+export interface CompensationByDepartment {
+  deptId: number;
+  deptName: string;
+  headcount: number;
+  avgSalary: Money;
+  minSalary: Money;
+  maxSalary: Money;
+  totalPayroll: Money;
+}
+
+export interface EmployeeCompensationPage {
+  asOf: string;
+  content: EmployeeCompensationRow[];
+  page: PageMeta;
+  summary: { byDepartment: CompensationByDepartment[] };
+}
+
+export interface LeaveSummaryQuery {
+  asOf?: string;
+  year?: number;
+  deptId?: number;
+  leaveTypeId?: number;
+  page?: number;
+  size?: number;
+}
+
+export interface LeaveSummaryRow {
+  empId: number;
+  empNumber: string;
+  empName: string;
+  deptName: string;
+  leaveTypeId: number;
+  leaveTypeName: string;
+  calendarYear: number;
+  openingBalance: Days;
+  accrued: Days;
+  used: Days;
+  adjustment: Days;
+  pending: Days;
+  /** `openingBalance + accrued - used + adjustment - pending` (VAL-05). */
+  available: Days;
+  utilizationPct: Percent;
+  /** Legacy view value (`available` without `- pending`), JSON only. */
+  legacyAvailable?: Days;
+}
+
+export interface LeaveUtilizationByType {
+  leaveTypeId: number;
+  leaveTypeName: string;
+  employees: number;
+  totalAccrued: Days;
+  totalUsed: Days;
+  avgUtilizationPct: Percent;
+}
+
+export interface LeaveSummaryPage {
+  asOf: string;
+  year: number;
+  content: LeaveSummaryRow[];
+  page: PageMeta;
+  summary: { byLeaveType: LeaveUtilizationByType[] };
+}
+
+export interface PayrollLatestQuery {
+  periodId?: number;
+  deptId?: number;
+  page?: number;
+  size?: number;
+}
+
+export interface PayrollLatestRow {
+  empId: number;
+  empNumber: string;
+  empName: string;
+  deptName: string;
+  periodId: number;
+  periodName: string;
+  payDate: string;
+  runId: number;
+  runType: RunType;
+  runStatus: 'APPROVED' | 'PAID';
+  grossPay: Money;
+  totalTaxes: Money;
+  totalDeductions: Money;
+  netPay: Money;
+}
+
+export interface PayrollSummary {
+  periodId: number;
+  employeeCount: number;
+  totalGross: Money;
+  totalTaxes: Money;
+  totalDeductions: Money;
+  totalNet: Money;
+  avgNet: Money;
+}
+
+export interface PayrollLatestPage {
+  content: PayrollLatestRow[];
+  page: PageMeta;
+  summary: PayrollSummary;
+}
+
+export type PendingItemType = 'LEAVE' | 'REVIEW';
+
+export interface PendingApprovalsQuery {
+  asOf?: string;
+  itemType?: PendingItemType;
+  /** Restrict to items awaiting the caller (JWT `empId`); never an employee id. */
+  mine?: boolean;
+  deptId?: number;
+  page?: number;
+  size?: number;
+}
+
+export interface PendingApprovalRow {
+  itemType: PendingItemType;
+  itemId: number;
+  empId: number;
+  empNumber?: string;
+  empName: string;
+  deptName: string;
+  approverEmpId?: number | null;
+  approverName?: string | null;
+  submittedDate: string;
+  daysPending: number;
+  detail: string;
+}
+
+export interface PendingApprovalPage {
+  asOf: string;
+  content: PendingApprovalRow[];
+  page: PageMeta;
+  summary: { leave: number; review: number };
+}
+
+// --- admin reference data ----------------------------------------------------
+export interface ActiveFilterQuery {
+  active?: boolean;
+}
+
+export interface DepartmentRequest {
+  deptCode: string;
+  deptName: string;
+  parentDeptId?: number | null;
+  costCenter?: string | null;
+  managerEmpId?: number | null;
+  locationCode?: string | null;
+  activeFlag?: boolean;
+}
+
+export interface Department extends Omit<DepartmentRequest, 'activeFlag'>, AuditColumns {
+  deptId: number;
+  parentDeptName?: string | null;
+  managerName?: string | null;
+  activeEmployees?: number;
+}
+
+export interface JobGradeRequest {
+  gradeCode: string;
+  gradeName: string;
+  minSalary: Money;
+  /** `>= minSalary` (`CHK_SALARY_RANGE`, `-20603`) – enforced by the server. */
+  maxSalary: Money;
+  overtimeEligible?: boolean;
+  activeFlag?: boolean;
+}
+
+export interface JobGrade extends Omit<JobGradeRequest, 'activeFlag'>, AuditColumns {
+  gradeId: number;
+  activeJobTitles?: number;
+}
+
+export type FlsaStatus = 'EXEMPT' | 'NON_EXEMPT';
+
+export interface JobTitleRequest {
+  jobCode: string;
+  jobTitle: string;
+  jobFamily?: string | null;
+  gradeId: number;
+  eeoCategory?: string | null;
+  flsaStatus?: FlsaStatus;
+  activeFlag?: boolean;
+}
+
+export interface JobTitle extends Omit<JobTitleRequest, 'activeFlag'>, AuditColumns {
+  jobId: number;
+  gradeCode: string;
+  activeEmployees?: number;
+}
+
+export interface LocationRequest {
+  locationCode: string;
+  locationName: string;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  stateProvince?: string | null;
+  postalCode?: string | null;
+  countryCode?: string | null;
+  phoneNumber?: string | null;
+  timezone?: string;
+  activeFlag?: boolean;
+}
+
+export interface Location extends Omit<LocationRequest, 'activeFlag'>, AuditColumns {
+  activeEmployees?: number;
+  activeDepartments?: number;
+}
+
+export type AccrualFrequency = 'MONTHLY' | 'BIWEEKLY' | 'ANNUAL';
+
+export interface LeaveTypeRequest {
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  paidFlag?: boolean;
+  accrualFlag?: boolean;
+  accrualRate?: string | null;
+  accrualFrequency?: AccrualFrequency | null;
+  maxBalance?: string | null;
+  /** `<= maxBalance` when both set (`-20603`) – enforced by the server. */
+  carryoverMax?: string | null;
+  carryoverExpiry?: number | null;
+  minTenureDays?: number;
+  requiresApproval?: boolean;
+  requiresDocument?: boolean;
+  activeFlag?: boolean;
+}
+
+export interface LeaveType extends Omit<LeaveTypeRequest, 'activeFlag'>, AuditColumns {
+  leaveTypeId: number;
+  pendingRequests?: number;
+}
+
+export type ParamDataType = 'VARCHAR2' | 'NUMBER' | 'DATE' | 'BOOLEAN';
+
+export interface SystemParameterRequest {
+  paramGroup: string;
+  paramCode: string;
+  paramValue: string;
+  paramDescription?: string | null;
+  dataType: ParamDataType;
+  editableFlag?: boolean;
+}
+
+export interface SystemParameterUpdateRequest {
+  paramValue: string;
+  paramDescription?: string | null;
+}
+
+export interface SystemParameter extends SystemParameterRequest {
+  paramId: number;
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+// --- admin leave jobs --------------------------------------------------------
+export interface AccrualRunRequest {
+  accrualDate?: string;
+}
+
+export interface CarryoverRunRequest {
+  year: number;
+}
+
+export type BatchJobType = 'ACCRUAL' | 'CARRYOVER';
+export type BatchJobStatus = 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export interface BatchRunResult {
+  jobId: string;
+  jobType: BatchJobType;
+  status: BatchJobStatus;
+  processed: number;
+  skipped: number;
+  failed: number;
+  startedAt: string;
+  finishedAt?: string | null;
+  startedBy: string;
+  message?: string | null;
+}
+
+// --- audit -------------------------------------------------------------------
+export type AuditActionType = 'INSERT' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | 'LOGIN' | 'LOGOUT';
+
+export interface AuditLogSearchQuery {
+  tableName?: string;
+  recordId?: number;
+  actionType?: AuditActionType;
+  changedBy?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface AuditLogRow {
+  auditId: number;
+  tableName: string;
+  recordId: number;
+  actionType: AuditActionType;
+  oldValues?: string | null;
+  newValues?: string | null;
+  changedBy: string;
+  changedDate: string;
+  ipAddress?: string | null;
+  sessionId?: string | null;
+}
+
+export interface AuditLogPage {
+  content: AuditLogRow[];
+  page: PageMeta;
+}
+
+// --- integration -------------------------------------------------------------
+export type FeedType = 'GL_JOURNAL' | 'BENEFITS_FEED' | 'TIME_ATTENDANCE';
+export type IntegrationFileStatus = 'SUCCESS' | 'FAILED' | 'STAGED';
+
+export interface GlFeedRequest {
+  runId: number;
+}
+
+export interface BenefitsFeedRequest {
+  effectiveDate?: string;
+}
+
+export interface IntegrationFile {
+  fileId: string;
+  feed: FeedType;
+  fileName: string;
+  status: IntegrationFileStatus;
+  sizeBytes: number;
+  sha256: string;
+  recordCount: number;
+  sourceRef?: string | null;
+  storageKey?: string;
+  contentUrl: string;
+  createdBy: string;
+  createdAt: string;
+  message?: string | null;
+}
+
+export interface IntegrationFileListQuery {
+  feed?: FeedType;
+  status?: IntegrationFileStatus;
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface IntegrationFilePage {
+  content: IntegrationFile[];
+  page: PageMeta;
+}
+
+export interface TimeAttendanceLine {
+  line: number;
+  empNumber: string;
+  empId?: number | null;
+  workDate: string;
+  hoursRegular: string;
+  hoursOvertime: string;
+  overtimeEligible?: boolean | null;
+  verdict: 'ACCEPTED' | 'REJECTED';
+  error?: ApiError | null;
+}
+
+/** BUG-08: `applied` is always false, `targetTable` / `payElementMapping` are unspecified (null). */
+export interface TimeAttendanceImportResult {
+  file: IntegrationFile;
+  accepted: number;
+  rejected: number;
+  lines: TimeAttendanceLine[];
+  applied: false;
+  targetTable: null;
+  payElementMapping: null;
+}
+
+export interface IntegrationStatus {
+  feed: FeedType;
+  status: 'NEVER_RUN' | 'SUCCESS' | 'FAILED' | 'STAGED';
+  lastRunAt?: string | null;
+  lastFileId?: string | null;
+  lastRunBy?: string | null;
+  message?: string | null;
+}

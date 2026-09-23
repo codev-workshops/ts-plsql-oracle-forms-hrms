@@ -18,6 +18,8 @@ import { PerformancePage } from './pages/performance/PerformancePage';
 import { LeavePage } from './pages/leave/LeavePage';
 import { EmployeePage } from './pages/employee/EmployeePage';
 import { PayrollPage } from './pages/payroll/PayrollPage';
+import { ReportsPage } from './pages/reports/ReportsPage';
+import { AdminPage } from './pages/admin/AdminPage';
 
 export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
@@ -39,7 +41,7 @@ export function AppRoutes() {
           <Route path="/forbidden" element={<ForbiddenPage />} />
           {promoted.map((t) => (
             <Route key={t.id} element={<ProtectedRoute anyOf={t.anyOf} />}>
-              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : t.id === 'employees' ? <EmployeePage /> : t.id === 'payroll' ? <PayrollPage /> : <ModulePlaceholderPage />} />
+              <Route path={`${t.path}/*`} element={t.id === 'performance' ? <PerformancePage /> : t.id === 'leave' ? <LeavePage /> : t.id === 'employees' ? <EmployeePage /> : t.id === 'payroll' ? <PayrollPage /> : t.id === 'reports' ? <ReportsPage /> : t.id === 'admin' ? <AdminPage /> : <ModulePlaceholderPage />} />
             </Route>
           ))}
         </Route>

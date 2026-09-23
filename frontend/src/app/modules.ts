@@ -19,6 +19,8 @@ export interface ModuleTile {
   anyOf: Authority[];
   /** Tiles without a recoverable source are hidden until Phase 5 (PROC-02). */
   hiddenUntilPhase5?: boolean;
+  /** Tiles with no proxy route of their own go live together with this module's flag. */
+  promotedWith?: ProxyModule;
 }
 
 export const MODULE_TILES: readonly ModuleTile[] = [
@@ -77,8 +79,20 @@ export const MODULE_TILES: readonly ModuleTile[] = [
     formsModule: null,
     anyOf: ['ADMIN:VIEW'],
     hiddenUntilPhase5: true,
+    // `/api/admin/**` and `/admin` are gated by the `reporting` flag (contracts/p5-reporting-decommission/openapi.yaml, "Proxy flags").
+    promotedWith: 'reporting',
   },
 ];
+
+/** Every switchable proxy module (proxy/flags.env); `auth` is NEW from Phase 0. */
+export const SWITCHABLE_MODULES: readonly ProxyModule[] = ['employee', 'payroll', 'leave', 'performance', 'reporting'];
+
+/**
+ * Forms decommission switch (CUTOVER_PLAN.md §9.3): `decommission=NEW` in `VITE_MODULE_FLAGS` is
+ * flipped after the 30-day zero-legacy-hit gate. It only takes effect once **every** switchable
+ * module is `NEW` – a module still on LEGACY / NEW_READONLY keeps its (disabled) legacy tile.
+ */
+export const DECOMMISSION_FLAG = 'decommission';
 
 /**
  * Proxy flag values per module, frozen vocabulary from contracts/p0-foundation/README.md.
@@ -86,6 +100,9 @@ export const MODULE_TILES: readonly ModuleTile[] = [
  * the default at the end of P0 is LEGACY for every switchable module.
  */
 export type ModuleFlagValue = 'LEGACY' | 'NEW_READONLY' | 'NEW' | 'JAVA';
+
+/** Flags of the running build (`VITE_MODULE_FLAGS`). */
+export const MODULE_FLAGS = parseModuleFlags(import.meta.env.VITE_MODULE_FLAGS);
 
 export function parseModuleFlags(raw: string | undefined): Record<string, ModuleFlagValue> {
   const out: Record<string, ModuleFlagValue> = { auth: 'NEW' };
@@ -98,18 +115,31 @@ export function parseModuleFlags(raw: string | undefined): Record<string, Module
 }
 
 export function isModulePromoted(tile: ModuleTile, flags: Record<string, ModuleFlagValue>): boolean {
-  if (!tile.proxyFlag) return false;
-  const v = flags[tile.proxyFlag];
+  const key = tile.proxyFlag ?? tile.promotedWith;
+  if (!key) return false;
+  const v = flags[key];
   return v === 'NEW' || v === 'NEW_READONLY';
+}
+
+export function allModulesNew(flags: Record<string, ModuleFlagValue>): boolean {
+  return SWITCHABLE_MODULES.every((m) => flags[m] === 'NEW');
+}
+
+/** True when the legacy tiles and the SSO bridge entry points must disappear from the shell. */
+export function isDecommissioned(flags: Record<string, ModuleFlagValue>): boolean {
+  return flags[DECOMMISSION_FLAG] === 'NEW' && allModulesNew(flags);
 }
 
 export function visibleTiles(
   roles: readonly Authority[],
   flags: Record<string, ModuleFlagValue>,
 ): Array<ModuleTile & { promoted: boolean }> {
+  const decommissioned = isDecommissioned(flags);
   return MODULE_TILES.filter((t) => {
     if (t.anyOf.length > 0 && !t.anyOf.some((a) => roles.includes(a))) return false;
-    if (t.hiddenUntilPhase5 && !isModulePromoted(t, flags)) return false;
+    const promoted = isModulePromoted(t, flags);
+    if (t.hiddenUntilPhase5 && !promoted) return false;
+    if (decommissioned && !promoted) return false;
     return true;
   }).map((t) => ({ ...t, promoted: isModulePromoted(t, flags) }));
 }

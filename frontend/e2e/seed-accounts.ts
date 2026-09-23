@@ -87,5 +87,8 @@ export const ROLE_AUTHORITIES: Record<SeedAccount['role'], Authority[]> = {
     'PERFORMANCE:APPROVE',
     'PERFORMANCE:CREATE',
     'PERFORMANCE:ADMIN',
+    // P5 batch triggers / P2 x-deferred routes (contracts/p5-reporting-decommission/README.md).
+    'LEAVE:ADMIN',
+    'LEAVE:VIEW_ALL',
   ],
 };

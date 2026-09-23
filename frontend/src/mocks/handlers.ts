@@ -18,6 +18,8 @@ import { createLeaveHandlers } from './leaveHandlers';
 import { createEmployeeHandlers } from './employeeHandlers';
 import { createPayrollHandlers } from './payrollHandlers';
 import { resetPayrollState } from './payrollStore';
+import { createP5Handlers } from './p5Handlers';
+import { resetP5State } from './p5Store';
 import { resetEmployeeState } from './employeeStore';
 import { resetLeaveState } from './leaveStore';
 
@@ -103,6 +105,7 @@ export function resetMockState() {
   resetLeaveState(MOCK_LEAVE_TYPES);
   resetEmployeeState({ departments: MOCK_DEPARTMENTS, jobTitles: MOCK_JOB_TITLES, locations: MOCK_LOCATIONS });
   resetPayrollState();
+  resetP5State();
 }
 
 /** Test helper: pretend the browser holds a valid `hrms_refresh` cookie for this user. */
@@ -297,3 +300,13 @@ export const payrollHandlers = createPayrollHandlers((request) => {
 });
 
 handlers.push(...payrollHandlers);
+
+/** contracts/p5-reporting-decommission – reports, admin reference data + audit, leave batch triggers, integration. */
+export const p5Handlers = createP5Handlers((request) => {
+  const session = authenticate(request);
+  if (!session) return null;
+  const user = MOCK_USERS[session.email];
+  return user ? { userId: user.userId, empId: user.empId, username: user.email, roles: user.roles } : null;
+});
+
+handlers.push(...p5Handlers);

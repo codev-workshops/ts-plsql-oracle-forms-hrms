@@ -1,12 +1,15 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useErrorHandler } from './useErrorHandler';
-import { visibleTiles, parseModuleFlags } from './modules';
+import { useModuleFlags } from './ModuleFlagsContext';
+import { MODULE_FLAGS, isDecommissioned, visibleTiles } from './modules';
 
-export const MODULE_FLAGS = parseModuleFlags(import.meta.env.VITE_MODULE_FLAGS);
+export { MODULE_FLAGS };
 
 /**
  * Replaces HRMS_MENU (`MM_HRMS` top menu + `USER_INFO`) – COMPONENT_MAPPING.md §2.
+ * Non-promoted modules render as legacy (`data-legacy`) links – the SSO-bridge entry points –
+ * until `decommission=NEW` with every module NEW removes them (CUTOVER_PLAN.md §9.3).
  */
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -23,11 +26,13 @@ export function AppShell() {
     }
   };
 
-  const tiles = user ? visibleTiles(user.roles, MODULE_FLAGS) : [];
+  const flags = useModuleFlags();
+  const tiles = user ? visibleTiles(user.roles, flags) : [];
+  const decommissioned = isDecommissioned(flags);
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <header className="app-header" data-decommissioned={decommissioned ? 'true' : undefined}>
         <Link to="/" className="brand">
           HRMS
         </Link>
