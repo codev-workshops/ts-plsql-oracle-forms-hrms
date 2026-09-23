@@ -208,11 +208,11 @@ class RegistryAndReportTest {
     Scenario accrual = byId.get("leave.batch.accrual.seed-year");
     Scenario carryover = byId.get("leave.batch.carryover.seed-year");
     assertThat(accrual.expect().fields())
-        .containsEntry("accrued", "8.75")
-        .containsEntry("available", "10.75");
+        .containsEntry(LeaveScenarios.pto("accrued"), "8.75")
+        .containsEntry(LeaveScenarios.pto("available"), "10.75");
     assertThat(carryover.expect().fields())
-        .containsEntry("carryoverFromPrev", "5")
-        .containsEntry("openingBalance", "5");
+        .containsEntry(LeaveScenarios.pto("carryoverFromPrev"), "5")
+        .containsEntry(LeaveScenarios.pto("openingBalance"), "5");
     for (Scenario s : List.of(accrual, carryover)) {
       assertThat(s.target().path()).as(s.id()).startsWith("/api/leave/balances/mine?year=");
       RestCall job = s.target().setup().get(0);
@@ -552,5 +552,97 @@ class RegistryAndReportTest {
     assertThat(RestRunner.select(n, "content[0].errorCode").asText()).isEqualTo("-20104");
     assertThat(RestRunner.select(n, "content[3].errorCode").isMissingNode()).isTrue();
     assertThat(RestRunner.select(n, "totalElements").asInt()).isEqualTo(1);
+  }
+
+  /**
+   * Remediation round 2: after the accrual job GET /api/leave/balances/mine?year=2024 returns one
+   * row per active leave type ordered by name (Bereavement first), so the seed-year batch scenarios
+   * must select the PTO row instead of projecting element 0.
+   */
+  @Test
+  void balancesProjectionSelectsThePtoRowNotTheFirstElement() throws Exception {
+    String body =
+        "[{\"leaveTypeId\":6,\"leaveTypeName\":\"Bereavement\",\"accrued\":0,\"available\":0,"
+            + "\"carryoverFromPrev\":0,\"openingBalance\":0},"
+            + "{\"leaveTypeId\":3,\"leaveTypeName\":\"Compensatory Time\",\"accrued\":0,"
+            + "\"available\":0,\"carryoverFromPrev\":0,\"openingBalance\":0},"
+            + "{\"leaveTypeId\":1,\"leaveTypeName\":\"Paid Time Off\",\"accrued\":8.75,"
+            + "\"available\":10.75,\"carryoverFromPrev\":5.00,\"openingBalance\":5.00},"
+            + "{\"leaveTypeId\":2,\"leaveTypeName\":\"Sick Leave\",\"accrued\":0,\"available\":0,"
+            + "\"carryoverFromPrev\":0,\"openingBalance\":0}]";
+    Map<String, Scenario> byId = new java.util.HashMap<>();
+    ScenarioRegistry.all().forEach(s -> byId.put(s.id(), s));
+    Scenario accrual = byId.get("leave.batch.accrual.seed-year");
+    Scenario carryover = byId.get("leave.batch.carryover.seed-year");
+
+    // the finding: an un-selected projection lands on Bereavement 0/0
+    Outcome first =
+        RestRunner.project(response(200, body), java.util.Set.of("accrued", "available"));
+    assertThat(first.fields()).containsEntry("accrued", "0").containsEntry("available", "0");
+
+    assertThat(RestRunner.project(response(200, body), accrual.expect().fields().keySet()))
+        .isEqualTo(accrual.expect());
+    assertThat(RestRunner.project(response(200, body), carryover.expect().fields().keySet()))
+        .isEqualTo(carryover.expect());
+    assertThat(LeaveScenarios.pto("accrued")).isEqualTo("[leaveTypeId=1].accrued");
+    assertThat(LeaveScenarios.pto("accrued")).matches(RestRunner.ELEMENT_SELECTOR);
+
+    // filter over a non-matching attribute / non-array → missing, never element 0
+    Outcome none =
+        RestRunner.project(response(200, body), java.util.Set.of("[leaveTypeId=99].accrued"));
+    assertThat(none.fields()).containsEntry("[leaveTypeId=99].accrued", null);
+    assertThat(
+            RestRunner.project(
+                    response(200, "{\"accrued\":1}"), java.util.Set.of("[leaveTypeId=1].accrued"))
+                .fields())
+        .containsEntry("[leaveTypeId=1].accrued", null);
+    // index selectors keep working on the same path (salary history uses [1].endDate)
+    assertThat(
+            RestRunner.project(response(200, body), java.util.Set.of("[2].leaveTypeName")).fields())
+        .containsEntry("[2].leaveTypeName", "Paid Time Off");
+  }
+
+  private static java.net.http.HttpResponse<String> response(int status, String body) {
+    return new java.net.http.HttpResponse<>() {
+      @Override
+      public int statusCode() {
+        return status;
+      }
+
+      @Override
+      public java.net.http.HttpRequest request() {
+        return null;
+      }
+
+      @Override
+      public java.util.Optional<java.net.http.HttpResponse<String>> previousResponse() {
+        return java.util.Optional.empty();
+      }
+
+      @Override
+      public java.net.http.HttpHeaders headers() {
+        return java.net.http.HttpHeaders.of(Map.of(), (a, b) -> true);
+      }
+
+      @Override
+      public String body() {
+        return body;
+      }
+
+      @Override
+      public java.util.Optional<javax.net.ssl.SSLSession> sslSession() {
+        return java.util.Optional.empty();
+      }
+
+      @Override
+      public java.net.URI uri() {
+        return null;
+      }
+
+      @Override
+      public java.net.http.HttpClient.Version version() {
+        return java.net.http.HttpClient.Version.HTTP_1_1;
+      }
+    };
   }
 }

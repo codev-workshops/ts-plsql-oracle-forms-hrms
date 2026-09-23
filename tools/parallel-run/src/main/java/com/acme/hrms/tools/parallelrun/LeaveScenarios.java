@@ -309,8 +309,9 @@ final class LeaveScenarios {
                             Map.of("accrualDate", "2024-07-31"),
                             MANAGER),
                         call("GET", JOB_PATH, null, MANAGER))),
-            // accrued 7.5 + 1.25 (PTO MONTHLY), available 5 + 8.75 - 3
-            Outcome.ok(Map.of("accrued", "8.75", "available", "10.75"))),
+            // accrued 7.5 + 1.25 (PTO MONTHLY), available 5 + 8.75 - 3. The job initialises a
+            // 2024 row for every active type and the list is ordered by name, so select PTO.
+            Outcome.ok(Map.of(pto("accrued"), "8.75", pto("available"), "10.75"))),
         new Scenario(
             "leave.batch.carryover.seed-year",
             MODULE,
@@ -326,7 +327,7 @@ final class LeaveScenarios {
                         call("POST", "/api/admin/leave/carryover", Map.of("year", 2024), MANAGER),
                         call("GET", JOB_PATH, null, MANAGER))),
             // available 10.75 after the accrual above, capped at carryover_max 5
-            Outcome.ok(Map.of("carryoverFromPrev", "5", "openingBalance", "5"))),
+            Outcome.ok(Map.of(pto("carryoverFromPrev"), "5", pto("openingBalance"), "5"))),
         new Scenario(
             "leave.batch.carryover.expire.bug-04",
             MODULE,
@@ -382,6 +383,11 @@ final class LeaveScenarios {
 
   private static RestCall decide(String action, Map<String, Object> body) {
     return call("POST", "/api/leave/requests/{requestId}/" + action, body, MANAGER);
+  }
+
+  /** Selector for a field of the PTO row of {@code GET /api/leave/balances/mine}. */
+  static String pto(String field) {
+    return "[leaveTypeId=" + PTO + "]." + field;
   }
 
   private static RestCall balances(int year) {

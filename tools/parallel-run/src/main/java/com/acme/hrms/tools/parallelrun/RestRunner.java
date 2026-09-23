@@ -179,21 +179,16 @@ public final class RestRunner {
     }
     if (n.isArray()) {
       // List endpoints project their first element unless a wanted field explicitly selects an
-      // array index (salary history uses [1].endDate to inspect the closed prior row).
-      boolean indexed = wanted.stream().anyMatch(w -> w.matches("\\[\\d+\\]\\..+"));
-      if (!indexed) {
+      // element: by index (salary history uses [1].endDate to inspect the closed prior row) or
+      // by attribute (leave balances use [leaveTypeId=1].accrued to pick the PTO row).
+      boolean selected = wanted.stream().anyMatch(w -> w.matches(ELEMENT_SELECTOR));
+      if (!selected) {
         n = n.isEmpty() ? JSON.createObjectNode() : n.get(0);
       }
     }
     Map<String, String> fields = new LinkedHashMap<>();
     for (String w : wanted) {
       JsonNode v = w.contains(".") || w.contains("[") ? select(n, w) : n.path(w);
-      if (w.matches("\\[\\d+\\]\\..+")) {
-        int dot = w.indexOf('.');
-        int index = Integer.parseInt(w.substring(1, dot - 1));
-        String key = w.substring(dot + 1);
-        v = n.isArray() && index < n.size() ? n.get(index).path(key) : JSON.missingNode();
-      }
       if (v.isMissingNode() && w.equals("emp_id")) {
         v = n.path("user").path("empId");
       }
@@ -202,9 +197,13 @@ public final class RestRunner {
     return Outcome.ok(fields);
   }
 
+  /** A wanted field that starts with an element selector on the root array: {@code [..].x}. */
+  static final String ELEMENT_SELECTOR = "\\[[^\\]]+\\]\\..+";
+
   /**
-   * Dotted / indexed selector over the response, e.g. {@code summary.matched} or {@code
-   * content[0].errorCode}; a missing hop yields a missing node.
+   * Dotted / indexed / filtered selector over the response, e.g. {@code summary.matched}, {@code
+   * content[0].errorCode} or {@code [leaveTypeId=1].accrued} (first array element whose attribute
+   * renders as the given text); a missing hop yields a missing node.
    */
   static JsonNode select(JsonNode root, String selector) {
     JsonNode cur = root;
@@ -216,12 +215,30 @@ public final class RestRunner {
       }
       while (bracket >= 0) {
         int close = hop.indexOf(']', bracket);
-        int index = Integer.parseInt(hop.substring(bracket + 1, close));
-        cur = cur.isArray() && index < cur.size() ? cur.get(index) : JSON.missingNode();
+        cur = element(cur, hop.substring(bracket + 1, close));
         bracket = hop.indexOf('[', close);
       }
     }
     return cur;
+  }
+
+  private static JsonNode element(JsonNode array, String spec) {
+    if (!array.isArray()) {
+      return JSON.missingNode();
+    }
+    int eq = spec.indexOf('=');
+    if (eq < 0) {
+      int index = Integer.parseInt(spec);
+      return index < array.size() ? array.get(index) : JSON.missingNode();
+    }
+    String attr = spec.substring(0, eq);
+    String value = spec.substring(eq + 1);
+    for (JsonNode e : array) {
+      if (e.hasNonNull(attr) && text(e.get(attr)).equals(value)) {
+        return e;
+      }
+    }
+    return JSON.missingNode();
   }
 
   /** JSON numbers as Oracle's NUMBER getString renders them: no trailing zeros (5.00 → 5). */
