@@ -17,11 +17,14 @@ export const salaryHistoryKey = (id: number) => ['salary', 'history', id] as con
  */
 export function useEmployeeWrite() {
   const writable = useModuleWritable('employee');
-  const { hasAuthority } = useAuth();
+  const { user, hasAuthority } = useAuth();
   return {
     readOnly: !writable,
     canEditEmployee: writable && hasAuthority('EMPLOYEE:EDIT'),
     canChangeSalary: writable && hasAuthority('PAYROLL:EDIT'),
+    canReadSalary: (empId: number) => user?.empId === empId || hasAuthority('PAYROLL:VIEW') || hasAuthority('EMPLOYEE:EDIT'),
+    canReadRelated: (empId: number) => user?.empId === empId || hasAuthority('EMPLOYEE:EDIT'),
+    canEditRelated: (empId: number) => writable && (user?.empId === empId || hasAuthority('EMPLOYEE:EDIT')),
   };
 }
 

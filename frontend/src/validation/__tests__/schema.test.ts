@@ -1,6 +1,6 @@
 import generated from '../../generated/validation-schema.json';
 import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
-import { evaluateRules, fieldErrors, getDto, getParameter, validationSchema, zodFor } from '../schema';
+import { evaluateCustomRule, evaluateRules, fieldErrors, getDto, getParameter, validationSchema, zodFor } from '../schema';
 
 describe('validation-schema adapter', () => {
   it('loads the generated envelope verbatim', () => {
@@ -28,6 +28,17 @@ describe('validation-schema adapter', () => {
     expect(evaluateRules(field, 'lowercase1')?.errorCode).toBe('-20311');
     expect(evaluateRules(field, 'NoDigitsHere')?.errorCode).toBe('-20312');
     expect(evaluateRules(field, 'GoodPass1')).toBeNull();
+  });
+
+  it('evaluates the employee hire-date boundary using the exported parameter', () => {
+    const field = getDto('EmployeeCreateRequest').fields.hireDate;
+    const rule = field.rules![0];
+    const parameter = rule.parameter;
+    expect(parameter).toBe('HR.MAX_FUTURE_HIRE_DAYS');
+    const days = Number(getParameter(parameter!));
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    expect(evaluateCustomRule(rule, day(days - 1), {})).toBe(true);
+    expect(evaluateCustomRule(rule, day(days + 2), {})).toBe(false);
   });
 
   it('the ChangePasswordRequest Zod schema surfaces the first failing rule message only', () => {

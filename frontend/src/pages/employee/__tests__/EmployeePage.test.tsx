@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SEED_ACCOUNTS } from '../../../../e2e/seed-accounts';
+import { server } from '../../../mocks/server';
 import { renderEmployeesAs } from './employeeTestUtils';
 
 describe('EmployeePage – grid', () => {
@@ -118,5 +119,47 @@ describe('EmployeePage – detail record', () => {
     renderEmployeesAs(SEED_ACCOUNTS.staff.email, '/employees/21');
     await screen.findByRole('heading', { name: /PARK, JENNIFER/ });
     expect(screen.queryByText(/•••-••-\d{4}/)).not.toBeInTheDocument();
+  });
+
+  it('does not fetch scoped tabs for another employee without authority', async () => {
+    const requests: string[] = [];
+    const onRequest = ({ request }: { request: Request }) => {
+      if (/\/api\/employees\/21\/(salary|dependents|contacts)/.test(request.url)) requests.push(request.url);
+    };
+    server.events.on('request:start', onRequest);
+    try {
+      renderEmployeesAs(SEED_ACCOUNTS.staff.email, '/employees/21/salary');
+      await screen.findByRole('heading', { name: /PARK, JENNIFER/ });
+      expect(screen.getByRole('alert')).toHaveTextContent('not permitted');
+      expect(screen.queryByRole('tab', { name: 'Salary' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Dependents' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Contacts' })).not.toBeInTheDocument();
+      expect(requests).toHaveLength(0);
+    } finally {
+      server.events.removeListener('request:start', onRequest);
+    }
+  });
+
+  it('allows self-service related writes only under NEW, not employee edits', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderEmployeesAs(SEED_ACCOUNTS.staff.email, '/employees/11/dependents');
+    await screen.findByRole('table', { name: 'Dependents' });
+    expect(screen.getByRole('button', { name: 'Add dependent' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit dependent LUCIA MARTINEZ' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add dependent' }));
+    expect(screen.getByLabelText('SSN')).toHaveAttribute('type', 'password');
+    expect(screen.queryByRole('button', { name: 'Transfer' })).not.toBeInTheDocument();
+    unmount();
+
+    renderEmployeesAs(SEED_ACCOUNTS.staff.email, '/employees/11/contacts', 'NEW_READONLY');
+    await screen.findByRole('table', { name: 'Emergency contacts' });
+    expect(screen.queryByRole('button', { name: 'Add contact' })).not.toBeInTheDocument();
+  });
+
+  it('hides related writes on terminated employees', async () => {
+    renderEmployeesAs(SEED_ACCOUNTS.executive.email, '/employees/9/dependents');
+    await screen.findByRole('heading', { name: /OLDMAN, ROBERT/ });
+    expect(screen.queryByRole('button', { name: 'Add dependent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit dependent/ })).not.toBeInTheDocument();
   });
 });

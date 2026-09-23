@@ -42,6 +42,7 @@ export interface FieldSpec {
   scale?: number;
   values?: string[];
   rules?: FieldRule[];
+  sensitive?: boolean;
   messages: FieldMessages;
 }
 
@@ -151,7 +152,7 @@ export function evaluateCustomRule(rule: FieldRule, value: unknown, values: Reco
     case 'leave.pastLimit':
       return day >= todayUtcDay() - Number(rule.value);
     case 'employee.hireDateLimit':
-      return day <= todayUtcDay() + Number(rule.value);
+      return day <= todayUtcDay() + Number(rule.parameter ? getParameter(rule.parameter) : rule.value);
     case 'employee.dateNotFuture':
       return day <= todayUtcDay();
     default:

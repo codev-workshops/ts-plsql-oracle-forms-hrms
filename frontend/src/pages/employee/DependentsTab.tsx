@@ -5,7 +5,7 @@ import type { Dependent, DependentRequest, EmployeeDetail, Relationship } from '
 import { formatDate } from '../../app/format';
 import { useToast } from '../../app/ToastContext';
 import { useErrorHandler } from '../../app/useErrorHandler';
-import { fieldErrors as zodFieldErrors, zodFor } from '../../validation/schema';
+import { fieldErrors as zodFieldErrors, getDto, zodFor } from '../../validation/schema';
 import { RELATIONSHIPS, compact, employeeDependentsKey, humanize, useEmployeeWrite } from './employeeShared';
 
 const schema = zodFor('DependentRequest');
@@ -38,7 +38,8 @@ function fromRow(d: Dependent): Values {
 /** `DEPENDENT` block (HRMS_EMPLOYEE.fmb "Dependents" tab) → `/api/employees/{id}/dependents`. */
 export function DependentsTab({ employee }: { employee: EmployeeDetail }) {
   const qc = useQueryClient();
-  const { canEditEmployee } = useEmployeeWrite();
+  const { canEditRelated } = useEmployeeWrite();
+  const editable = canEditRelated(employee.id) && employee.employmentStatus !== 'TERMINATED';
   const [editing, setEditing] = useState<Dependent | 'new' | null>(null);
   const dependents = useQuery({ queryKey: employeeDependentsKey(employee.id), queryFn: () => api.employees.listDependents(employee.id) });
   const saved = () => {
@@ -50,7 +51,7 @@ export function DependentsTab({ employee }: { employee: EmployeeDetail }) {
     <section aria-labelledby="dependents-title">
       <div className="toolbar">
         <h3 id="dependents-title">Dependents</h3>
-        {canEditEmployee && editing === null && <button type="button" onClick={() => setEditing('new')}>Add dependent</button>}
+        {editable && editing === null && <button type="button" onClick={() => setEditing('new')}>Add dependent</button>}
       </div>
       {dependents.isPending ? (
         <p role="status">Loading…</p>
@@ -59,7 +60,7 @@ export function DependentsTab({ employee }: { employee: EmployeeDetail }) {
       ) : dependents.data.length ? (
         <table className="grid" aria-label="Dependents">
           <thead>
-            <tr><th>Name</th><th>Relationship</th><th>Date of birth</th><th>SSN</th><th>Benefits</th><th>Active</th>{canEditEmployee && <th />}</tr>
+            <tr><th>Name</th><th>Relationship</th><th>Date of birth</th><th>SSN</th><th>Benefits</th><th>Active</th>{editable && <th />}</tr>
           </thead>
           <tbody>
             {dependents.data.map((d) => (
@@ -70,7 +71,7 @@ export function DependentsTab({ employee }: { employee: EmployeeDetail }) {
                 <td>{d.ssnLast4 ? `•••-••-${d.ssnLast4}` : '—'}</td>
                 <td>{d.benefitsEnrolled ? 'Enrolled' : 'No'}</td>
                 <td>{d.active ? 'Yes' : 'No'}</td>
-                {canEditEmployee && (
+                {editable && (
                   <td>
                     <button type="button" onClick={() => setEditing(d)} aria-label={`Edit dependent ${d.firstName} ${d.lastName}`}>Edit</button>
                   </td>
@@ -82,7 +83,7 @@ export function DependentsTab({ employee }: { employee: EmployeeDetail }) {
       ) : (
         <p>No dependents recorded.</p>
       )}
-      {editing !== null && canEditEmployee && (
+      {editing !== null && editable && (
         <DependentForm empId={employee.id} dependent={editing === 'new' ? null : editing} onCancel={() => setEditing(null)} onSaved={saved} />
       )}
     </section>
@@ -148,7 +149,7 @@ function DependentForm({ empId, dependent, onCancel, onSaved }: { empId: number;
         </div>
         <div className="field">
           <label htmlFor="dep-ssn">{dependent ? 'New SSN (leave blank to keep)' : 'SSN'}</label>
-          <input id="dep-ssn" value={values.ssn} maxLength={11} autoComplete="off" placeholder="NNN-NN-NNNN" onChange={(e) => set('ssn', e.target.value)} aria-invalid={errors.ssn ? true : undefined} />
+          <input id="dep-ssn" type={getDto('DependentRequest').fields.ssn.sensitive ? 'password' : 'text'} value={values.ssn} maxLength={11} autoComplete="off" placeholder="NNN-NN-NNNN" onChange={(e) => set('ssn', e.target.value)} aria-invalid={errors.ssn ? true : undefined} />
           {errors.ssn && <span role="alert" className="field-error">{errors.ssn}</span>}
         </div>
         <fieldset className="field">
