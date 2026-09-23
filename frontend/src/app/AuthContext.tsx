@@ -7,9 +7,8 @@ import type { Authority, CurrentUser, LoginRequest, TokenResponse } from '../api
  * Replaces `:GLOBAL.session_id / current_user / current_emp_id` (COMPONENT_MAPPING.md §1, §7).
  * Identity is whatever the server derived from the JWT; the token itself is held in memory
  * by `api/http.ts` and never persisted. On mount we try one silent refresh (HttpOnly cookie)
- * to restore a session after a reload. The refresh goes through the single-flight
- * `refreshAccessToken` so a StrictMode double effect (or a concurrent 401 replay) never sends
- * the same rotating `hrms_refresh` token twice — the server treats that as a replay.
+ * to restore a session after a reload, via the single-flight `refreshAccessToken` (the
+ * `hrms_refresh` token rotates on every use, so it must never be presented twice).
  */
 
 export type AuthStatus = 'initialising' | 'anonymous' | 'authenticated';

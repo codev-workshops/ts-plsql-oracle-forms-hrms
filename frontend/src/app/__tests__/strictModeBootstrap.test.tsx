@@ -9,14 +9,6 @@ import { SEED_ACCOUNTS } from '../../../e2e/seed-accounts';
 import { ProtectedRoute } from '../ProtectedRoute';
 import { SESSION_EXPIRED_MESSAGE } from '../AuthContext';
 
-/**
- * Regression: `main.tsx` renders under <StrictMode>, which mounts → unmounts → remounts
- * effects in development. The auth-service rotates the `hrms_refresh` cookie on every
- * `POST /api/auth/refresh` and treats a second presentation of the same token as a replay
- * (it revokes the session family). A duplicate bootstrap refresh therefore logs a returning
- * user straight out again. The handler below mirrors that rotation semantics: the seeded
- * token is accepted exactly once, any replay is a 401 that also kills the rotated token.
- */
 function routes() {
   return (
     <Routes>

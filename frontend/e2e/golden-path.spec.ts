@@ -12,12 +12,7 @@ import { SEED_ACCOUNTS, SEED_PASSWORD } from './seed-accounts';
 const ROTATED_PASSWORD = 'Stronger9!';
 const REAL_STACK = process.env.E2E_REAL_STACK === '1';
 
-/**
- * Click Save and wait for the *actual* `PUT /api/auth/password` 204 of this submission.
- * The success toast stays on screen for 6 s (ToastProvider), so a bare `getByText('Password
- * changed')` after a second change is satisfied by the previous toast while the second PUT
- * is still hashing on the server (BCrypt ~0.5 s) — the real-stack race seen in integration.
- */
+/** Click Save and wait for this submission's own `PUT /api/auth/password` 204. */
 async function saveAndAwaitPasswordChange(page: Page): Promise<void> {
   const changed = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/api/auth/password') && r.status() === 204);
   await page.getByRole('button', { name: 'Save' }).click();
@@ -30,14 +25,17 @@ async function dismissAllToasts(page: Page): Promise<void> {
   await expect(page.getByText('Password changed')).toHaveCount(0);
 }
 
-/** Real stack only: if the spec died between the two changes, put the seed password back. */
+/** Real stack only: put the seed password back if the executive account is left rotated. */
 async function restoreSeedPassword(request: APIRequestContext): Promise<void> {
   const login = await request.post('/api/auth/login', { data: { username: SEED_ACCOUNTS.executive.email, password: ROTATED_PASSWORD } });
-  if (!login.ok()) return; // seed password already in place (or account locked) — nothing to undo
+  if (!login.ok()) return;
   const { accessToken } = (await login.json()) as { accessToken: string };
   const headers = { Authorization: `Bearer ${accessToken}` };
-  await request.put('/api/auth/password', { headers, data: { currentPassword: ROTATED_PASSWORD, newPassword: SEED_PASSWORD } });
+  const restored = await request.put('/api/auth/password', { headers, data: { currentPassword: ROTATED_PASSWORD, newPassword: SEED_PASSWORD } });
   await request.post('/api/auth/logout', { headers });
+  if (restored.status() !== 204) {
+    throw new Error(`seed password for ${SEED_ACCOUNTS.executive.email} is still '${ROTATED_PASSWORD}': restore PUT returned ${restored.status()}`);
+  }
 }
 
 test.describe('P0 golden path', () => {
@@ -86,10 +84,7 @@ test.describe('P0 golden path', () => {
     await expect(page).toHaveURL(/\/employees$/);
   });
 
-  // Regression: the dev bundle runs under <StrictMode>; a duplicated bootstrap refresh replays
-  // the rotating hrms_refresh cookie and the auth-service revokes the session on reload.
-  // Real stack only: the msw worker's session store lives in page memory and is wiped by reload
-  // (the Vitest StrictMode regression covers the mock semantics).
+  // Real stack only: the msw worker's session store lives in page memory and is wiped by reload.
   test('reload restores the session with exactly one POST /api/auth/refresh', async ({ page }) => {
     test.skip(!REAL_STACK, 'msw session store does not survive a reload');
     await page.goto('/login');
@@ -123,7 +118,11 @@ test.describe('P0 golden path', () => {
     try {
       await runChangePasswordScenario(page);
     } catch (err) {
-      if (REAL_STACK) await restoreSeedPassword(request);
+      if (REAL_STACK) {
+        await restoreSeedPassword(request).catch((restoreErr: Error) => {
+          throw new Error(`${restoreErr.message}\ncaused while handling: ${(err as Error).message}`, { cause: err });
+        });
+      }
       throw err;
     }
   });
