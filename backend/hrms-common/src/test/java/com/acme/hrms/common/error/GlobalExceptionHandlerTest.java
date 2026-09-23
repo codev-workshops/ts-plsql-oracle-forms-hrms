@@ -10,9 +10,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.acme.hrms.common.trace.TraceContext;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,8 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -79,36 +74,6 @@ class GlobalExceptionHandlerTest {
         .record(
             anyString(), eq(ErrorCode.INTERNAL_ERROR), anyInt(), anyString(), any(), any(), any());
   }
-
-  @Test
-  void unknownJsonPropertyIsValidationFailedOnThatField() throws Exception {
-    JsonMappingException unknown =
-        org.junit.jupiter.api.Assertions.assertThrows(
-            JsonMappingException.class,
-            () ->
-                JsonMapper.builder()
-                    .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                    .build()
-                    .readValue("{\"hireDate\":null}", KnownFields.class));
-    ResponseEntity<ApiError> r =
-        handler.handleBadRequest(
-            new HttpMessageNotReadableException(
-                "JSON parse error", unknown, new MockHttpInputMessage(new byte[0])),
-            request);
-    assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertThat(r.getBody().code()).isEqualTo("VALIDATION_FAILED");
-    assertThat(r.getBody().field()).isEqualTo("hireDate");
-    assertThat(r.getBody().details())
-        .containsExactly(new ApiError.Detail("hireDate", "UnknownProperty", "Unknown property"));
-
-    ResponseEntity<ApiError> malformed =
-        handler.handleBadRequest(
-            new HttpMessageNotReadableException("x", new MockHttpInputMessage(new byte[0])),
-            request);
-    assertThat(malformed.getBody().field()).isEqualTo("body");
-  }
-
-  record KnownFields(String firstName) {}
 
   @Test
   void securityExceptionsMap() {

@@ -7,6 +7,7 @@ import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
@@ -20,7 +21,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Row scope, proxy write guard and the legacy-coded body checks that must win over generic Bean
- * Validation ({@code -20010}, {@code -20501}, {@code -20101}; error-codes.md §3 step 5).
+ * Validation ({@code -20010}, {@code -20501}, {@code -20101}; error-codes.md §3 step 5). Unknown
+ * body properties ({@code additionalProperties: false}) are rejected in the same step, after the
+ * legacy-coded checks and before Bean Validation.
  */
 @Component
 public class EmployeeAccess {
@@ -75,6 +78,9 @@ public class EmployeeAccess {
   public <T> T validate(@Nullable T body) {
     if (body == null) {
       throw new HrmsException(ErrorCode.VALIDATION_FAILED, "Malformed request body", "body");
+    }
+    if (body instanceof StrictRequest strict) {
+      strict.requireNoUnknownProperties();
     }
     Set<ConstraintViolation<T>> violations = validator.validate(body);
     if (!violations.isEmpty()) {

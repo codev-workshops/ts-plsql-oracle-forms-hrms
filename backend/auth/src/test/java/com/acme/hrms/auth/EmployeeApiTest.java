@@ -140,21 +140,49 @@ class EmployeeApiTest extends AuthApiTestBase {
           .andExpect(jsonPath("$.field").value(property));
     }
 
-    // known-field validation, authority and the module flag are untouched
-    Map<String, Object> blankName = update("", "api.strict@company.com");
-    mvc.perform(json(put("/api/employees/" + id), exec, blankName).header("If-Match", etag))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("-20010"));
-    Map<String, Object> valid = update("STRICT", "api.strict@company.com");
-    mvc.perform(json(put("/api/employees/" + id), staff, valid).header("If-Match", etag))
+    // error-codes.md §3: authority, required If-Match and -20010 all win over the unknown property
+    mvc.perform(json(put("/api/employees/" + id), staff, frozen).header("If-Match", etag))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     mvc.perform(json(put("/api/employees/" + id), exec, frozen))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-    mvc.perform(json(put("/api/employees/" + id), exec, valid))
         .andExpect(status().isPreconditionRequired())
         .andExpect(jsonPath("$.code").value("PRECONDITION_REQUIRED"));
+    Map<String, Object> blankName = update("", "api.strict@company.com");
+    blankName.put("hireDate", "2020-01-01");
+    mvc.perform(json(put("/api/employees/" + id), exec, blankName).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20010"))
+        .andExpect(jsonPath("$.field").value("firstName"));
+    Map<String, Object> blankCreate = newEmployee("api.strict3@company.com");
+    blankCreate.put("lastName", " ");
+    blankCreate.put("empNumber", "EMP-999999");
+    mvc.perform(json(post("/api/employees"), exec, blankCreate))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20010"))
+        .andExpect(jsonPath("$.field").value("lastName"));
+    // ... and the unknown property still wins over generic Bean Validation of known fields
+    Map<String, Object> badEmail = update("STRICT", "not-an-email");
+    badEmail.put("hireDate", "2020-01-01");
+    mvc.perform(json(put("/api/employees/" + id), exec, badEmail).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDate"));
+
+    Map<String, Object> salary = new HashMap<>();
+    salary.put("baseSalary", "85000.00");
+    salary.put("effectiveDate", "2025-07-01");
+    salary.put("changeReason", "MERIT");
+    salary.put("changePct", null);
+    int salaries = jdbc.queryForObject("select count(*) from salary_records", Integer.class);
+    mvc.perform(json(post("/api/employees/" + id + "/salary"), staff, salary))
+        .andExpect(status().isForbidden());
+    mvc.perform(json(post("/api/employees/" + id + "/salary"), exec, salary))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("changePct"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"));
+    assertThat(jdbc.queryForObject("select count(*) from salary_records", Integer.class))
+        .isEqualTo(salaries);
 
     mvc.perform(get("/api/employees/" + id).header("Authorization", "Bearer " + exec))
         .andExpect(status().isOk())

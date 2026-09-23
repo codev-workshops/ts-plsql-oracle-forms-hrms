@@ -1,7 +1,6 @@
 package com.acme.hrms.common.error;
 
 import com.acme.hrms.common.trace.TraceContext;
-import com.fasterxml.jackson.databind.exc.PropertyBindingException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -116,15 +115,20 @@ public class GlobalExceptionHandler {
     HttpMessageNotReadableException.class
   })
   public ResponseEntity<ApiError> handleBadRequest(Exception e, HttpServletRequest request) {
-    ApiError.Detail detail = new ApiError.Detail("body", "Invalid", "Malformed request body");
+    String field = null;
+    String code = "Invalid";
     if (e instanceof MissingServletRequestParameterException m) {
-      detail = new ApiError.Detail(m.getParameterName(), "Required", "Invalid value");
+      field = m.getParameterName();
+      code = "Required";
     } else if (e instanceof MethodArgumentTypeMismatchException m) {
-      detail = new ApiError.Detail(m.getName(), "TypeMismatch", "Invalid value");
-    } else if (e.getCause() instanceof PropertyBindingException p && p.getPropertyName() != null) {
-      detail = new ApiError.Detail(p.getPropertyName(), "UnknownProperty", "Unknown property");
+      field = m.getName();
+      code = "TypeMismatch";
     }
-    return validationFailed(List.of(detail), request, e);
+    List<ApiError.Detail> details =
+        field == null
+            ? List.of(new ApiError.Detail("body", code, "Malformed request body"))
+            : List.of(new ApiError.Detail(field, code, "Invalid value"));
+    return validationFailed(details, request, e);
   }
 
   @ExceptionHandler(AccessDeniedException.class)

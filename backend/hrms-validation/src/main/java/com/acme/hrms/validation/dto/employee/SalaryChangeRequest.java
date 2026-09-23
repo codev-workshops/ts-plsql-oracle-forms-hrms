@@ -15,7 +15,7 @@ import java.time.LocalDate;
  * Body of POST /api/employees/{id}/salary (salary-module; PKG_PAYROLL.create_salary_record
  * semantics).
  */
-public class SalaryChangeRequest {
+public class SalaryChangeRequest extends StrictRequest {
 
   @NotNull
   @FieldMeta(requiredMessage = "Effective date is required")
