@@ -29,7 +29,7 @@ export function EmployeeDetailPage({ empId }: { empId: number }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { canEditEmployee, canChangeSalary } = useEmployeeWrite();
+  const { canEditEmployee, canChangeSalary, canReadSalary, canReadRelated } = useEmployeeWrite();
   const [dialog, setDialog] = useState<Dialog>(null);
   const detail = useQuery({ queryKey: employeeDetailKey(empId), queryFn: () => api.employees.getEmployee(empId) });
 
@@ -52,6 +52,9 @@ export function EmployeeDetailPage({ empId }: { empId: number }) {
   }
   const { employee, etag } = detail.data;
   const active = employee.employmentStatus === 'ACTIVE';
+  const tabs = TABS.filter((tab) =>
+    tab.segment === 'salary' ? canReadSalary(empId) : tab.segment === 'dependents' || tab.segment === 'contacts' ? canReadRelated(empId) : true,
+  );
 
   return (
     <section aria-labelledby="employee-detail-title">
@@ -73,7 +76,7 @@ export function EmployeeDetailPage({ empId }: { empId: number }) {
       </div>
 
       <div className="tabs" role="tablist" aria-label="Employee record">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const path = tab.segment ? `${base}/${tab.segment}` : base;
           const selected = tab.segment ? location.pathname.startsWith(path) : location.pathname === base;
           return (
@@ -87,9 +90,9 @@ export function EmployeeDetailPage({ empId }: { empId: number }) {
       <Routes>
         <Route index element={<EmployeeForm key={`${employee.id}:${employee.version}`} mode="edit" employee={employee} etag={etag} onSaved={applyDetail} />} />
         <Route path="history" element={<HistoryTab empId={empId} />} />
-        <Route path="salary" element={<SalaryTab employee={employee} onChangeSalary={canChangeSalary && active ? () => setDialog('salary') : undefined} />} />
-        <Route path="dependents" element={<DependentsTab employee={employee} />} />
-        <Route path="contacts" element={<ContactsTab employee={employee} />} />
+        <Route path="salary" element={canReadSalary(empId) ? <SalaryTab employee={employee} onChangeSalary={canChangeSalary && active ? () => setDialog('salary') : undefined} /> : <p role="alert">You are not permitted to view this employee's salary.</p>} />
+        <Route path="dependents" element={canReadRelated(empId) ? <DependentsTab employee={employee} /> : <p role="alert">You are not permitted to view this employee's dependents.</p>} />
+        <Route path="contacts" element={canReadRelated(empId) ? <ContactsTab employee={employee} /> : <p role="alert">You are not permitted to view this employee's contacts.</p>} />
         <Route path="*" element={<EmployeeForm key={`${employee.id}:${employee.version}`} mode="edit" employee={employee} etag={etag} onSaved={applyDetail} />} />
       </Routes>
 
