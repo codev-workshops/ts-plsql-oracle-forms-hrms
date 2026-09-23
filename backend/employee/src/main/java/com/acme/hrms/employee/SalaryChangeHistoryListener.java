@@ -14,8 +14,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class SalaryChangeHistoryListener implements SalaryChangeListener {
 
-  static final int REASON_CODE_LENGTH = 30;
-
   private final EmployeeHistoryRepository history;
 
   public SalaryChangeHistoryListener(EmployeeHistoryRepository history) {
@@ -42,15 +40,8 @@ public class SalaryChangeHistoryListener implements SalaryChangeListener {
             event.newSalary(),
             null,
             null,
-            reasonCode(event.reason()),
+            event.reason(),
             null,
             event.actor()));
-  }
-
-  private static String reasonCode(String reason) {
-    if (reason == null || reason.length() <= REASON_CODE_LENGTH) {
-      return reason;
-    }
-    return reason.substring(0, REASON_CODE_LENGTH);
   }
 }

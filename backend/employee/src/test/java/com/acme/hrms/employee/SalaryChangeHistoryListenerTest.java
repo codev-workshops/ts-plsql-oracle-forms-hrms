@@ -97,14 +97,21 @@ class SalaryChangeHistoryListenerTest {
     assertThat(history()).isEmpty();
   }
 
+  /** V10 widens reason_code to the contract's changeReason maxLength (50); stored verbatim. */
   @Test
-  void reasonCodeIsBoundedToTheDdlColumnWidth() {
-    String reason = "A".repeat(50);
+  void fiftyCharacterReasonIsStoredVerbatim() {
+    assertThat(
+            jdbc.queryForObject(
+                "select character_maximum_length from information_schema.columns"
+                    + " where table_name = 'employee_history' and column_name = 'reason_code'",
+                Integer.class))
+        .isEqualTo(50);
+    String reason = "MARKET-ADJUSTMENT-Q3-2025-RETENTION-BAND-REVIEW-XY";
+    assertThat(reason).hasSize(50);
     listener.onSalaryChanged(
         new SalaryChangeEvent(EMP, DATE, null, new BigDecimal("1.00"), reason, "42", Kind.CHANGE));
 
-    assertThat(history().get(0).get("reason_code"))
-        .isEqualTo(reason.substring(0, SalaryChangeHistoryListener.REASON_CODE_LENGTH));
+    assertThat(history().get(0).get("reason_code")).isEqualTo(reason);
   }
 
   @Test

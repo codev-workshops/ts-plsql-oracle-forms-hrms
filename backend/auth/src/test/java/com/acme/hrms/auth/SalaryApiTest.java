@@ -116,6 +116,9 @@ class SalaryApiTest extends AuthApiTestBase {
   /** x-history [SALARY_CHANGE]: one employee_history row per accepted change, none on rejection. */
   @Test
   void changeWritesSalaryChangeHistoryWithOldNewReasonAndActor() throws Exception {
+    // changeReason maxLength=50 (frozen contract) is stored verbatim in both tables
+    String reason = "MARKET-ADJUSTMENT-Q3-2025-RETENTION-BAND-REVIEW-XY";
+    assertThat(reason).hasSize(50);
     jdbc.update("delete from employee_history where emp_id = 1");
     jdbc.update("delete from salary_records where emp_id = 1");
 
@@ -134,9 +137,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 post("/api/employees/1/salary"),
                 exec,
                 Map.of(
-                    "effectiveDate", "2025-06-01",
-                    "baseSalary", 110000,
-                    "changeReason", "MERIT")))
+                    "effectiveDate", "2025-06-01", "baseSalary", 110000, "changeReason", reason)))
         .andExpect(status().isCreated());
     // rejected (before hire date / previous effective date): nothing written
     mvc.perform(
@@ -159,6 +160,11 @@ class SalaryApiTest extends AuthApiTestBase {
             String.class);
     assertThat(actor).isNotBlank();
     assertThat(
+            jdbc.queryForObject(
+                "select change_reason from salary_records where emp_id = 1 and active_flag = 'Y'",
+                String.class))
+        .isEqualTo(reason);
+    assertThat(
             jdbc.queryForList(
                 "select change_type, old_salary, new_salary, reason_code, created_by,"
                     + " old_dept_id, new_job_id from employee_history where emp_id = 1"
@@ -180,7 +186,7 @@ class SalaryApiTest extends AuthApiTestBase {
                   .isEqualByComparingTo("100000");
               assertThat((java.math.BigDecimal) second.get("new_salary"))
                   .isEqualByComparingTo("110000");
-              assertThat(second.get("reason_code")).isEqualTo("MERIT");
+              assertThat(second.get("reason_code")).isEqualTo(reason);
               assertThat(second.get("created_by")).isEqualTo(actor);
             });
 
@@ -191,7 +197,7 @@ class SalaryApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$[0].changeType").value("SALARY_CHANGE"))
         .andExpect(jsonPath("$[0].oldSalary").value("100000.00"))
         .andExpect(jsonPath("$[0].newSalary").value("110000.00"))
-        .andExpect(jsonPath("$[0].reasonCode").value("MERIT"))
+        .andExpect(jsonPath("$[0].reasonCode").value(reason))
         .andExpect(jsonPath("$[1].oldSalary").doesNotExist())
         .andExpect(jsonPath("$[1].newSalary").value("100000.00"));
     mvc.perform(get("/api/employees/1/history").header("Authorization", "Bearer " + staff))
