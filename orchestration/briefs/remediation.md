@@ -7,11 +7,13 @@
 and target PR:** `<refs/URL>`. **Merged integration SHA/report:**
 `<SHA/URL>`. **Failure and reproduction:** `<paste precise integration
 finding>`. **Required rerun checks:** `<L1,L2,L3,e2e,phase-specific>`.
+**Playbook source ref:** `<ref containing ORCHESTRATION_PLAYBOOK.md>`.
 
 You are a standalone child with your own VM. Read `CUTOVER_PLAN.md`
 §§1–2 and your phase's §4–9, `TEST_STRATEGY.md` §§2, 4–5, 7,
 `COMPONENT_MAPPING.md` §§1–8, 11, `MODERNIZATION_BLUEPRINT.md`
-§§8, 10, `ORCHESTRATION_PLAYBOOK.md` and the integration report.
+§§8, 10, `ORCHESTRATION_PLAYBOOK.md` and the integration report. If the
+playbook is absent, use `git show <playbook source ref>:ORCHESTRATION_PLAYBOOK.md`.
 Do not use a dynamic workflow. Auth owns session context (ARCH-03);
 P3 salary-module precedes employee-service (ARCH-01).
 

@@ -6,12 +6,14 @@
 **Frozen OpenAPI/error-code/schema/authority summary:** `<paste contract report>`.
 **Allowed scope and module/table ownership:** `<phase section and files>`.
 **P3 dependency:** `<salary SHA / not applicable>`.
+**Playbook source ref:** `<ref containing ORCHESTRATION_PLAYBOOK.md>`.
 
 You are a standalone child with your own VM. Read `CUTOVER_PLAN.md` §§1–2
 and the phase §4–9, `TEST_STRATEGY.md` §§2, 4–5, 7,
 `COMPONENT_MAPPING.md` §§1–8, 11, `MODERNIZATION_BLUEPRINT.md`
-§§8, 10, `ORCHESTRATION_PLAYBOOK.md` and the frozen contract. Do not run
-the repo's dynamic-workflow skill. ARCH-03: auth owns session context.
+§§8, 10, `ORCHESTRATION_PLAYBOOK.md` and the frozen contract. If the
+playbook is absent, use `git show <playbook source ref>:ORCHESTRATION_PLAYBOOK.md`.
+Do not run the repo's dynamic-workflow skill. ARCH-03: auth owns session context.
 ARCH-01: `SalaryService` owns `SALARY_RECORDS` before employee-service.
 The target Spring application uses PostgreSQL, not an Oracle connection;
 Oracle is the independent coexistence oracle.

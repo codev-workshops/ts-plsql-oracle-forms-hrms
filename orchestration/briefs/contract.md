@@ -3,13 +3,16 @@
 **Repository:** `codev-workshops/ts-plsql-oracle-forms-hrms`. **Phase:** `<P0–P5 / slug>`.
 **Pinned base:** `<branch>@<SHA>`. **Contract branch/PR base:** `<refs>`.
 **Parent session:** `<URL>`. **Prior gate approval:** `<evidence URL, or none>`.
+**Playbook source ref:** `<ref containing ORCHESTRATION_PLAYBOOK.md>`.
 
 You are a standalone child with your own VM. Read `CUTOVER_PLAN.md` §§1–2
 and your phase's §4–9, `TEST_STRATEGY.md` §§2, 4–5, 7,
 `COMPONENT_MAPPING.md` §§1–8, 11, `MODERNIZATION_BLUEPRINT.md`
 §§8, 10, `ORCHESTRATION_PLAYBOOK.md`, and the phase's `contracts/<slug>/`
-on the pinned base. Do not use `.devin/skills/hrms-phase-workflow`: this is
-a **managed parent/child run**, not a dynamic workflow. The auth service
+on the pinned base. If absent from the pinned checkout, read the playbook
+with `git show <playbook source ref>:ORCHESTRATION_PLAYBOOK.md`. Do not use
+`.devin/skills/hrms-phase-workflow`: this is a **managed parent/child run**,
+not a dynamic workflow. The auth service
 owns session context (ARCH-03); salary-module precedes employee-service
 (ARCH-01). P0 auth must settle before P1.
 

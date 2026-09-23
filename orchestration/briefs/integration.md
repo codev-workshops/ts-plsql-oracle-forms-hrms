@@ -5,12 +5,16 @@
 `<SHA>`. **Merged integration branch/SHA:** `<ref>@<SHA>`.
 **Backend and frontend heads:** `<ref>@<SHA>, <ref>@<SHA>`.
 **P3 salary head:** `<ref>@<SHA or not applicable>`.
+**Playbook/brief source ref:** `<ref containing ORCHESTRATION_PLAYBOOK.md>`.
 **Legacy Oracle and PostgreSQL runtime/fixture provenance:** `<endpoints,
 not secrets; label if absent>`. **Phase-specific expected divergences and
 views:** `<paste contract brief and TEST_STRATEGY.md §5 row>`.
 
 You are a standalone child in your own session/VM; check out **exactly**
 the merged SHA, verify both reported heads and frozen contract are present.
+If the playbook is not on the checked-out branch, read it with
+`git show <playbook source ref>:ORCHESTRATION_PLAYBOOK.md` without changing
+the pinned checkout.
 Read `CUTOVER_PLAN.md` §§1–2 and your phase's §4–9,
 `TEST_STRATEGY.md` §§2, 4–5, 7, `COMPONENT_MAPPING.md` §§1–8, 11,
 `MODERNIZATION_BLUEPRINT.md` §§8, 10 and `ORCHESTRATION_PLAYBOOK.md`.
