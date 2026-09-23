@@ -35,6 +35,17 @@ export const LegacyErrorCode = {
   // contracts/p4-payroll/error-codes.md (-20101 / -20104 / -20001 shared with P3 above)
   PAYROLL_PERIOD_CLOSED: '-20102',
   PAYROLL_RUN_NOT_APPROVABLE: '-20103',
+  // contracts/p5-reporting-decommission/error-codes.md (-20001 / -20003 / -20011 shared with P3 above)
+  ADMIN_DUPLICATE_CODE: '-20601',
+  ADMIN_REFERENCE_IN_USE: '-20602',
+  ADMIN_VALUE_RULE: '-20603',
+  ADMIN_GRADE_OR_LOCATION_INVALID: '-20604',
+  ADMIN_DEPARTMENT_CYCLE: '-20605',
+  ADMIN_PARAMETER_NOT_EDITABLE: '-20606',
+  INTEGRATION_RUN_NOT_EXPORTABLE: '-20701',
+  INTEGRATION_JOB_ALREADY_RUNNING: '-20702',
+  INTEGRATION_DUPLICATE_TIME_LINE: '-20703',
+  INTEGRATION_IMPORT_REJECTED: '-20704',
 } as const;
 
 export const FrameworkErrorCode = {
@@ -64,6 +75,13 @@ export const FrameworkErrorCode = {
   RUN_NOT_CALCULABLE: 'RUN_NOT_CALCULABLE',
   RUN_NOT_REVERSIBLE: 'RUN_NOT_REVERSIBLE',
   MISSING_TAX_RATE: 'MISSING_TAX_RATE',
+  // contracts/p5-reporting-decommission/error-codes.md §2
+  NOT_ACCEPTABLE: 'NOT_ACCEPTABLE',
+  REFERENCE_NOT_FOUND: 'REFERENCE_NOT_FOUND',
+  JOB_NOT_FOUND: 'JOB_NOT_FOUND',
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
 } as const;
 
 export type LegacyErrorCode = (typeof LegacyErrorCode)[keyof typeof LegacyErrorCode];
@@ -98,4 +116,7 @@ export const DEFAULT_FIELD_FOR_CODE: Readonly<Record<string, string>> = {
   [LegacyErrorCode.SALARY_NOT_POSITIVE]: 'baseSalary',
   [LegacyErrorCode.EMPLOYEE_HIRE_DATE_TOO_FAR]: 'hireDate',
   [LegacyErrorCode.EMPLOYEE_EMAIL_IN_USE]: 'email',
+  [LegacyErrorCode.ADMIN_DEPARTMENT_CYCLE]: 'parentDeptId',
+  [LegacyErrorCode.INTEGRATION_RUN_NOT_EXPORTABLE]: 'runId',
+  [LegacyErrorCode.INTEGRATION_IMPORT_REJECTED]: 'file',
 };

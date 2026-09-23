@@ -1,12 +1,15 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import { MODULE_FLAGS } from './AppShell';
-import type { ModuleFlagValue } from './modules';
+import { MODULE_FLAGS, type ModuleFlagValue } from './modules';
 
 const ModuleFlagsContext = createContext<Record<string, ModuleFlagValue>>(MODULE_FLAGS);
 
 /** Proxy flags per module; tests override via `flags` (CUTOVER_PLAN.md §7.1 read-only step). */
 export function ModuleFlagsProvider({ flags, children }: { flags?: Record<string, ModuleFlagValue>; children: ReactNode }) {
   return <ModuleFlagsContext.Provider value={flags ?? MODULE_FLAGS}>{children}</ModuleFlagsContext.Provider>;
+}
+
+export function useModuleFlags(): Record<string, ModuleFlagValue> {
+  return useContext(ModuleFlagsContext);
 }
 
 export function useModuleFlag(name: string): ModuleFlagValue {

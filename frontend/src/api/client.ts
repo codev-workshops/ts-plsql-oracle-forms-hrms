@@ -67,13 +67,65 @@ import type {
   PageOfLeaveRequest,
   PendingLeaveApproval,
   TeamCalendarEntry,
+  AccrualRunRequest,
+  AuditLogPage,
+  AuditLogSearchQuery,
+  BatchRunResult,
+  BenefitsFeedRequest,
+  CarryoverRunRequest,
+  CsvDownload,
+  Department,
+  DepartmentRequest,
+  EmployeeCompensationPage,
+  EmployeeCompensationQuery,
+  EmployeeDirectoryPage,
+  EmployeeDirectoryQuery,
+  GlFeedRequest,
+  IntegrationFile,
+  IntegrationFileListQuery,
+  IntegrationFilePage,
+  IntegrationStatus,
+  JobGrade,
+  JobGradeRequest,
+  JobTitle,
+  JobTitleRequest,
+  LeaveSummaryPage,
+  LeaveSummaryQuery,
+  LeaveType,
+  LeaveTypeRequest,
+  Location,
+  LocationRequest,
+  OrgHierarchyPage,
+  OrgHierarchyQuery,
+  PayrollLatestPage,
+  PayrollLatestQuery,
+  PendingApprovalPage,
+  PendingApprovalsQuery,
+  SystemParameter,
+  SystemParameterRequest,
+  SystemParameterUpdateRequest,
+  TimeAttendanceImportResult,
 } from './types';
+
+/** `GET …csv` twin of a paged report: `Accept: text/csv`, body streamed as text, filename from `Content-Disposition`. */
+async function downloadCsv(path: string, params: object, fallbackName: string): Promise<CsvDownload> {
+  const res = await http.get<string>(path, {
+    params,
+    headers: { Accept: 'text/csv' },
+    responseType: 'text',
+    transformResponse: (d: string) => d,
+  });
+  const disposition = (res.headers as Record<string, string | undefined>)['content-disposition'] ?? '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackName;
+  return { filename, csv: res.data };
+}
 
 /**
  * One function per operationId in contracts/p0-foundation/openapi.yaml,
  * contracts/p1-performance/openapi.yaml, contracts/p2-leave/openapi.yaml,
- * contracts/p3-employee/openapi.yaml and contracts/p4-payroll/openapi.yaml (the
- * `x-deferred` P5 admin routes are not mounted and have no client).
+ * contracts/p3-employee/openapi.yaml, contracts/p4-payroll/openapi.yaml and
+ * contracts/p5-reporting-decommission/openapi.yaml (the P2 `x-deferred` admin routes are
+ * mounted in P5 under `/api/admin/leave/**`; the `301` aliases have no client).
  * `exchangeJwtForFormsSession` is proxy-only and intentionally has no browser client.
  */
 export const api = {
@@ -374,6 +426,214 @@ export const api = {
     },
     async getShadowDiff(runId: number): Promise<ShadowDiffReport> {
       const { data } = await http.get<ShadowDiffReport>(`/api/payroll/shadow/runs/${runId}/diff`);
+      return data;
+    },
+  },
+  /** `reporting-module` – contracts/p5-reporting-decommission/openapi.yaml `reports` tag. */
+  reports: {
+    async employeeDirectory(params: EmployeeDirectoryQuery = {}): Promise<EmployeeDirectoryPage> {
+      const { data } = await http.get<EmployeeDirectoryPage>('/api/reports/employee-directory', { params });
+      return data;
+    },
+    employeeDirectoryCsv: (params: EmployeeDirectoryQuery = {}) => downloadCsv('/api/reports/employee-directory.csv', params, 'employee-directory.csv'),
+    async orgHierarchy(params: OrgHierarchyQuery = {}): Promise<OrgHierarchyPage> {
+      const { data } = await http.get<OrgHierarchyPage>('/api/reports/org-hierarchy', { params });
+      return data;
+    },
+    orgHierarchyCsv: (params: OrgHierarchyQuery = {}) => downloadCsv('/api/reports/org-hierarchy.csv', params, 'org-hierarchy.csv'),
+    async employeeCompensation(params: EmployeeCompensationQuery = {}): Promise<EmployeeCompensationPage> {
+      const { data } = await http.get<EmployeeCompensationPage>('/api/reports/employee-compensation', { params });
+      return data;
+    },
+    employeeCompensationCsv: (params: EmployeeCompensationQuery = {}) => downloadCsv('/api/reports/employee-compensation.csv', params, 'employee-compensation.csv'),
+    async leaveSummary(params: LeaveSummaryQuery = {}): Promise<LeaveSummaryPage> {
+      const { data } = await http.get<LeaveSummaryPage>('/api/reports/leave-summary', { params });
+      return data;
+    },
+    leaveSummaryCsv: (params: LeaveSummaryQuery = {}) => downloadCsv('/api/reports/leave-summary.csv', params, 'leave-summary.csv'),
+    async payrollLatest(params: PayrollLatestQuery = {}): Promise<PayrollLatestPage> {
+      const { data } = await http.get<PayrollLatestPage>('/api/reports/payroll-latest', { params });
+      return data;
+    },
+    payrollLatestCsv: (params: PayrollLatestQuery = {}) => downloadCsv('/api/reports/payroll-latest.csv', params, 'payroll-latest.csv'),
+    async pendingApprovals(params: PendingApprovalsQuery = {}): Promise<PendingApprovalPage> {
+      const { data } = await http.get<PendingApprovalPage>('/api/reports/pending-approvals', { params });
+      return data;
+    },
+    pendingApprovalsCsv: (params: PendingApprovalsQuery = {}) => downloadCsv('/api/reports/pending-approvals.csv', params, 'pending-approvals.csv'),
+  },
+  /** `admin-module` – `admin-reference`, `admin-leave-jobs` and `admin-audit` tags. DELETE = soft deactivation (except system parameters). */
+  admin: {
+    async listDepartments(params: { active?: boolean } = {}): Promise<Department[]> {
+      const { data } = await http.get<Department[]>('/api/admin/departments', { params });
+      return data;
+    },
+    async createDepartment(body: DepartmentRequest): Promise<Department> {
+      const { data } = await http.post<Department>('/api/admin/departments', body);
+      return data;
+    },
+    async getDepartment(deptId: number): Promise<Department> {
+      const { data } = await http.get<Department>(`/api/admin/departments/${deptId}`);
+      return data;
+    },
+    async updateDepartment(deptId: number, body: DepartmentRequest): Promise<Department> {
+      const { data } = await http.put<Department>(`/api/admin/departments/${deptId}`, body);
+      return data;
+    },
+    async deactivateDepartment(deptId: number): Promise<void> {
+      await http.delete(`/api/admin/departments/${deptId}`);
+    },
+
+    async listJobGrades(params: { active?: boolean } = {}): Promise<JobGrade[]> {
+      const { data } = await http.get<JobGrade[]>('/api/admin/job-grades', { params });
+      return data;
+    },
+    async createJobGrade(body: JobGradeRequest): Promise<JobGrade> {
+      const { data } = await http.post<JobGrade>('/api/admin/job-grades', body);
+      return data;
+    },
+    async getJobGrade(gradeId: number): Promise<JobGrade> {
+      const { data } = await http.get<JobGrade>(`/api/admin/job-grades/${gradeId}`);
+      return data;
+    },
+    async updateJobGrade(gradeId: number, body: JobGradeRequest): Promise<JobGrade> {
+      const { data } = await http.put<JobGrade>(`/api/admin/job-grades/${gradeId}`, body);
+      return data;
+    },
+    async deactivateJobGrade(gradeId: number): Promise<void> {
+      await http.delete(`/api/admin/job-grades/${gradeId}`);
+    },
+
+    async listJobTitles(params: { active?: boolean } = {}): Promise<JobTitle[]> {
+      const { data } = await http.get<JobTitle[]>('/api/admin/job-titles', { params });
+      return data;
+    },
+    async createJobTitle(body: JobTitleRequest): Promise<JobTitle> {
+      const { data } = await http.post<JobTitle>('/api/admin/job-titles', body);
+      return data;
+    },
+    async getJobTitle(jobId: number): Promise<JobTitle> {
+      const { data } = await http.get<JobTitle>(`/api/admin/job-titles/${jobId}`);
+      return data;
+    },
+    async updateJobTitle(jobId: number, body: JobTitleRequest): Promise<JobTitle> {
+      const { data } = await http.put<JobTitle>(`/api/admin/job-titles/${jobId}`, body);
+      return data;
+    },
+    async deactivateJobTitle(jobId: number): Promise<void> {
+      await http.delete(`/api/admin/job-titles/${jobId}`);
+    },
+
+    async listLocations(params: { active?: boolean } = {}): Promise<Location[]> {
+      const { data } = await http.get<Location[]>('/api/admin/locations', { params });
+      return data;
+    },
+    async createLocation(body: LocationRequest): Promise<Location> {
+      const { data } = await http.post<Location>('/api/admin/locations', body);
+      return data;
+    },
+    async getLocation(locationCode: string): Promise<Location> {
+      const { data } = await http.get<Location>(`/api/admin/locations/${encodeURIComponent(locationCode)}`);
+      return data;
+    },
+    async updateLocation(locationCode: string, body: LocationRequest): Promise<Location> {
+      const { data } = await http.put<Location>(`/api/admin/locations/${encodeURIComponent(locationCode)}`, body);
+      return data;
+    },
+    async deactivateLocation(locationCode: string): Promise<void> {
+      await http.delete(`/api/admin/locations/${encodeURIComponent(locationCode)}`);
+    },
+
+    async listLeaveTypes(params: { active?: boolean } = {}): Promise<LeaveType[]> {
+      const { data } = await http.get<LeaveType[]>('/api/admin/leave-types', { params });
+      return data;
+    },
+    async createLeaveType(body: LeaveTypeRequest): Promise<LeaveType> {
+      const { data } = await http.post<LeaveType>('/api/admin/leave-types', body);
+      return data;
+    },
+    async getLeaveType(leaveTypeId: number): Promise<LeaveType> {
+      const { data } = await http.get<LeaveType>(`/api/admin/leave-types/${leaveTypeId}`);
+      return data;
+    },
+    async updateLeaveType(leaveTypeId: number, body: LeaveTypeRequest): Promise<LeaveType> {
+      const { data } = await http.put<LeaveType>(`/api/admin/leave-types/${leaveTypeId}`, body);
+      return data;
+    },
+    async deactivateLeaveType(leaveTypeId: number): Promise<void> {
+      await http.delete(`/api/admin/leave-types/${leaveTypeId}`);
+    },
+
+    async listSystemParameters(params: { group?: string } = {}): Promise<SystemParameter[]> {
+      const { data } = await http.get<SystemParameter[]>('/api/admin/system-parameters', { params });
+      return data;
+    },
+    async createSystemParameter(body: SystemParameterRequest): Promise<SystemParameter> {
+      const { data } = await http.post<SystemParameter>('/api/admin/system-parameters', body);
+      return data;
+    },
+    async getSystemParameter(paramId: number): Promise<SystemParameter> {
+      const { data } = await http.get<SystemParameter>(`/api/admin/system-parameters/${paramId}`);
+      return data;
+    },
+    async updateSystemParameter(paramId: number, body: SystemParameterUpdateRequest): Promise<SystemParameter> {
+      const { data } = await http.put<SystemParameter>(`/api/admin/system-parameters/${paramId}`, body);
+      return data;
+    },
+    async deleteSystemParameter(paramId: number): Promise<void> {
+      await http.delete(`/api/admin/system-parameters/${paramId}`);
+    },
+
+    async runLeaveAccrual(body: AccrualRunRequest = {}): Promise<BatchRunResult> {
+      const { data } = await http.post<BatchRunResult>('/api/admin/leave/accrual', body);
+      return data;
+    },
+    async runLeaveCarryover(body: CarryoverRunRequest): Promise<BatchRunResult> {
+      const { data } = await http.post<BatchRunResult>('/api/admin/leave/carryover', body);
+      return data;
+    },
+    async getLeaveJob(jobId: string): Promise<BatchRunResult> {
+      const { data } = await http.get<BatchRunResult>(`/api/admin/leave/jobs/${jobId}`);
+      return data;
+    },
+
+    async searchAuditLog(params: AuditLogSearchQuery = {}): Promise<AuditLogPage> {
+      const { data } = await http.get<AuditLogPage>('/api/admin/audit-log', { params });
+      return data;
+    },
+    auditLogCsv: (params: AuditLogSearchQuery = {}) => downloadCsv('/api/admin/audit-log', params, 'audit-log.csv'),
+  },
+  /** `integration-module` – `integration` tag. */
+  integration: {
+    async generateGlFeed(body: GlFeedRequest): Promise<IntegrationFile> {
+      const { data } = await http.post<IntegrationFile>('/api/integration/gl-feed', body);
+      return data;
+    },
+    async exportBenefitsFeed(body: BenefitsFeedRequest = {}): Promise<IntegrationFile> {
+      const { data } = await http.post<IntegrationFile>('/api/integration/benefits-feed', body);
+      return data;
+    },
+    async importTimeAttendance(file: File, hasHeader = true): Promise<TimeAttendanceImportResult> {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('hasHeader', String(hasHeader));
+      const { data } = await http.post<TimeAttendanceImportResult>('/api/integration/time-attendance/import', form);
+      return data;
+    },
+    async listFiles(params: IntegrationFileListQuery = {}): Promise<IntegrationFilePage> {
+      const { data } = await http.get<IntegrationFilePage>('/api/integration/files', { params });
+      return data;
+    },
+    async getFile(fileId: string): Promise<IntegrationFile> {
+      const { data } = await http.get<IntegrationFile>(`/api/integration/files/${fileId}`);
+      return data;
+    },
+    async downloadFile(fileId: string): Promise<string> {
+      const { data } = await http.get<string>(`/api/integration/files/${fileId}/content`, { responseType: 'text', transformResponse: (d: string) => d });
+      return data;
+    },
+    async status(): Promise<IntegrationStatus[]> {
+      const { data } = await http.get<IntegrationStatus[]>('/api/integration/status');
       return data;
     },
   },

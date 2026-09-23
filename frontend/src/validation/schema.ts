@@ -39,6 +39,7 @@ export interface FieldSpec {
   format?: string;
   min?: number | string;
   max?: number | string;
+  scale?: number;
   values?: string[];
   rules?: FieldRule[];
   messages: FieldMessages;
@@ -140,7 +141,9 @@ export function evaluateCustomRule(rule: FieldRule, value: unknown, values: Reco
   const day = utcDay(value);
   if (day === null) return true;
   switch (rule.id) {
-    case 'leave.dateOrder': {
+    case 'leave.dateOrder':
+    case 'audit.range':
+    case 'files.range': {
       const other = values[String(rule.value)];
       const otherDay = typeof other === 'string' ? utcDay(other) : null;
       return otherDay === null || otherDay <= day;
