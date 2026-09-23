@@ -1,21 +1,37 @@
 package com.acme.hrms.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.acme.hrms.salary.SalaryRecordRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @TestPropertySource(properties = "hrms.proxy.modules.employee=NEW")
 class SalaryApiTest extends AuthApiTestBase {
+
+  @SpyBean private SalaryRecordRepository records;
 
   private String exec;
   private String staff;
@@ -111,6 +127,93 @@ class SalaryApiTest extends AuthApiTestBase {
                     "changeReason", "PROMOTION")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.outOfGradeBand").value(true));
+  }
+
+  @Test
+  void concurrentSalaryPostsReturnConflictWithoutRollingBackTheWinner() throws Exception {
+    assertConcurrentSalaryOutcome();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1 and active_flag = 'Y'",
+                Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1", Integer.class))
+        .isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from audit_log where table_name = 'SALARY_RECORDS' and action_type in"
+                    + " ('UPDATE', 'INSERT')",
+                Integer.class))
+        .isEqualTo(2);
+  }
+
+  @Test
+  void concurrentFirstSalaryPostsAlsoReturnConflict() throws Exception {
+    jdbc.update("delete from salary_records where emp_id = 1");
+    assertConcurrentSalaryOutcome();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1 and active_flag = 'Y'",
+                Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1", Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from audit_log where table_name = 'SALARY_RECORDS' and action_type ="
+                    + " 'INSERT'",
+                Integer.class))
+        .isEqualTo(1);
+  }
+
+  private void assertConcurrentSalaryOutcome() throws Exception {
+    CyclicBarrier bothReadPrevious = new CyclicBarrier(2);
+    AtomicInteger firstReads = new AtomicInteger();
+    doAnswer(
+            invocation -> {
+              Object previous = invocation.callRealMethod();
+              if (invocation.getArgument(0, Long.class) == 1L
+                  && firstReads.incrementAndGet() <= 2) {
+                bothReadPrevious.await(10, TimeUnit.SECONDS);
+              }
+              return previous;
+            })
+        .when(records)
+        .findActive(anyLong());
+
+    Callable<MvcResult> change =
+        () ->
+            mvc.perform(
+                    json(
+                        post("/api/employees/1/salary"),
+                        exec,
+                        Map.of(
+                            "effectiveDate", "2025-01-01",
+                            "baseSalary", 110000,
+                            "changeReason", "MERIT")))
+                .andReturn();
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<MvcResult> first = pool.submit(change);
+      Future<MvcResult> second = pool.submit(change);
+      List<MvcResult> results =
+          List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
+      assertThat(results)
+          .extracting(result -> result.getResponse().getStatus())
+          .containsExactlyInAnyOrder(201, 409);
+      for (MvcResult result : results) {
+        if (result.getResponse().getStatus() == 409) {
+          assertThat(body(result).get("code").asText()).isEqualTo("CONFLICT");
+        }
+      }
+    } finally {
+      pool.shutdownNow();
+      reset(records);
+    }
   }
 
   @Test

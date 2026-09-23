@@ -33,8 +33,10 @@ docker run -d --name hrms-pg -e POSTGRES_DB=hrms -e POSTGRES_USER=hrms -e POSTGR
 
 # 2. auth-service (runs Flyway V1+V2 on the empty database), JDK 21
 (cd backend && mvn -B install -DskipTests)
+: "${HRMS_FIELD_KEY_BASE64:?Export a stable base64-encoded 32-byte local key before starting}"
 HRMS_PG_URL=jdbc:postgresql://localhost:5432/hrms HRMS_PG_USER=hrms HRMS_PG_PASSWORD=hrms \
-HRMS_PROXY_CIDRS=127.0.0.1/32,::1/128 java -jar backend/auth/target/auth-0.1.0-SNAPSHOT.jar
+HRMS_FIELD_KEY_BASE64="$HRMS_FIELD_KEY_BASE64" HRMS_PROXY_CIDRS=127.0.0.1/32,::1/128 \
+java -jar backend/auth/target/auth-0.1.0-SNAPSHOT.jar
 
 # 3. seed fixtures (after Flyway has created the schema)
 for f in 01_reference_data 02_employee_data 03_transaction_data 04_user_accounts; do
