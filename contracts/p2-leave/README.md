@@ -28,8 +28,12 @@ Explicitly out of contract: the four `/api/leave/admin/**` batch routes (declare
 utPLSQL runtime (golden-oracle mode is OFF; Level 2 runs against PostgreSQL with
 `legacy_source=recorded`). Legacy behaviours intentionally **not** reproduced are exactly
 BUG-04 (carryover expiry over-deduction), BUG-05 (holidays observed on Fri/Mon are counted as
-business days) and BUG-06 (AM + PM half days on the same date reported as an overlap) – the only
-rows the Level 2 diff may whitelist; the auto-approve defect of `REQUIRES_APPROVAL='N'` types,
+business days) and BUG-06 (AM + PM half days on the same date reported as an overlap), plus the
+LOG-01 technical exception (`leave_accrual_log` `CARRYOVER`/`EXPIRY` idempotency rows that the
+package never wrote) – the only rows the Level 2 diff may whitelist. Everything else is
+byte-for-byte parity, including the reject notification body without a date range
+(`PKG_LEAVE.pkb:309`), the two `AUDIT_LOG` rows (`UPDATE` then `STATUS_CHANGE`) per status
+transition and the pre-pending carryover amount (`PKG_LEAVE.pkb:567-572`); the auto-approve defect of `REQUIRES_APPROVAL='N'` types,
 the half-day input tightenings and the row-level authorization checks are contract rules for
 inputs the legacy scenario set never exercised (`error-codes.md` §5), while QUIRK-01..03 are
 preserved byte-for-byte. COMPONENT_MAPPING.md §11 already listed all eight leave codes and was
