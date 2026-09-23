@@ -7,6 +7,16 @@ import com.acme.hrms.validation.dto.EmployeeSearchQuery;
 import com.acme.hrms.validation.dto.LoginRequest;
 import com.acme.hrms.validation.dto.ProxyModule;
 import com.acme.hrms.validation.dto.SsoExchangeRequest;
+import com.acme.hrms.validation.dto.admin.AccrualRunRequest;
+import com.acme.hrms.validation.dto.admin.AuditLogSearchQuery;
+import com.acme.hrms.validation.dto.admin.CarryoverRunRequest;
+import com.acme.hrms.validation.dto.admin.DepartmentRequest;
+import com.acme.hrms.validation.dto.admin.JobGradeRequest;
+import com.acme.hrms.validation.dto.admin.JobTitleRequest;
+import com.acme.hrms.validation.dto.admin.LeaveTypeRequest;
+import com.acme.hrms.validation.dto.admin.LocationRequest;
+import com.acme.hrms.validation.dto.admin.SystemParameterRequest;
+import com.acme.hrms.validation.dto.admin.SystemParameterUpdateRequest;
 import com.acme.hrms.validation.dto.employee.DependentRequest;
 import com.acme.hrms.validation.dto.employee.EmergencyContactRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
@@ -15,6 +25,10 @@ import com.acme.hrms.validation.dto.employee.EmployeeTerminateRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeTransferRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
 import com.acme.hrms.validation.dto.employee.SalaryChangeRequest;
+import com.acme.hrms.validation.dto.integration.BenefitsFeedRequest;
+import com.acme.hrms.validation.dto.integration.GlFeedRequest;
+import com.acme.hrms.validation.dto.integration.IntegrationFileListQuery;
+import com.acme.hrms.validation.dto.integration.TimeAttendanceLine;
 import com.acme.hrms.validation.dto.leave.BusinessDaysQuery;
 import com.acme.hrms.validation.dto.leave.LeaveApproveRequest;
 import com.acme.hrms.validation.dto.leave.LeaveCancelRequest;
@@ -31,6 +45,12 @@ import com.acme.hrms.validation.dto.performance.GoalRequest;
 import com.acme.hrms.validation.dto.performance.ManagerReviewRequest;
 import com.acme.hrms.validation.dto.performance.ReviewCycleRequest;
 import com.acme.hrms.validation.dto.performance.SelfAssessmentRequest;
+import com.acme.hrms.validation.dto.reporting.EmployeeCompensationQuery;
+import com.acme.hrms.validation.dto.reporting.EmployeeDirectoryQuery;
+import com.acme.hrms.validation.dto.reporting.LeaveSummaryQuery;
+import com.acme.hrms.validation.dto.reporting.OrgHierarchyQuery;
+import com.acme.hrms.validation.dto.reporting.PayrollLatestQuery;
+import com.acme.hrms.validation.dto.reporting.PendingApprovalsQuery;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
 import com.acme.hrms.validation.password.PasswordPolicy;
@@ -81,8 +101,9 @@ public final class ValidationSchemaExporter {
   public static final String MODULE_P2 = "p2-leave";
   public static final String MODULE_P3 = "p3-employee";
   public static final String MODULE_P4 = "p4-payroll";
+  public static final String MODULE_P5 = "p5-reporting-decommission";
   public static final List<String> MODULES =
-      List.of(MODULE_P0, MODULE_P1, MODULE_P2, MODULE_P3, MODULE_P4);
+      List.of(MODULE_P0, MODULE_P1, MODULE_P2, MODULE_P3, MODULE_P4, MODULE_P5);
   public static final int SESSION_TIMEOUT_MIN_DEFAULT = 30;
 
   /** DTO name -> (owning contract module, class); insertion order is the output order. */
@@ -117,6 +138,26 @@ public final class ValidationSchemaExporter {
     register(MODULE_P4, "PayrollRunCreateRequest", PayrollRunCreateRequest.class);
     register(MODULE_P4, "PayrollRunReverseRequest", PayrollRunReverseRequest.class);
     register(MODULE_P4, "PayrollDetailListQuery", PayrollDetailListQuery.class);
+    register(MODULE_P5, "EmployeeDirectoryQuery", EmployeeDirectoryQuery.class);
+    register(MODULE_P5, "OrgHierarchyQuery", OrgHierarchyQuery.class);
+    register(MODULE_P5, "EmployeeCompensationQuery", EmployeeCompensationQuery.class);
+    register(MODULE_P5, "LeaveSummaryQuery", LeaveSummaryQuery.class);
+    register(MODULE_P5, "PayrollLatestQuery", PayrollLatestQuery.class);
+    register(MODULE_P5, "PendingApprovalsQuery", PendingApprovalsQuery.class);
+    register(MODULE_P5, "DepartmentRequest", DepartmentRequest.class);
+    register(MODULE_P5, "JobGradeRequest", JobGradeRequest.class);
+    register(MODULE_P5, "JobTitleRequest", JobTitleRequest.class);
+    register(MODULE_P5, "LocationRequest", LocationRequest.class);
+    register(MODULE_P5, "LeaveTypeRequest", LeaveTypeRequest.class);
+    register(MODULE_P5, "SystemParameterRequest", SystemParameterRequest.class);
+    register(MODULE_P5, "SystemParameterUpdateRequest", SystemParameterUpdateRequest.class);
+    register(MODULE_P5, "AccrualRunRequest", AccrualRunRequest.class);
+    register(MODULE_P5, "CarryoverRunRequest", CarryoverRunRequest.class);
+    register(MODULE_P5, "AuditLogSearchQuery", AuditLogSearchQuery.class);
+    register(MODULE_P5, "GlFeedRequest", GlFeedRequest.class);
+    register(MODULE_P5, "BenefitsFeedRequest", BenefitsFeedRequest.class);
+    register(MODULE_P5, "TimeAttendanceLine", TimeAttendanceLine.class);
+    register(MODULE_P5, "IntegrationFileListQuery", IntegrationFileListQuery.class);
   }
 
   private static void register(String module, String name, Class<?> dto) {

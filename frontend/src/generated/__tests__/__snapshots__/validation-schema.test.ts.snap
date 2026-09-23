@@ -4,6 +4,17 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
 {
   "$schema": "https://hrms.example/schemas/validation-schema/v1",
   "dtos": {
+    "AccrualRunRequest": {
+      "fields": {
+        "accrualDate": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "AcknowledgeRequest": {
       "fields": {
         "employeeComments": {
@@ -15,6 +26,92 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p1-performance",
+    },
+    "AuditLogSearchQuery": {
+      "fields": {
+        "actionType": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "STATUS_CHANGE",
+            "LOGIN",
+            "LOGOUT",
+          ],
+        },
+        "changedBy": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "from": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "recordId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 100,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "tableName": {
+          "maxLength": 60,
+          "messages": {
+            "pattern": "tableName is the lower-case PostgreSQL table name",
+          },
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "to": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "audit.range",
+              "kind": "custom",
+              "message": "to must be on or after from",
+              "value": "from",
+            },
+          ],
+          "type": "date",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "BenefitsFeedRequest": {
+      "fields": {
+        "effectiveDate": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "BusinessDaysQuery": {
       "fields": {
@@ -46,6 +143,20 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p2-leave",
+    },
+    "CarryoverRunRequest": {
+      "fields": {
+        "year": {
+          "max": 2099,
+          "messages": {
+            "required": "Year is required",
+          },
+          "min": 2000,
+          "required": true,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "ChangePasswordRequest": {
       "fields": {
@@ -95,6 +206,70 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p0-foundation",
+    },
+    "DepartmentRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "costCenter": {
+          "maxLength": 20,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+          },
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "deptCode": {
+          "maxLength": 20,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+            "required": "Department code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "deptName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Department name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "locationCode": {
+          "maxLength": 10,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+          },
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "managerEmpId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "parentDeptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "DependentRequest": {
       "fields": {
@@ -237,6 +412,42 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p3-employee",
+    },
+    "EmployeeCompensationQuery": {
+      "fields": {
+        "asOf": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "gradeId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "EmployeeCreateRequest": {
       "fields": {
@@ -491,6 +702,46 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p3-employee",
+    },
+    "EmployeeDirectoryQuery": {
+      "fields": {
+        "asOf": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "locationCode": {
+          "maxLength": 10,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+          },
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "EmployeeListQuery": {
       "fields": {
@@ -919,6 +1170,19 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p3-employee",
     },
+    "GlFeedRequest": {
+      "fields": {
+        "runId": {
+          "messages": {
+            "required": "Payroll run is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "GoalProgressRequest": {
       "fields": {
         "comments": {
@@ -1003,6 +1267,183 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p1-performance",
+    },
+    "IntegrationFileListQuery": {
+      "fields": {
+        "feed": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "GL_JOURNAL",
+            "BENEFITS_FEED",
+            "TIME_ATTENDANCE",
+          ],
+        },
+        "from": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 100,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "status": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "SUCCESS",
+            "FAILED",
+            "STAGED",
+          ],
+        },
+        "to": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "files.range",
+              "kind": "custom",
+              "message": "to must be on or after from",
+              "value": "from",
+            },
+          ],
+          "type": "date",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "JobGradeRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "gradeCode": {
+          "maxLength": 10,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+            "required": "Grade code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "gradeName": {
+          "maxLength": 50,
+          "messages": {
+            "required": "Grade name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "maxSalary": {
+          "messages": {
+            "required": "Maximum salary is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "minSalary": {
+          "messages": {
+            "required": "Minimum salary is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "overtimeEligible": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "JobTitleRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "eeoCategory": {
+          "maxLength": 10,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "flsaStatus": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "EXEMPT",
+            "NON_EXEMPT",
+          ],
+        },
+        "gradeId": {
+          "messages": {
+            "required": "Grade is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "jobCode": {
+          "maxLength": 20,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+            "required": "Job code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "jobFamily": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "jobTitle": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Job title is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "LeaveApproveRequest": {
       "fields": {
@@ -1116,6 +1557,244 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p2-leave",
     },
+    "LeaveSummaryQuery": {
+      "fields": {
+        "asOf": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "leaveTypeId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "year": {
+          "max": 2099,
+          "messages": {},
+          "min": 2000,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "LeaveTypeRequest": {
+      "fields": {
+        "accrualFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "accrualFrequency": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "MONTHLY",
+            "BIWEEKLY",
+            "ANNUAL",
+          ],
+        },
+        "accrualRate": {
+          "max": 9999.99,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "carryoverExpiry": {
+          "max": 12,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "carryoverMax": {
+          "max": 9999.99,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "leaveTypeCode": {
+          "maxLength": 20,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+            "required": "Leave type code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "leaveTypeName": {
+          "maxLength": 50,
+          "messages": {
+            "required": "Leave type name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "maxBalance": {
+          "max": 9999.99,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "minTenureDays": {
+          "max": 3650,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "paidFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "requiresApproval": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "requiresDocument": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "LocationRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "addressLine1": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "addressLine2": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "city": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "countryCode": {
+          "maxLength": 3,
+          "messages": {
+            "pattern": "Country must be an ISO-3166 alpha-2/3 code",
+          },
+          "minLength": 2,
+          "pattern": "^[A-Z]{2,3}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "locationCode": {
+          "maxLength": 10,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+            "required": "Location code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "locationName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Location name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "phoneNumber": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Phone must contain 10 or 11 digits",
+          },
+          "pattern": "^(?:\\D*\\d){10,11}\\D*$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "postalCode": {
+          "maxLength": 20,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "stateProvince": {
+          "maxLength": 100,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "timezone": {
+          "maxLength": 50,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "LoginRequest": {
       "fields": {
         "password": {
@@ -1205,6 +1884,43 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p1-performance",
     },
+    "OrgHierarchyQuery": {
+      "fields": {
+        "asOf": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "maxLevel": {
+          "max": 20,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "rootEmpId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "PayPeriodListQuery": {
       "fields": {
         "page": {
@@ -1277,6 +1993,36 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p4-payroll",
     },
+    "PayrollLatestQuery": {
+      "fields": {
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "periodId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "PayrollRunCreateRequest": {
       "fields": {
         "runType": {
@@ -1328,6 +2074,50 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
         },
       },
       "module": "p4-payroll",
+    },
+    "PendingApprovalsQuery": {
+      "fields": {
+        "asOf": {
+          "format": "date",
+          "messages": {},
+          "required": false,
+          "type": "date",
+        },
+        "deptId": {
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+        "itemType": {
+          "messages": {},
+          "required": false,
+          "type": "enum",
+          "values": [
+            "LEAVE",
+            "REVIEW",
+          ],
+        },
+        "mine": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "page": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "size": {
+          "max": 200,
+          "messages": {},
+          "min": 1,
+          "required": false,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
     },
     "ReviewCycleRequest": {
       "fields": {
@@ -1512,6 +2302,135 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p0-foundation",
     },
+    "SystemParameterRequest": {
+      "fields": {
+        "dataType": {
+          "messages": {
+            "required": "Data type is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "VARCHAR2",
+            "NUMBER",
+            "DATE",
+            "BOOLEAN",
+          ],
+        },
+        "editableFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "paramCode": {
+          "maxLength": 50,
+          "messages": {
+            "pattern": "Must start with a letter and contain only A-Z, 0-9 or '_'",
+            "required": "Parameter code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "paramDescription": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "paramGroup": {
+          "maxLength": 50,
+          "messages": {
+            "pattern": "Must start with a letter and contain only A-Z, 0-9 or '_'",
+            "required": "Parameter group is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "paramValue": {
+          "maxLength": 4000,
+          "messages": {
+            "required": "Parameter value is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "SystemParameterUpdateRequest": {
+      "fields": {
+        "paramDescription": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "paramValue": {
+          "maxLength": 4000,
+          "messages": {
+            "required": "Parameter value is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
+    "TimeAttendanceLine": {
+      "fields": {
+        "empNumber": {
+          "maxLength": 20,
+          "messages": {
+            "required": "emp_number is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "hoursOvertime": {
+          "max": 24,
+          "messages": {
+            "required": "hours_overtime is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "hoursRegular": {
+          "max": 24,
+          "messages": {
+            "required": "hours_regular is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "workDate": {
+          "format": "date",
+          "messages": {
+            "required": "date is required",
+          },
+          "required": true,
+          "type": "date",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
   },
   "generator": "hrms-validation:exporter",
   "generatorVersion": "0.1.0",
@@ -1522,6 +2441,7 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
     "p2-leave",
     "p3-employee",
     "p4-payroll",
+    "p5-reporting-decommission",
   ],
   "parameters": {
     "HR.MAX_FUTURE_HIRE_DAYS": 90,
@@ -1529,6 +2449,6 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "9b7914f79b3adff1a83ccb25ff8bd4ed046ef6b77e0f73699e6d206fb99d1f53",
+  "sourceHash": "c58e4bed3bbe2c90ede1a1c0cbeee561265646536c8b210f54c74a683ec85fd2",
 }
 `;

@@ -273,6 +273,8 @@ The React `useErrorHandler` maps these server `ApiError.code` values (kept as th
 | `-20301`, `-20310` … `-20312` | `PKG_SECURITY` | Invalid credentials; password complexity | 401 / 400 |
 | `-20401` … `-20403` | `PKG_PERFORMANCE` | Cycle status, review status, rating range | 422 / 400 |
 | `-20501` … `-20504` | `trg_employees.sql` | Hire-date limit; e-mail in use; direct reactivation; direct delete | 400 / 409 / 422 / 405 |
+| `-20601` … `-20606` | *none* – added by the P5 contract (`contracts/p5-reporting-decommission/error-codes.md` §2); `HRMS_ADMIN.fmb` surfaced raw `ORA-00001`/`ORA-02290` | Reference-data admin: duplicate/immutable code; row in use (cannot deactivate); value rule (`CHK_SALARY_RANGE`, carryover ≤ max, parameter type); invalid grade/location; department parent cycle; parameter not editable | 409 / 422 / 400 / 400 / 400 / 422 |
+| `-20701` … `-20704` | *none* – added by the P5 contract; `PKG_INTEGRATION` swallowed every error via `PKG_COMMON.log_error` | Integration / batch: GL feed run not APPROVED/PAID; accrual/carryover job already running; duplicate time-attendance line; time-attendance file fully rejected | 422 / 409 / per-line / 422 |
 
 ---
 

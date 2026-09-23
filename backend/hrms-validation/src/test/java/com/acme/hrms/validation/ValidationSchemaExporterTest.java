@@ -180,6 +180,69 @@ class ValidationSchemaExporterTest {
   }
 
   @Test
+  void p5ReportingDecommissionDtosPinContractRules() {
+    ObjectNode root = new ValidationSchemaExporter().export("x", 8);
+    assertThat(root.get("modules").get(5).asText()).isEqualTo("p5-reporting-decommission");
+    JsonNode dtos = root.get("dtos");
+    for (String dto :
+        new String[] {
+          "EmployeeDirectoryQuery",
+          "OrgHierarchyQuery",
+          "EmployeeCompensationQuery",
+          "LeaveSummaryQuery",
+          "PayrollLatestQuery",
+          "PendingApprovalsQuery",
+          "DepartmentRequest",
+          "JobGradeRequest",
+          "JobTitleRequest",
+          "LocationRequest",
+          "LeaveTypeRequest",
+          "SystemParameterRequest",
+          "SystemParameterUpdateRequest",
+          "AccrualRunRequest",
+          "CarryoverRunRequest",
+          "AuditLogSearchQuery",
+          "GlFeedRequest",
+          "BenefitsFeedRequest",
+          "TimeAttendanceLine",
+          "IntegrationFileListQuery"
+        }) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p5-reporting-decommission");
+    }
+    JsonNode deptCode = dtos.get("DepartmentRequest").get("fields").get("deptCode");
+    assertThat(deptCode.get("required").asBoolean()).isTrue();
+    assertThat(deptCode.get("maxLength").asInt()).isEqualTo(20);
+    assertThat(deptCode.get("pattern").asText()).isEqualTo("^[A-Z0-9_-]+$");
+    JsonNode minSalary = dtos.get("JobGradeRequest").get("fields").get("minSalary");
+    assertThat(minSalary.get("required").asBoolean()).isTrue();
+    assertThat(minSalary.get("scale").asInt()).isEqualTo(2);
+    assertThat(dtos.get("JobTitleRequest").get("fields").get("flsaStatus").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("EXEMPT", "NON_EXEMPT");
+    assertThat(dtos.get("LeaveTypeRequest").get("fields").get("accrualFrequency").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("MONTHLY", "BIWEEKLY", "ANNUAL");
+    assertThat(dtos.get("SystemParameterRequest").get("fields").get("dataType").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("VARCHAR2", "NUMBER", "DATE", "BOOLEAN");
+    JsonNode year = dtos.get("CarryoverRunRequest").get("fields").get("year");
+    assertThat(year.get("required").asBoolean()).isTrue();
+    assertThat(year.get("min").asInt()).isEqualTo(2000);
+    assertThat(year.get("max").asInt()).isEqualTo(2099);
+    JsonNode hours = dtos.get("TimeAttendanceLine").get("fields").get("hoursRegular");
+    assertThat(hours.get("min").doubleValue()).isEqualTo(0.0);
+    assertThat(hours.get("max").doubleValue()).isEqualTo(24.0);
+    assertThat(dtos.get("PendingApprovalsQuery").get("fields").get("itemType").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("LEAVE", "REVIEW");
+    assertThat(dtos.get("EmployeeDirectoryQuery").get("fields").get("size").get("max").asInt())
+        .isEqualTo(200);
+    assertThat(dtos.get("AuditLogSearchQuery").get("fields").get("actionType").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("INSERT", "UPDATE", "DELETE", "STATUS_CHANGE", "LOGIN", "LOGOUT");
+  }
+
+  @Test
   void hashIsStable() {
     ValidationSchemaExporter e = new ValidationSchemaExporter();
     assertThat(e.export("a", 8).get("sourceHash")).isEqualTo(e.export("b", 8).get("sourceHash"));

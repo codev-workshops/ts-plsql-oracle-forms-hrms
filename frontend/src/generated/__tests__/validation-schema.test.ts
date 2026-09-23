@@ -33,6 +33,7 @@ describe('frontend/src/generated/validation-schema.json', () => {
       'p2-leave',
       'p3-employee',
       'p4-payroll',
+      'p5-reporting-decommission',
     ]);
     expect(Object.keys(schema.dtos).length).toBeGreaterThan(0);
   });
@@ -151,6 +152,55 @@ describe('frontend/src/generated/validation-schema.json', () => {
       'EmergencyContactRequest',
     ] as const) {
       expect(schema.dtos[dto].module).toBe('p3-employee');
+    }
+  });
+
+  it('pins the P5 reporting/admin/integration DTOs to the contract (codes, enums, VAL-05 report filters, BUG-08 line grammar)', () => {
+    const deptCode = schema.dtos.DepartmentRequest.fields.deptCode;
+    expect([deptCode.required, deptCode.trim, deptCode.maxLength, deptCode.pattern]).toEqual([true, true, 20, '^[A-Z0-9_-]+$']);
+    expect(schema.dtos.JobGradeRequest.fields.maxSalary.required).toBe(true);
+    expect(schema.dtos.JobTitleRequest.fields.flsaStatus.values).toEqual(['EXEMPT', 'NON_EXEMPT']);
+    expect(schema.dtos.LeaveTypeRequest.fields.accrualFrequency.values).toEqual(['MONTHLY', 'BIWEEKLY', 'ANNUAL']);
+    expect(schema.dtos.SystemParameterRequest.fields.dataType.values).toEqual(['VARCHAR2', 'NUMBER', 'DATE', 'BOOLEAN']);
+    const year = schema.dtos.CarryoverRunRequest.fields.year;
+    expect([year.required, year.min, year.max]).toEqual([true, 2000, 2099]);
+    expect(schema.dtos.LeaveSummaryQuery.fields.year.min).toBe(2000);
+    expect(schema.dtos.PendingApprovalsQuery.fields.itemType.values).toEqual(['LEAVE', 'REVIEW']);
+    expect(schema.dtos.EmployeeDirectoryQuery.fields.size.max).toBe(200);
+    const hours = schema.dtos.TimeAttendanceLine.fields.hoursRegular;
+    expect([hours.required, hours.min, hours.max, hours.scale]).toEqual([true, 0, 24, 2]);
+    expect(schema.dtos.IntegrationFileListQuery.fields.feed.values).toEqual(['GL_JOURNAL', 'BENEFITS_FEED', 'TIME_ATTENDANCE']);
+    expect(schema.dtos.AuditLogSearchQuery.fields.actionType.values).toEqual([
+      'INSERT',
+      'UPDATE',
+      'DELETE',
+      'STATUS_CHANGE',
+      'LOGIN',
+      'LOGOUT',
+    ]);
+    for (const dto of [
+      'EmployeeDirectoryQuery',
+      'OrgHierarchyQuery',
+      'EmployeeCompensationQuery',
+      'LeaveSummaryQuery',
+      'PayrollLatestQuery',
+      'PendingApprovalsQuery',
+      'DepartmentRequest',
+      'JobGradeRequest',
+      'JobTitleRequest',
+      'LocationRequest',
+      'LeaveTypeRequest',
+      'SystemParameterRequest',
+      'SystemParameterUpdateRequest',
+      'AccrualRunRequest',
+      'CarryoverRunRequest',
+      'AuditLogSearchQuery',
+      'GlFeedRequest',
+      'BenefitsFeedRequest',
+      'TimeAttendanceLine',
+      'IntegrationFileListQuery',
+    ] as const) {
+      expect(schema.dtos[dto].module).toBe('p5-reporting-decommission');
     }
   });
 
