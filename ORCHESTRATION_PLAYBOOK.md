@@ -178,14 +178,17 @@ For a **fresh managed verification of this repo's existing P0–P5 code**, do
 not reset or overwrite historical `phase/*` and `<slug>/*` branches. Pin
 `phase/p5-reporting-decommission` as the audit base and create
 `managed/<run-id>/<slug>-{contract,backend,frontend,integration}` only for
-actual changes, with PRs into a `managed/<run-id>/<slug>` phase branch
-anchored at that base; use existing SHA + child report when no diff exists.
+actual changes, with PRs into a `managed/<run-id>/<slug>` phase branch.
+Anchor P0 at that audit base; anchor each later phase at the preceding
+implementation-ready merged SHA. Use existing SHA + child report when no diff exists.
 Git cannot store a branch both at `<slug>` and beneath `<slug>/`, so use
 these sibling suffixes rather than `<slug>/<role>`. The P3
 `<slug>-backend-salary` branch precedes employee as above. Integration PRs target
 the managed phase branch; remediation appends commits to the failing side.
-If the previous phase is blocked, retain reports but do not advance to the
-next phase or treat an old `phase/*` promotion as a current approval.
+If the previous phase's local implementation checks are blocked, retain reports
+but do not advance to the next phase. A full cutover block may coexist with
+implementation-only progression as described above; never treat an old
+`phase/*` promotion as a current approval.
 
 Every child prompt supplies this repository and specific branch/SHA, frozen
 contract brief, required source sections, allowed files, target PR branch,
