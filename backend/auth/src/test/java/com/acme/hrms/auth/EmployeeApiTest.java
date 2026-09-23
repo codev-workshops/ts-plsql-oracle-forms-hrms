@@ -262,6 +262,56 @@ class EmployeeApiTest extends AuthApiTestBase {
     mvc.perform(json(post("/api/auth/login"), null, login)).andExpect(status().isOk());
   }
 
+  /** openapi.yaml listEmployees: {@code hireDateFrom > hireDateTo} reports {@code hireDateTo}. */
+  @Test
+  void reversedHireDateRangeReportsHireDateTo() throws Exception {
+    mvc.perform(
+            get("/api/employees?hireDateFrom=2025-06-30&hireDateTo=2025-06-01")
+                .header("Authorization", "Bearer " + staff))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Request validation failed"))
+        .andExpect(jsonPath("$.field").value("hireDateTo"))
+        .andExpect(jsonPath("$.details.length()").value(1))
+        .andExpect(jsonPath("$.details[0].field").value("hireDateTo"))
+        .andExpect(
+            jsonPath("$.details[0].message")
+                .value("hireDateFrom must be before or equal to hireDateTo"))
+        .andExpect(jsonPath("$.traceId").isString());
+
+    for (String range :
+        new String[] {
+          "hireDateFrom=2025-06-01&hireDateTo=2025-06-30",
+          "hireDateFrom=2025-06-01&hireDateTo=2025-06-01",
+          "hireDateFrom=2025-06-30",
+          "hireDateTo=2025-06-01"
+        }) {
+      mvc.perform(get("/api/employees?" + range).header("Authorization", "Bearer " + staff))
+          .andExpect(status().isOk());
+    }
+
+    // an unparsable date is still the generic binding failure on its own parameter
+    mvc.perform(
+            get("/api/employees?hireDateFrom=2025-13-45&hireDateTo=2025-06-01")
+                .header("Authorization", "Bearer " + staff))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("hireDateFrom"));
+
+    // the other query constraints keep reporting on their own field alongside the range rule
+    mvc.perform(
+            get("/api/employees?status=RETIRED&hireDateFrom=2025-06-30&hireDateTo=2025-06-01")
+                .header("Authorization", "Bearer " + staff))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("status"));
+
+    // authentication precedes validation
+    mvc.perform(get("/api/employees?hireDateFrom=2025-06-30&hireDateTo=2025-06-01"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("TOKEN_INVALID"));
+  }
+
   @Test
   void deleteIsRefusedWithTheTriggerCode() throws Exception {
     mvc.perform(delete("/api/employees/2").header("Authorization", "Bearer " + exec))
