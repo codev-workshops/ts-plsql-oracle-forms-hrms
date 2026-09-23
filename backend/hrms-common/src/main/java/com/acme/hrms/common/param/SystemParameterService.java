@@ -14,6 +14,11 @@ public class SystemParameterService {
   public static final String SESSION_TIMEOUT_MIN = "SESSION_TIMEOUT_MIN";
   public static final int DEFAULT_PASSWORD_MIN_LENGTH = 8;
   public static final int DEFAULT_SESSION_TIMEOUT_MIN = 30;
+  public static final String HR_GROUP = "HR";
+  public static final String MAX_FUTURE_HIRE_DAYS = "MAX_FUTURE_HIRE_DAYS";
+
+  /** VAL-01: the single hire-date limit, frozen at the Forms value (contracts/p3-employee). */
+  public static final int DEFAULT_MAX_FUTURE_HIRE_DAYS = 90;
 
   private final JdbcTemplate jdbc;
 
@@ -45,5 +50,10 @@ public class SystemParameterService {
 
   public int sessionTimeoutMinutes() {
     return getInt(SECURITY_GROUP, SESSION_TIMEOUT_MIN, DEFAULT_SESSION_TIMEOUT_MIN);
+  }
+
+  /** {@code HR.MAX_FUTURE_HIRE_DAYS} ({@code -20501} limit). */
+  public int maxFutureHireDays() {
+    return getInt(HR_GROUP, MAX_FUTURE_HIRE_DAYS, DEFAULT_MAX_FUTURE_HIRE_DAYS);
   }
 }

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.acme.hrms.audit.AuditService;
 import com.acme.hrms.common.error.ErrorCode;
 import com.acme.hrms.common.error.HrmsException;
+import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
 import com.acme.hrms.common.testsupport.HrmsPostgres;
 import com.acme.hrms.employee.EmployeeDtos.EmployeeDetail;
@@ -91,6 +92,7 @@ class EmployeeServiceTest {
             new ReversingCipher(),
             revoker,
             events,
+            new SystemParameterService(jdbc),
             CLOCK);
   }
 
@@ -165,10 +167,33 @@ class EmployeeServiceTest {
 
   @Test
   void code20501HireDateMoreThan90DaysInTheFuture() {
+    service.create(create(c -> c.setHireDate(TODAY.plusDays(89))), HR);
     service.create(create(c -> c.setHireDate(TODAY.plusDays(90))), HR);
     expect(
-        () -> service.create(create(c -> c.setHireDate(TODAY.plusDays(91))), HR),
-        ErrorCode.HIRE_DATE_TOO_FAR);
+            () -> service.create(create(c -> c.setHireDate(TODAY.plusDays(91))), HR),
+            ErrorCode.HIRE_DATE_TOO_FAR)
+        .hasMessage("Hire date cannot be more than 90 days in the future")
+        .hasFieldOrPropertyWithValue("field", "hireDate");
+  }
+
+  @Test
+  void code20501LimitIsTheConfiguredHrMaxFutureHireDaysParameter() {
+    jdbc.update(
+        "insert into system_parameters (param_id, param_group, param_code, param_value,"
+            + " param_description, editable_flag, created_by, created_date) select"
+            + " max(param_id) + 1, 'HR', 'MAX_FUTURE_HIRE_DAYS', '30', 'test', 'Y', 'SYSTEM',"
+            + " current_timestamp from system_parameters");
+    try {
+      service.create(create(c -> c.setHireDate(TODAY.plusDays(30))), HR);
+      expect(
+              () -> service.create(create(c -> c.setHireDate(TODAY.plusDays(31))), HR),
+              ErrorCode.HIRE_DATE_TOO_FAR)
+          .hasMessage("Hire date cannot be more than 30 days in the future");
+    } finally {
+      jdbc.update(
+          "delete from system_parameters where param_group = 'HR' and param_code ="
+              + " 'MAX_FUTURE_HIRE_DAYS'");
+    }
   }
 
   @Test
@@ -378,14 +403,32 @@ class EmployeeServiceTest {
   // ---------------------------------------------------------------- scope
 
   @Test
-  void rowScopeIsSelfOrEditAndSsnLast4FollowsIt() {
-    EmployeeDetail self = service.get(2, SELF);
-    assertThat(self.id()).isEqualTo(2);
-    expect(() -> service.get(3, SELF), ErrorCode.FORBIDDEN);
-    expect(() -> service.history(3, SELF), ErrorCode.FORBIDDEN);
-    expect(() -> service.dependents(3, SELF), ErrorCode.FORBIDDEN);
+  void detailAndHistoryAreFieldScopedNotRowScopedForEmployeeViewHolders() {
+    EmployeeDetail other =
+        service.create(create(c -> c.setInitialSalary(new BigDecimal("85000"))), HR);
+
+    EmployeeDetail seen = service.get(other.id(), SELF);
+    assertThat(seen.id()).isEqualTo(other.id());
+    assertThat(seen.firstName()).isEqualTo("NEW");
+    assertThat(seen.ssnLast4()).isNull();
+    assertThat(service.get(other.id(), HR).ssnLast4()).isEqualTo("6789");
+    CallerIdentity asOther = new CallerIdentity("x", other.id(), Set.of("EMPLOYEE:VIEW"), "j");
+    assertThat(service.get(other.id(), asOther).ssnLast4()).isEqualTo("6789");
+
+    List<EmployeeHistoryEntry> history = service.history(other.id(), SELF);
+    assertThat(history).hasSize(1);
+    assertThat(history.get(0).changeType()).isEqualTo("HIRE");
+    assertThat(history.get(0).newSalary()).isNull();
     CallerIdentity payroll = new CallerIdentity("pay", 11, Set.of("PAYROLL:VIEW"), "j");
-    expect(() -> service.get(2, payroll), ErrorCode.FORBIDDEN);
+    assertThat(service.history(other.id(), payroll).get(0).newSalary()).isEqualTo("85000.00");
+  }
+
+  @Test
+  void dependentsAndContactsStayRowScopedToSelfOrEdit() {
+    assertThat(service.dependents(2, SELF)).isNotNull();
+    assertThat(service.contacts(2, SELF)).isNotNull();
+    expect(() -> service.dependents(3, SELF), ErrorCode.FORBIDDEN);
+    expect(() -> service.contacts(3, SELF), ErrorCode.FORBIDDEN);
   }
 
   // -------------------------------------------------------------- helpers

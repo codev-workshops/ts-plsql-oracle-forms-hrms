@@ -59,11 +59,24 @@ class EmployeeApiTest extends AuthApiTestBase {
     long id = body(created).get("id").asLong();
     String etag = created.getResponse().getHeader("ETag");
 
-    // staff (emp 2) may read itself but not another employee
+    // staff (emp 2, EMPLOYEE:VIEW) reads any employee's basic detail; ssnLast4 is EDIT/self-only
     mvc.perform(get("/api/employees/2").header("Authorization", "Bearer " + staff))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.ssnLast4").doesNotExist());
     mvc.perform(get("/api/employees/" + id).header("Authorization", "Bearer " + staff))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(id))
+        .andExpect(jsonPath("$.ssnLast4").doesNotExist());
+    mvc.perform(get("/api/employees/" + id + "/history").header("Authorization", "Bearer " + staff))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].changeType").value("HIRE"))
+        .andExpect(jsonPath("$[0].newSalary").doesNotExist());
+    mvc.perform(
+            get("/api/employees/" + id + "/dependents").header("Authorization", "Bearer " + staff))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(
+            get("/api/employees/" + id + "/contacts").header("Authorization", "Bearer " + staff))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 

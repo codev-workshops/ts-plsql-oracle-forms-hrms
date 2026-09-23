@@ -8,6 +8,14 @@ import com.acme.hrms.employee.EmployeeRepository.EmployeeUpdate;
 import com.acme.hrms.employee.EmployeeRepository.NewEmployee;
 import com.acme.hrms.employee.EmployeeRepository.SearchFilter;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,6 +81,71 @@ class EmployeeRepositoryTest {
     assertThat(first).matches("EMP-\\d{6}");
     assertThat(Integer.parseInt(second.substring(4)))
         .isEqualTo(Integer.parseInt(first.substring(4)) + 1);
+  }
+
+  @Test
+  void seqEmpNumberRestartsAtOneHundredRightAfterTheSeededEmp000099() {
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from flyway_schema_history where version = '9' and success",
+                Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select start_value from pg_sequences where sequencename = 'seq_emp_number'",
+                Long.class))
+        .isEqualTo(100L);
+    assertThat(
+            jdbc.queryForObject(
+                "select max(emp_number) from employees where emp_number < 'EMP-000100'",
+                String.class))
+        .isEqualTo("EMP-000099");
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employees where emp_number >= 'EMP-001000'", Integer.class))
+        .isZero();
+    assertThat(Integer.parseInt(employees.nextEmpNumber().substring(4)))
+        .isGreaterThanOrEqualTo(100)
+        .isLessThan(1000);
+  }
+
+  @Test
+  void fiftyParallelInsertsDrawDistinctSequenceNumbersWithoutDuplicateKeyErrors() throws Exception {
+    int threads = 50;
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    CountDownLatch start = new CountDownLatch(1);
+    List<Future<Long>> created = new ArrayList<>();
+    try {
+      for (int i = 0; i < threads; i++) {
+        String last = "RACE" + i;
+        Callable<Long> task =
+            () -> {
+              start.await();
+              return insert("P", last, null, null);
+            };
+        created.add(pool.submit(task));
+      }
+      start.countDown();
+      List<Long> ids = new ArrayList<>();
+      for (Future<Long> f : created) {
+        ids.add(f.get(60, TimeUnit.SECONDS));
+      }
+      String in = String.join(",", ids.stream().map(String::valueOf).toList());
+      List<String> numbers =
+          jdbc.queryForList(
+              "select emp_number from employees where emp_id in (" + in + ")", String.class);
+      assertThat(numbers)
+          .hasSize(threads)
+          .doesNotHaveDuplicates()
+          .allMatch(n -> n.matches("EMP-\\d{6}"));
+      assertThat(
+              jdbc.queryForObject(
+                  "select count(distinct emp_number) from employees", Integer.class))
+          .isEqualTo(jdbc.queryForObject("select count(*) from employees", Integer.class));
+      jdbc.update("delete from employees where emp_id in (" + in + ")");
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   @Test

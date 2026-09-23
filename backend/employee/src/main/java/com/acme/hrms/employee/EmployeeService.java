@@ -4,6 +4,7 @@ import com.acme.hrms.audit.AuditService;
 import com.acme.hrms.audit.AuditService.Action;
 import com.acme.hrms.common.error.ErrorCode;
 import com.acme.hrms.common.error.HrmsException;
+import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
 import com.acme.hrms.employee.DependentRepository.DependentRow;
 import com.acme.hrms.employee.DependentRepository.DependentWrite;
@@ -54,6 +55,7 @@ public class EmployeeService {
   private final SensitiveFieldCipher cipher;
   private final EmployeeSessionRevoker sessions;
   private final ApplicationEventPublisher events;
+  private final SystemParameterService parameters;
   private final Clock clock;
 
   public EmployeeService(
@@ -66,6 +68,7 @@ public class EmployeeService {
       SensitiveFieldCipher cipher,
       EmployeeSessionRevoker sessions,
       ApplicationEventPublisher events,
+      SystemParameterService parameters,
       Clock clock) {
     this.employees = employees;
     this.history = history;
@@ -76,6 +79,7 @@ public class EmployeeService {
     this.cipher = cipher;
     this.sessions = sessions;
     this.events = events;
+    this.parameters = parameters;
     this.clock = clock;
   }
 
@@ -83,15 +87,12 @@ public class EmployeeService {
 
   @Transactional(readOnly = true)
   public EmployeeDetail get(long empId, CallerIdentity caller) {
-    EmployeeRow row = require(empId);
-    EmployeeAccess.requireSelfOrEdit(empId, caller);
-    return detail(row, caller);
+    return detail(require(empId), caller);
   }
 
   @Transactional(readOnly = true)
   public List<EmployeeHistoryEntry> history(long empId, CallerIdentity caller) {
     require(empId);
-    EmployeeAccess.requireSelfOrEdit(empId, caller);
     List<EmployeeHistoryEntry> rows = history.findByEmployee(empId);
     if (EmployeeAccess.canSeeSalary(empId, caller)) {
       return rows;
@@ -105,7 +106,8 @@ public class EmployeeService {
   @Transactional
   public EmployeeDetail create(EmployeeCreateRequest r, CallerIdentity caller) {
     EmployeeAccess.requireNames(r.getFirstName(), r.getLastName());
-    EmployeeAccess.requireHireDateWithinLimit(r.getHireDate(), clock);
+    EmployeeAccess.requireHireDateWithinLimit(
+        r.getHireDate(), parameters.maxFutureHireDays(), clock);
     EmployeeAccess.requirePositive(r.getInitialSalary());
     long deptId = r.getDeptId();
     long jobId = r.getJobId();
