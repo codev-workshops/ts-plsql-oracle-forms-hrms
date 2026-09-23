@@ -3,8 +3,8 @@ package com.acme.hrms.employee;
 import com.acme.hrms.common.error.ErrorCode;
 import com.acme.hrms.common.error.HrmsException;
 import com.acme.hrms.common.format.OracleNumber;
+import com.acme.hrms.common.param.SystemParameterService;
 import com.acme.hrms.common.security.CallerIdentity;
-import com.acme.hrms.validation.constraints.HireDateWithinLimit;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
 import jakarta.validation.ConstraintViolation;
@@ -28,14 +28,17 @@ public class EmployeeAccess {
   public static final String EDIT = "EMPLOYEE:EDIT";
 
   private final Validator validator;
+  private final SystemParameterService parameters;
   private final Clock clock;
   private final String moduleFlag;
 
   public EmployeeAccess(
       Validator validator,
+      SystemParameterService parameters,
       Clock clock,
       @Value("${hrms.proxy.modules.employee:LEGACY}") String moduleFlag) {
     this.validator = validator;
+    this.parameters = parameters;
     this.clock = clock;
     this.moduleFlag = moduleFlag;
   }
@@ -108,16 +111,21 @@ public class EmployeeAccess {
     }
   }
 
-  /** {@code TRG_EMP_BEFORE_INSERT}: {@code -20501} (VAL-01 single limit of 90 days). */
+  /**
+   * {@code TRG_EMP_BEFORE_INSERT}: {@code -20501} against the single VAL-01 limit {@code
+   * SYSTEM_PARAMETERS HR.MAX_FUTURE_HIRE_DAYS} (default 90).
+   */
   void requireHireDateWithinLimit(@Nullable LocalDate hireDate) {
-    requireHireDateWithinLimit(hireDate, clock);
+    requireHireDateWithinLimit(hireDate, parameters.maxFutureHireDays(), clock);
   }
 
-  static void requireHireDateWithinLimit(@Nullable LocalDate hireDate, Clock clock) {
-    if (hireDate != null
-        && hireDate.isAfter(
-            LocalDate.now(clock).plusDays(HireDateWithinLimit.DEFAULT_MAX_FUTURE_DAYS))) {
-      throw new HrmsException(ErrorCode.HIRE_DATE_TOO_FAR, "hireDate");
+  static void requireHireDateWithinLimit(
+      @Nullable LocalDate hireDate, int maxFutureDays, Clock clock) {
+    if (hireDate != null && hireDate.isAfter(LocalDate.now(clock).plusDays(maxFutureDays))) {
+      throw new HrmsException(
+          ErrorCode.HIRE_DATE_TOO_FAR,
+          "Hire date cannot be more than " + maxFutureDays + " days in the future",
+          "hireDate");
     }
   }
 

@@ -107,7 +107,7 @@ public class EmployeeController {
   }
 
   @GetMapping("/api/employees/{id}")
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public ResponseEntity<EmployeeDetail> get(@PathVariable long id) {
     EmployeeDetail detail = service.get(id, CurrentCaller.require());
     return ResponseEntity.ok().eTag(etag(detail)).body(detail);
@@ -147,19 +147,19 @@ public class EmployeeController {
   }
 
   @GetMapping("/api/employees/{id}/history")
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public List<EmployeeHistoryEntry> history(@PathVariable long id) {
     return service.history(id, CurrentCaller.require());
   }
 
   @GetMapping("/api/employees/{id}/dependents")
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public List<Dependent> dependents(@PathVariable long id) {
     return service.dependents(id, CurrentCaller.require());
   }
 
   @PostMapping("/api/employees/{id}/dependents")
-  @PreAuthorize("hasAuthority('EMPLOYEE:EDIT')")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public ResponseEntity<Dependent> addDependent(
       @PathVariable long id, @RequestBody(required = false) @Nullable DependentRequest body) {
     CallerIdentity caller = CurrentCaller.require();
@@ -171,7 +171,7 @@ public class EmployeeController {
   }
 
   @PutMapping("/api/employees/{id}/dependents/{dependentId}")
-  @PreAuthorize("hasAuthority('EMPLOYEE:EDIT')")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public Dependent updateDependent(
       @PathVariable long id,
       @PathVariable long dependentId,
@@ -182,13 +182,13 @@ public class EmployeeController {
   }
 
   @GetMapping("/api/employees/{id}/contacts")
-  @PreAuthorize("isAuthenticated()")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public List<EmergencyContact> contacts(@PathVariable long id) {
     return service.contacts(id, CurrentCaller.require());
   }
 
   @PostMapping("/api/employees/{id}/contacts")
-  @PreAuthorize("hasAuthority('EMPLOYEE:EDIT')")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public ResponseEntity<EmergencyContact> addContact(
       @PathVariable long id,
       @RequestBody(required = false) @Nullable EmergencyContactRequest body) {
@@ -201,7 +201,7 @@ public class EmployeeController {
   }
 
   @PutMapping("/api/employees/{id}/contacts/{contactId}")
-  @PreAuthorize("hasAuthority('EMPLOYEE:EDIT')")
+  @PreAuthorize("hasAuthority('EMPLOYEE:VIEW')")
   public EmergencyContact updateContact(
       @PathVariable long id,
       @PathVariable long contactId,
