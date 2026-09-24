@@ -114,6 +114,26 @@ public enum ErrorCode {
       "-20605", HttpStatus.BAD_REQUEST, "Parent department chain would create a cycle: %s"),
   PARAMETER_NOT_EDITABLE(
       "-20606", HttpStatus.UNPROCESSABLE_ENTITY, "System parameter %s is not editable"),
+  PAY_ELEMENT_PROTECTED(
+      "-20607", HttpStatus.UNPROCESSABLE_ENTITY, "Pay element %d (%s) is reserved: %s"),
+  TAX_BRACKET_OVERLAP(
+      "-20608", HttpStatus.CONFLICT, "Bracket [%s, %s) overlaps bracket %d [%s, %s)"),
+  TAX_YEAR_LOCKED(
+      "-20609", HttpStatus.UNPROCESSABLE_ENTITY, "Tax year %d is locked by payroll run %d (%s)"),
+  ROLE_CODE_CONFLICT("-20801", HttpStatus.CONFLICT, "Role code already exists: %s"),
+  ROLE_SEEDED("-20802", HttpStatus.UNPROCESSABLE_ENTITY, "Role %s is seeded and read-only"),
+  ROLE_IN_USE("-20803", HttpStatus.CONFLICT, "Role %s is assigned to %d accounts"),
+  SELF_ACCOUNT_MODIFICATION(
+      "-20804", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot modify your own account"),
+  LAST_ADMIN_EDIT_HOLDER(
+      "-20805",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      "Cannot remove the last active account holding ADMIN:EDIT"),
+  PRIVILEGE_EXCEEDS_CALLER(
+      "-20806", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot grant %s: caller does not hold it"),
+  UNKNOWN_ROLE("-20807", HttpStatus.UNPROCESSABLE_ENTITY, "Unknown role: %d"),
+  ROLE_NOT_FOUND("ROLE_NOT_FOUND", HttpStatus.NOT_FOUND, "Role not found: %d"),
+  USER_NOT_FOUND("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User account not found: %d"),
   RUN_NOT_EXPORTABLE(
       "-20701", HttpStatus.UNPROCESSABLE_ENTITY, "Cannot export GL feed for run in status: %s"),
   JOB_ALREADY_RUNNING("-20702", HttpStatus.CONFLICT, "A %s job for %s is already running"),

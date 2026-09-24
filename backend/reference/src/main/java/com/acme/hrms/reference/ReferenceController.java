@@ -27,10 +27,10 @@ public class ReferenceController {
 
   static final CacheControl CACHE = CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate();
 
-  private final ReferenceRepository repository;
+  private final ReferenceDataReader repository;
   private final ObjectMapper mapper;
 
-  public ReferenceController(ReferenceRepository repository, ObjectMapper mapper) {
+  public ReferenceController(ReferenceDataReader repository, ObjectMapper mapper) {
     this.repository = repository;
     this.mapper = mapper;
   }

@@ -42,8 +42,9 @@ class SalaryChangePctMigrationTest {
 
     assertThat(
             jdbc.queryForObject(
-                "select max(version::int) from flyway_schema_history where success", Integer.class))
-        .isEqualTo(11);
+                "select count(*) from flyway_schema_history where success and version = '11'",
+                Integer.class))
+        .isEqualTo(1);
     assertThat(records.findById(legacyMax).orElseThrow().changePct()).isEqualTo("999.99");
     assertThat(records.findById(legacyCut).orElseThrow().changePct()).isEqualTo("-12.34");
     assertThat(records.findById(legacyNull).orElseThrow().changePct()).isNull();
