@@ -383,6 +383,63 @@ class EmployeeApiTest extends AuthApiTestBase {
         .isEqualTo(1);
   }
 
+  /**
+   * -20004 names the request property that carried the manager: {@code managerEmpId} on
+   * create/update, {@code newManagerEmpId} on transfer (error-codes.md, -20004 row).
+   */
+  @Test
+  void invalidManagerFieldFollowsTheRequestProperty() throws Exception {
+    // 99 is TERMINATED in the seed; emp 1 is the root of the chain, so 3 (reports to 1) is circular
+    Map<String, Object> inactive = newEmployee("api.manager@company.com");
+    inactive.put("managerEmpId", 99);
+    mvc.perform(json(post("/api/employees"), exec, inactive))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20004"))
+        .andExpect(jsonPath("$.message").value("Invalid or inactive manager: 99"))
+        .andExpect(jsonPath("$.field").value("managerEmpId"));
+
+    String etag =
+        mvc.perform(get("/api/employees/1").header("Authorization", "Bearer " + exec))
+            .andReturn()
+            .getResponse()
+            .getHeader("ETag");
+    Map<String, Object> circular = update("JAMES", EXEC_EMAIL);
+    circular.put("managerEmpId", 3);
+    mvc.perform(json(put("/api/employees/1"), exec, circular).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20004"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Circular reporting chain detected: Employee 1 cannot report to 3"))
+        .andExpect(jsonPath("$.field").value("managerEmpId"));
+
+    mvc.perform(
+            json(
+                post("/api/employees/1/transfer"),
+                exec,
+                Map.of("deptId", 30, "effectiveDate", "2025-07-01", "newManagerEmpId", 99)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20004"))
+        .andExpect(jsonPath("$.message").value("Invalid or inactive manager: 99"))
+        .andExpect(jsonPath("$.field").value("newManagerEmpId"));
+    mvc.perform(
+            json(
+                post("/api/employees/1/transfer"),
+                exec,
+                Map.of("deptId", 30, "effectiveDate", "2025-07-01", "newManagerEmpId", 3)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20004"))
+        .andExpect(
+            jsonPath("$.message")
+                .value("Circular reporting chain detected: Employee 1 cannot report to 3"))
+        .andExpect(jsonPath("$.field").value("newManagerEmpId"));
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employee_history where emp_id = 1 and change_type = 'TRANSFER'",
+                Integer.class))
+        .isZero();
+  }
+
   @Test
   void staffCannotCreateEmployeesButSelfServesDependentsAndContacts() throws Exception {
     mvc.perform(json(post("/api/employees"), staff, newEmployee("api.staff@company.com")))
