@@ -131,8 +131,17 @@ can lower the holder count (`PUT …/users/{id}/roles`, `PUT …/users/{id}/stat
 `ADMIN:EDIT` holders and roll back on zero – per-row `select … for update` is explicitly **not**
 sufficient; (5) no arbitrary size caps: `roleIds` and `permissions` are non-empty and distinct,
 bounded only by the existing roles / the finite authority vocabulary; new `roles.role_id`
-values come from `seq_role` (`create sequence seq_role start with 1000`, same V12 forward
-migration, past the seeded 1–3) – never `max(role_id)+1`; (6) roles are deleted physically only when unassigned
+values come from `nextval('seq_role')`. **`seq_role` already exists** (V2 `create sequence
+seq_role start with 1 increment by 1 cache 1`; V2 seeds roles 1–3 with literal ids and never
+calls it) so V12 must **not** create it and must not `restart with 1000` blindly; it advances it
+relative to whatever an upgraded database already holds:
+`select setval('seq_role', greatest(1000, coalesce((select max(role_id) from roles), 0) + 1,
+(select last_value + 1 from seq_role)), false)` – so the next `nextval` is `>= 1000` and strictly
+greater than both `max(roles.role_id)` and the sequence's prior value (`is_called = false`
+makes the set value the one returned). Pinned by `hrms-common` `RoleSequenceContractTest`
+(V2 is the only creator; V12, once present, uses `setval(... greatest(... 1000 ...), false)` with
+`max(role_id)` and `last_value`, and contains no `create sequence seq_role` / `alter sequence
+seq_role restart`) – never `max(role_id)+1` in Java; (6) roles are deleted physically only when unassigned
 (`-20803`; `ROLES` has no `active_flag`); (7) **tokens** – every successful role/status write
 calls `SessionRevoker` for each affected user (all sessions: refresh tokens revoked, current
 access-token `jti` revoked), the response reports `sessionsRevoked`; the target's next
@@ -200,4 +209,4 @@ these grids is `untested-live` (`legacy_source=none`).
 distinctness bound them);
 (d) account creation/password reset by admins is deferred; (e) `HOLIDAYS`/`TAX_BRACKETS`
 `modified_by` columns are not added (audit row instead); (f) V12 is the only forward migration
-(unique index + `seq_role`); V1–V11 stay untouched.
+(unique index + `seq_role` advance via `setval`); V1–V11 stay untouched.
