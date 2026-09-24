@@ -435,6 +435,66 @@ class EmployeeApiTest extends AuthApiTestBase {
         .isZero();
   }
 
+  /**
+   * error-codes.md {@code -20011}: {@code jobId} on create / update, {@code newJobId} on transfer.
+   */
+  @Test
+  void invalidJobFieldFollowsTheRequestProperty() throws Exception {
+    Map<String, Object> inactive = newEmployee("api.job@company.com");
+    inactive.put("jobId", 999);
+    mvc.perform(json(post("/api/employees"), exec, inactive))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20011"))
+        .andExpect(jsonPath("$.message").value("Invalid or inactive job: 999"))
+        .andExpect(jsonPath("$.field").value("jobId"));
+
+    String etag =
+        mvc.perform(get("/api/employees/1").header("Authorization", "Bearer " + exec))
+            .andReturn()
+            .getResponse()
+            .getHeader("ETag");
+    Map<String, Object> badJob = update("JAMES", EXEC_EMAIL);
+    badJob.put("jobId", 999);
+    mvc.perform(json(put("/api/employees/1"), exec, badJob).header("If-Match", etag))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20011"))
+        .andExpect(jsonPath("$.message").value("Invalid or inactive job: 999"))
+        .andExpect(jsonPath("$.field").value("jobId"));
+
+    mvc.perform(
+            json(
+                post("/api/employees/1/transfer"),
+                exec,
+                Map.of("deptId", 30, "effectiveDate", "2025-07-01", "newJobId", 999)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20011"))
+        .andExpect(jsonPath("$.message").value("Invalid or inactive job: 999"))
+        .andExpect(jsonPath("$.field").value("newJobId"));
+    // the job is checked before the manager (error-codes.md §3 step 6)
+    mvc.perform(
+            json(
+                post("/api/employees/1/transfer"),
+                exec,
+                Map.of(
+                    "deptId", 30,
+                    "effectiveDate", "2025-07-01",
+                    "newJobId", 999,
+                    "newManagerEmpId", 99)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("-20011"))
+        .andExpect(jsonPath("$.field").value("newJobId"));
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employee_history where emp_id = 1 and change_type = 'TRANSFER'",
+                Integer.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employees where lower(email) = 'api.job@company.com'",
+                Integer.class))
+        .isZero();
+  }
+
   @Test
   void staffCannotCreateEmployeesButSelfServesDependentsAndContacts() throws Exception {
     mvc.perform(json(post("/api/employees"), staff, newEmployee("api.staff@company.com")))
@@ -515,7 +575,7 @@ class EmployeeApiTest extends AuthApiTestBase {
     m.put("locationCode", "CHI");
     m.put("employmentType", "FULL_TIME");
     m.put("ssn", "123-45-6789");
-    m.put("initialSalary", 85000);
+    m.put("initialSalary", "85000.00");
     return m;
   }
 
