@@ -1292,7 +1292,7 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
               "id": "holiday.dateWindow",
               "kind": "custom",
               "message": "Holiday date must be between 1990-01-01 and ten years from today",
-              "value": "3650",
+              "value": "10",
             },
           ],
           "type": "date",
@@ -2770,6 +2770,6 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "a9ae36636bf6e872f6778b59a27d97051980bcad2039c4502ce588c2d59cc8b6",
+  "sourceHash": "2a75a2b652983fd16e9d55f6f186be3a342f9f0c87ec9152637c09cda21f735e",
 }
 `;

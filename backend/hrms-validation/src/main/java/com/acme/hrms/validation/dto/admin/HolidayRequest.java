@@ -1,5 +1,6 @@
 package com.acme.hrms.validation.dto.admin;
 
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.FieldMeta;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
@@ -11,18 +12,18 @@ import java.time.LocalDate;
 /**
  * Body of POST/PUT /api/admin/holidays (HOLIDAYS; active duplicate of (holidayDate,
  * coalesce(locationCode,'*')) -> -20601, inactive/unknown location -> -20604). The date window is
- * {@code [1990-01-01, today + MAX_FUTURE_DAYS]}.
+ * {@code [1990-01-01, today + MAX_FUTURE_YEARS calendar years]}.
  */
-public class HolidayRequest {
+public class HolidayRequest extends StrictRequest {
 
   public static final LocalDate MIN_DATE = LocalDate.of(1990, 1, 1);
-  public static final int MAX_FUTURE_DAYS = 3650;
+  public static final int MAX_FUTURE_YEARS = 10;
 
   @NotNull
   @FieldMeta(
       requiredMessage = "Holiday date is required",
       ruleId = "holiday.dateWindow",
-      ruleValue = "" + MAX_FUTURE_DAYS,
+      ruleValue = "" + MAX_FUTURE_YEARS,
       ruleErrorCode = "VALIDATION_FAILED",
       ruleMessage = "Holiday date must be between 1990-01-01 and ten years from today")
   private LocalDate holidayDate;
@@ -45,7 +46,7 @@ public class HolidayRequest {
   public boolean isHolidayDateWithinWindow() {
     return holidayDate == null
         || (!holidayDate.isBefore(MIN_DATE)
-            && !holidayDate.isAfter(LocalDate.now().plusDays(MAX_FUTURE_DAYS)));
+            && !holidayDate.isAfter(LocalDate.now().plusYears(MAX_FUTURE_YEARS)));
   }
 
   public LocalDate getHolidayDate() {

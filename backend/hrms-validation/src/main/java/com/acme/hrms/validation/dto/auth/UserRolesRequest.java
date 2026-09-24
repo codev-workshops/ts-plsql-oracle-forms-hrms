@@ -1,5 +1,6 @@
 package com.acme.hrms.validation.dto.auth;
 
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
@@ -12,7 +13,7 @@ import java.util.List;
  * -> -20807; self -> -20804; least privilege -> -20806; last ADMIN:EDIT -> -20805. {@code roleIds}
  * is server-validated only: the v1 schema vocabulary has no array type, so the exporter omits it.
  */
-public class UserRolesRequest {
+public class UserRolesRequest extends StrictRequest {
 
   @NotEmpty private List<@NotNull @Min(1) Integer> roleIds;
 

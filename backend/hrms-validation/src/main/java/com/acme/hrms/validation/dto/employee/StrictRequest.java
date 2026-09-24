@@ -6,15 +6,18 @@ import com.acme.hrms.common.error.HrmsException;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.lang.Nullable;
 
 /**
- * Base of every {@code contracts/p3-employee} and {@code contracts/p4-payroll} request body ({@code
- * additionalProperties: false}). Unknown properties are captured during deserialization (whatever
- * their value, {@code null} included) and rejected by {@link #requireNoUnknownProperties()} at the
- * module's body-validation step, so authority, module flag and required headers keep their frozen
- * precedence (error-codes.md §3).
+ * Base of every {@code contracts/p3-employee}, {@code contracts/p4-payroll} and {@code
+ * contracts/p5-reporting-decommission} admin request body ({@code additionalProperties: false}).
+ * Unknown properties are captured during deserialization (whatever their value, {@code null}
+ * included) and rejected by {@link #requireNoUnknownProperties()} at the module's body-validation
+ * step, so authority, module flag and required headers keep their frozen precedence (error-codes.md
+ * §3).
  */
 public abstract class StrictRequest {
 
@@ -25,10 +28,10 @@ public abstract class StrictRequest {
     unknownProperties.add(name);
   }
 
-  @JsonIgnore private final List<String> malformedProperties = new ArrayList<>();
+  @JsonIgnore private final Map<String, String> malformedProperties = new LinkedHashMap<>();
 
-  void malformedProperty(String name) {
-    malformedProperties.add(name);
+  void malformedProperty(String name, String message) {
+    malformedProperties.putIfAbsent(name, message);
   }
 
   @JsonIgnore
@@ -38,7 +41,7 @@ public abstract class StrictRequest {
 
   @JsonIgnore
   public List<String> malformedProperties() {
-    return List.copyOf(malformedProperties);
+    return List.copyOf(malformedProperties.keySet());
   }
 
   /** {@code 400 VALIDATION_FAILED} on the first property whose wire format broke the contract. */
@@ -47,13 +50,13 @@ public abstract class StrictRequest {
       return;
     }
     List<ApiError.Detail> details =
-        malformedProperties.stream()
-            .map(name -> new ApiError.Detail(name, "InvalidFormat", MoneyDeserializer.MESSAGE))
+        malformedProperties.entrySet().stream()
+            .map(e -> new ApiError.Detail(e.getKey(), "InvalidFormat", e.getValue()))
             .toList();
     throw new HrmsException(
         ErrorCode.VALIDATION_FAILED,
         "Request validation failed",
-        malformedProperties.get(0),
+        malformedProperties.keySet().iterator().next(),
         details,
         null);
   }

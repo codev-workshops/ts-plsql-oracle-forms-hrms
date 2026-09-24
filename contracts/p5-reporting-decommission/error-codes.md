@@ -68,7 +68,7 @@ range for the auth-module role-management routes (`/api/admin/roles`, `/api/admi
 
 | `code` | HTTP | Rule |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | Bean Validation on any DTO / query parameter (`validation-schema.json` module `p5-reporting-decommission`); `details[]` lists all violations; `to < from` on the audit-log search. |
+| `VALIDATION_FAILED` | 400 | Bean Validation on any DTO / query parameter (`validation-schema.json` module `p5-reporting-decommission`); `details[]` lists all violations; `to < from` on the audit-log search. §9.2 admin bodies (`HolidayRequest`, `PayElementRequest`, `TaxBracketRequest`, `RoleRequest`, `UserRolesRequest`, `UserStatusRequest`) are `StrictRequest`s: unknown properties → `details[].code=UnknownProperty`; a `Money`/`taxRate` field sent as a JSON number or with the wrong scale → `details[].code=InvalidFormat` (wire pattern `^-?[0-9]+\.[0-9]{2}$` resp. `^(0\.[0-9]{1,4}\|1\.0{1,4})$`), checked before Bean Validation, after authority/module flag/headers. |
 | `TOKEN_INVALID` | 401 | P0 token filter. |
 | `FORBIDDEN` | 403 | `@PreAuthorize` denied (`REPORTS:VIEW`, `PAYROLL:VIEW`, `PAYROLL:APPROVE`, `PAYROLL:EDIT`, `ADMIN:VIEW`, `ADMIN:EDIT`, `LEAVE:ADMIN`, `EMPLOYEE:VIEW`; `integrationAccess.canDownload`). |
 | `NOT_ACCEPTABLE` | 406 | `Accept` is neither `application/json` nor `text/csv` on a report / audit route. |

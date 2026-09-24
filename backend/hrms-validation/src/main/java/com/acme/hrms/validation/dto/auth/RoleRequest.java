@@ -1,5 +1,6 @@
 package com.acme.hrms.validation.dto.auth;
 
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.FieldMeta;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -18,7 +19,7 @@ import java.util.List;
  * does not hold -> -20806. {@code permissions} is server-validated only: the v1 schema vocabulary
  * has no array type, so the exporter omits it.
  */
-public class RoleRequest {
+public class RoleRequest extends StrictRequest {
 
   @NotBlank
   @Size(min = 2, max = 30)

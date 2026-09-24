@@ -1,7 +1,10 @@
 package com.acme.hrms.validation.dto.admin;
 
+import com.acme.hrms.validation.dto.employee.MoneyDeserializer;
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -19,7 +22,7 @@ import java.math.BigDecimal;
  * rules -> -20603; elementCode immutable -> -20601; reserved ids 0, 1, 100-103 and TAX on create ->
  * -20607 (server side, PayrollConstants).
  */
-public class PayElementRequest {
+public class PayElementRequest extends StrictRequest {
 
   @NotBlank
   @Size(min = 1, max = 30)
@@ -45,10 +48,12 @@ public class PayElementRequest {
   @FieldMeta(requiredMessage = "Calculation type is required")
   private String calculationType;
 
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.00")
   @Digits(integer = 10, fraction = 2)
   private BigDecimal defaultAmount;
 
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.00", inclusive = false)
   @DecimalMax(value = "100.00")
   @Digits(integer = 3, fraction = 2)

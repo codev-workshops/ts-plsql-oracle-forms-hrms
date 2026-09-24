@@ -1,7 +1,10 @@
 package com.acme.hrms.validation.dto.admin;
 
+import com.acme.hrms.validation.dto.employee.MoneyDeserializer;
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -17,7 +20,7 @@ import java.math.BigDecimal;
  * Shape rules -> -20603 (federal step: stateCode null and filingStatus != ALL; state row: 2-letter
  * stateCode, ALL, bracketMin 0, bracketMax null); overlap -> -20608; locked tax year -> -20609.
  */
-public class TaxBracketRequest {
+public class TaxBracketRequest extends StrictRequest {
 
   public static final String STATE_CODE_PATTERN = "^[A-Z]{2}$";
 
@@ -37,16 +40,19 @@ public class TaxBracketRequest {
   private String stateCode;
 
   @NotNull
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.00")
   @Digits(integer = 10, fraction = 2)
   @FieldMeta(requiredMessage = "Bracket minimum is required")
   private BigDecimal bracketMin;
 
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.00", inclusive = false)
   @Digits(integer = 10, fraction = 2)
   private BigDecimal bracketMax;
 
   @NotNull
+  @JsonDeserialize(using = TaxRateDeserializer.class)
   @DecimalMin(value = "0.0000")
   @DecimalMax(value = "1.0000")
   @Digits(integer = 1, fraction = 4)
@@ -57,6 +63,7 @@ public class TaxBracketRequest {
       ruleMessage = "Tax rate is a fraction between 0 and 1 (0.22, never 22)")
   private BigDecimal taxRate;
 
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.00")
   @Digits(integer = 10, fraction = 2)
   private BigDecimal baseTax;

@@ -260,7 +260,7 @@ class ValidationSchemaExporterTest {
     assertThat(holidayDate.get("type").asText()).isEqualTo("date");
     assertThat(holidayDate.get("required").asBoolean()).isTrue();
     assertThat(holidayDate.get("rules").get(0).get("id").asText()).isEqualTo("holiday.dateWindow");
-    assertThat(holidayDate.get("rules").get(0).get("value").asText()).isEqualTo("3650");
+    assertThat(holidayDate.get("rules").get(0).get("value").asText()).isEqualTo("10");
     assertThat(
             dtos.get("HolidayRequest").get("fields").get("locationCode").get("maxLength").asInt())
         .isEqualTo(10);

@@ -151,16 +151,29 @@ in `openapi.yaml` **and** as annotated `hrms-validation` classes in this contrac
 all registered in `ValidationSchemaExporter` under module `p5-reporting-decommission`), so both
 children build against the same frozen Bean Validation rules. `frontend/src/generated/
 validation-schema.json` was regenerated **via the exporter only** (sha256
-`073cf4a8101de439118835fa64d712079a076ea6010088ddad78e3b5fa687d01`), and the snapshot pins live
-in `ValidationSchemaExporterTest.p5AdminExpansionDtosPinContractRules` and
-`frontend/src/generated/__tests__/validation-schema.test.ts`. One deliberate interface decision:
-the v1 field vocabulary (`string|integer|decimal|boolean|date|enum`) has no array type, so the
-exporter now skips `Collection`-typed fields – `RoleRequest.permissions` and
-`UserRolesRequest.roleIds` are validated server-side only (`@NotEmpty`, element `@Pattern`/`@Min`,
-`@AssertTrue` distinctness) and the React forms treat them as multi-selects with no schema-driven
-pre-check; `schemaVersion` stays 1 (additive change). `HolidayRequest.holidayDate` exports a
-`custom` rule `holiday.dateWindow` (value `3650` days) that the frontend `evaluateCustomRule`
-leaves to the server until the frontend child adds the case. Backend services must reuse these
+`9b2cd556a1cf43ce29d8da982bedade146bcda50ac9efe7d1098e9efcfd82300`), and the snapshot pins live
+in `ValidationSchemaExporterTest.p5AdminExpansionDtosPinContractRules`,
+`P5AdminRequestWireTest` and `frontend/src/generated/__tests__/validation-schema.test.ts`. One
+deliberate interface decision: the v1 field vocabulary (`string|integer|decimal|boolean|date|enum`)
+has no array type, so the exporter now skips `Collection`-typed fields – `RoleRequest.permissions`
+and `UserRolesRequest.roleIds` are validated server-side only (`@NotEmpty`, element
+`@Pattern`/`@Min`, `@AssertTrue` distinctness) and the React forms treat them as multi-selects with
+no schema-driven pre-check; `schemaVersion` stays 1 (additive change).
+`HolidayRequest.holidayDate` is bounded to `[1990-01-01, today + 10 **calendar** years]`
+(`LocalDate.now().plusYears(10)`, so leap days do not shift the bound) and exports a `custom` rule
+`holiday.dateWindow` whose `value` is the year count `10`; the frontend `evaluateCustomRule` leaves
+it to the server until the frontend child adds the case (`today.plusYears(value)`, floor
+`1990-01-01`). **Wire types are pinned in the DTOs**: all six bodies extend `StrictRequest`
+(`additionalProperties: false` → unknown properties captured and rejected with `400
+VALIDATION_FAILED`/`UnknownProperty`), and every `BigDecimal` field is bound through a strict
+string deserializer – `MoneyDeserializer` (`^-?[0-9]+\.[0-9]{2}$`) on `defaultAmount`,
+`defaultPercentage`, `bracketMin`, `bracketMax`, `baseTax`, and `TaxRateDeserializer`
+(`^(0\.[0-9]{1,4}|1\.0{1,4})$`) on `taxRate`. A JSON number, a string with the wrong scale, or a
+structure never binds: the property is left `null`, recorded as malformed, and
+`requireNoMalformedProperties()` raises `400 VALIDATION_FAILED` with one
+`InvalidFormat` detail per property (message = the deserializer's `MESSAGE`), evaluated after
+authority/module-flag/header checks exactly as P3/P4 do (error-codes.md §3). Sign and range
+(`>= 0`, `(0,100]`, `[0,1]`) stay Bean Validation (`-20603`). Backend services must reuse these
 DTOs as their `@RequestBody` types – no parallel DTOs in `admin`/`auth`.
 
 **Tests (frozen expectations).** Backend: `OpenApiContractTest` covers every new route

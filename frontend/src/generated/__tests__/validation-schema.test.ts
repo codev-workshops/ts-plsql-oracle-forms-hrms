@@ -207,7 +207,7 @@ describe('frontend/src/generated/validation-schema.json', () => {
   it('pins the P5 §9.2 admin-expansion DTOs (holidays, pay elements, tax brackets, roles/users; arrays are server-only)', () => {
     const holidayDate = schema.dtos.HolidayRequest.fields.holidayDate;
     expect([holidayDate.type, holidayDate.required]).toEqual(['date', true]);
-    expect(holidayDate.rules.map((r) => [r.id, r.value])).toEqual([['holiday.dateWindow', '3650']]);
+    expect(holidayDate.rules.map((r) => [r.id, r.value])).toEqual([['holiday.dateWindow', '10']]);
     expect(schema.dtos.HolidayRequest.fields.locationCode.pattern).toBe('^[A-Z0-9_-]+$');
     expect(schema.dtos.PayElementRequest.fields.elementType.values).toEqual(['EARNING', 'DEDUCTION', 'TAX', 'BENEFIT', 'REIMBURSEMENT']);
     expect(schema.dtos.PayElementRequest.fields.calculationType.values).toEqual(['FLAT', 'PERCENTAGE', 'HOURS', 'FORMULA']);
