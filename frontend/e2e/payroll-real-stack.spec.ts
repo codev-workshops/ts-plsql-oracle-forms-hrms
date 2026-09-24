@@ -197,7 +197,7 @@ test.describe('P4 PostgreSQL-backed payroll flows', () => {
         await result.getByRole('button', { name: 'Close' }).click();
         await expect(row.locator('.badge').first()).toHaveText('Approved');
 
-        await page.getByLabel(/include bank/).check();
+        await row.getByLabel(/include bank/).check();
         const download = page.waitForEvent('download');
         await page.getByTestId(`run-register-${runId}`).click();
         expect((await download).suggestedFilename()).toMatch(new RegExp(`^PAY_REGISTER_${runId}_\\d{8}_\\d{6}\\.csv$`));
