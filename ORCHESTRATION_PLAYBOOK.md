@@ -6,15 +6,14 @@ approval decision. Use `devin_session_create` with a structured-output schema an
 `notify_on_response=true`; read each settled child's `structured_output` through
 `devin_session_interact(action="get")`. Children have separate machines and do
 not inherit the parent conversation, filesystem, branch checkout or credentials.
-Never call `run_workflow` or use the approval environment variable described in
-[WORKFLOW_README.md](WORKFLOW_README.md) for this run.
+Never call `run_workflow` or use a preapproval environment variable for this run.
 
 The normative sources are [CUTOVER_PLAN.md](CUTOVER_PLAN.md) §§1–10 (particularly
 §2 rule 6), [TEST_STRATEGY.md](TEST_STRATEGY.md) §§2, 5, 7,
 [COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) §§1–8, 11 and
 [MODERNIZATION_BLUEPRINT.md](MODERNIZATION_BLUEPRINT.md) §§8, 10. A previous
-dynamic-workflow implementation exists on `phase/p0-foundation` through
-`phase/p5-reporting-decommission`; its [cutover logs](cutover-log/) say that
+dynamic-workflow implementation exists in Git history; its archived
+[cutover logs](cutover-log/) say that
 Oracle/Forms/utPLSQL and live CDC were **not run**. Recorded-legacy fixtures and
 pre-approved calendar gates are not substitutes for live cross-database comparisons
 or elapsed production periods. The managed run must independently obtain those

@@ -352,16 +352,19 @@ Reporting is read-only – rollback is re-pointing report consumers at the previ
 | 4 | Payroll (pure Java `TaxEngine` / `PayrollRunService`, BUG-02; no hybrid façade) | Phase 3 + `TAX_BRACKETS` populated | `payroll.engine=LEGACY` shadow mode; post-promotion reverse extract | Shadow-mode gate (≥ 3 periods, 0.00 diff); `VW_PAYROLL_LATEST` to-the-cent; 3 production periods on PostgreSQL |
 | 5 | Reporting/Integration (pure Java), Forms and Oracle decommission | Phases 1–4 | Read-only re-point; 30-day zero-hit gate | Final six-view reconciliation, no PL/SQL in target |
 
-### 10.1 Phase status
+### 10.1 Evidence status
 
-| Phase | Status | Promoted revision | Gate | Record |
-|---|---|---|---|---|
-| 0 | PROMOTED 2026-09-21 — no end-user traffic moved, proxy still routes all modules to Forms | `ea5925e4d8030755e53985d7d7e5b9de511fadce` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P0.security-signoff` approved | [cutover-log/p0-foundation.md](cutover-log/p0-foundation.md) |
-| 1 | PROMOTED 2026-09-22 — proxy flag `performance=NEW` flip, Forms `HRMS_PERFORMANCE` retirement and `PKG_PERFORMANCE` drop (after bake) unblocked for humans; not yet executed | `3bae336d587884f15dee4689538f3a1b99759dae` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P1.bake-4-weeks` approved | [cutover-log/p1-performance.md](cutover-log/p1-performance.md) |
-| 2 | PROMOTED 2026-09-22 — proxy flag `leave=NEW` flip, Forms `HRMS_LEAVE` retirement, and `PKG_LEAVE` + `TRG_LEAVE_REQUEST_AUDIT` drop (after the accrual cycle) unblocked for humans; not yet executed | `94933cdbe78201bab64b3470cd23b1bf666e8cd2` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P2.accrual-cycle` approved | [cutover-log/p2-leave.md](cutover-log/p2-leave.md) |
-| 3 | PROMOTED 2026-09-22 — proxy flag `employee=NEW_READONLY` then `NEW`, Forms `HRMS_EMPLOYEE` retirement, and `TRG_EMP_*` + `TRG_SALARY_AUDIT` + `PKG_EMPLOYEE` drop (after approval) unblocked for humans; not yet executed | `61ea0aca841ebee67ddcb0e94a5b1bb7e33eda74` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P3.readonly-then-write-bake` approved | [cutover-log/p3-employee.md](cutover-log/p3-employee.md) |
-| 4 | PROMOTED 2026-09-23 — `payroll.engine=JAVA` + `payroll=NEW` flipped together (after `P4.shadow-gate`), Forms `HRMS_PAYROLL` retirement, and `PKG_PAYROLL` drop (after `P4.rollback-window-closed`) unblocked for humans; not yet executed | `2fd78acd495b5adebaa7117ae16ef46c9666774a` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P4.shadow-gate` and `P4.rollback-window-closed` approved | [cutover-log/p4-payroll.md](cutover-log/p4-payroll.md) |
-| 5 | PROMOTED 2026-09-23 — reporting=NEW and reference-data ownership transfer, CDC stop, and (after `P5.zero-hit-30-days`) Forms/WebLogic/Oracle decommission, SSO bridge removal, final Oracle extract archive unblocked for humans; not yet executed | `a5d8e2b5e633f902c5e78fabccc903fe5b381c28` | L1 + L2 + L3 + Playwright PASS (golden-oracle OFF); `P5.zero-hit-30-days` pre-approved, live operations unverified | [cutover-log/p5-reporting-decommission.md](cutover-log/p5-reporting-decommission.md) |
+This plan defines cutover requirements; it does not certify that a phase has been
+promoted. Managed implementation readiness is tracked at immutable integration
+revisions using the [orchestration playbook](ORCHESTRATION_PLAYBOOK.md) and its
+independent PostgreSQL gate reports. Live Oracle/Forms/CDC comparisons, observed
+calendar periods, and named operational sign-offs remain unverified in that
+implementation-only run. **Full production cutover is blocked for every phase.**
+
+The [archived phase logs](cutover-log/) came from an earlier dynamic-workflow run.
+Their "PROMOTED" labels and preapproved calendar gates are historical assertions,
+not current live evidence or permission to change production flags, stop CDC,
+retire Forms or decommission Oracle.
 
 ---
 

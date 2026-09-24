@@ -1,5 +1,9 @@
 # Cutover log — Phase 4 (Payroll)
 
+> Historical record from an earlier dynamic-workflow run. Its "PROMOTED" label and
+> preapproved calendar gate do not authorize or verify live cutover in the managed
+> run. Oracle/Forms, live CDC and operational sign-off remain unverified.
+
 | Field | Value |
 |---|---|
 | Status | **PROMOTED** (gate PASS) |
