@@ -273,6 +273,34 @@ class IntegrationApiTest extends AuthApiTestBase {
   }
 
   @Test
+  void timeAttendanceImportRejectsNonMultipartRequestWith415() throws Exception {
+    String csv = "emp_number,date,hours_regular,hours_overtime\nEMP-000002,2024-06-03,8,0\n";
+    for (MediaType outer : List.of(MediaType.valueOf("text/csv"), MediaType.APPLICATION_JSON)) {
+      mvc.perform(
+              post("/api/integration/time-attendance/import")
+                  .header("Authorization", "Bearer " + exec)
+                  .contentType(outer)
+                  .content(csv))
+          .andExpect(status().isUnsupportedMediaType())
+          .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+          .andExpect(jsonPath("$.message").value("Expected multipart/form-data"))
+          .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+    assertThat(jdbc.queryForObject("select count(*) from integration_files", Long.class)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from error_log where error_key = 'UNSUPPORTED_MEDIA_TYPE'"
+                    + " and http_status = 415",
+                Long.class))
+        .isEqualTo(2);
+    // the same bytes as a proper multipart upload are still accepted
+    mvc.perform(upload(csv.getBytes(StandardCharsets.UTF_8), "text/csv", exec))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.file.status").value("STAGED"))
+        .andExpect(jsonPath("$.accepted").value(1));
+  }
+
+  @Test
   void filesStatusAndPerFeedDownloadAuthorization() throws Exception {
     mvc.perform(get("/api/integration/status").header("Authorization", "Bearer " + manager))
         .andExpect(status().isOk())

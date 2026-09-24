@@ -10,16 +10,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.acme.hrms.common.trace.TraceContext;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 
 class GlobalExceptionHandlerTest {
 
@@ -88,5 +91,27 @@ class GlobalExceptionHandlerTest {
                 .getBody()
                 .code())
         .isEqualTo("TOKEN_INVALID");
+  }
+
+  @Test
+  void unsupportedRequestContentTypeIs415() {
+    ResponseEntity<ApiError> r =
+        handler.handleMediaTypeNotSupported(
+            new HttpMediaTypeNotSupportedException(
+                MediaType.TEXT_PLAIN, List.of(MediaType.MULTIPART_FORM_DATA)),
+            request);
+    assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    assertThat(r.getBody().code()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
+    assertThat(r.getBody().message()).isEqualTo("Expected multipart/form-data");
+    assertThat(r.getBody().traceId()).isEqualTo("0af7651916cd43dd8448eb211c80319c");
+    verify(sink)
+        .record(
+            eq("0af7651916cd43dd8448eb211c80319c"),
+            eq(ErrorCode.UNSUPPORTED_MEDIA_TYPE),
+            eq(415),
+            eq("Expected multipart/form-data"),
+            eq("HttpMediaTypeNotSupportedException"),
+            eq("/api/x"),
+            isNull());
   }
 }
