@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
@@ -142,6 +143,7 @@ public class TaxBracketService {
   @Transactional
   public TaxBracket create(TaxBracketRequest r) {
     requireShape(r);
+    lockLadders(List.of(ladderKey(r.getTaxYear(), r.getFilingStatus(), r.getStateCode())));
     requireUnlocked(r.getTaxYear());
     requireNoOverlap(r, null);
     Map<String, Object> p = params(r);
@@ -167,8 +169,13 @@ public class TaxBracketService {
 
   @Transactional
   public TaxBracket update(long id, TaxBracketRequest r) {
-    TaxBracket old = get(id);
     requireShape(r);
+    TaxBracket old = get(id);
+    lockLadders(
+        List.of(
+            ladderKey(old.taxYear(), old.filingStatus(), old.stateCode()),
+            ladderKey(r.getTaxYear(), r.getFilingStatus(), r.getStateCode())));
+    old = get(id);
     requireUnlocked(old.taxYear());
     requireUnlocked(r.getTaxYear());
     requireNoOverlap(r, id);
@@ -200,6 +207,25 @@ public class TaxBracketService {
         .update(
             "update tax_brackets set active_flag = 'N' where bracket_id = :id", Map.of("id", id));
     s.audit("TAX_BRACKETS", id, Action.STATUS_CHANGE, old, get(id));
+  }
+
+  /**
+   * Advisory-lock key of one {@code (year, filingStatus, stateCode)} ladder. Writers that could
+   * change overlap within a ladder serialize on it for the rest of their transaction.
+   */
+  public static String ladderKey(int taxYear, String filingStatus, @Nullable String stateCode) {
+    return "hrms.tax_ladder:"
+        + taxYear
+        + ":"
+        + filingStatus
+        + ":"
+        + (stateCode == null ? "*" : stateCode);
+  }
+
+  private void lockLadders(List<String> keys) {
+    for (String key : new TreeSet<>(keys)) {
+      s.jdbc().query("select pg_advisory_xact_lock(hashtext(:k))", Map.of("k", key), rs -> {});
+    }
   }
 
   private static void requireShape(TaxBracketRequest r) {

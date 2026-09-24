@@ -1,6 +1,7 @@
 package com.acme.hrms.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,12 +10,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.acme.hrms.admin.TaxBracketService;
 import com.acme.hrms.common.testsupport.HrmsPostgres;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -573,6 +582,55 @@ class AdminPayrollReferenceApiTest extends AuthApiTestBase {
   }
 
   /** Response -> request body (drops read-only fields). */
+  /**
+   * A competing writer that already holds the ladder lock and inserts an overlapping bracket must
+   * make a concurrent API create wait and then fail with -20608 instead of committing a second,
+   * overlapping row.
+   */
+  @Test
+  void concurrentOverlappingTaxBracketInsertsSerializePerLadder() throws Exception {
+    String key = TaxBracketService.ladderKey(2031, "SINGLE", null);
+    try (Connection c = HrmsPostgres.dataSource().getConnection()) {
+      c.setAutoCommit(false);
+      try (Statement st = c.createStatement()) {
+        st.execute("select pg_advisory_xact_lock(hashtext('" + key + "'))");
+        st.execute(
+            "insert into tax_brackets (bracket_id, tax_year, filing_status, state_code,"
+                + " bracket_min, bracket_max, tax_rate, base_tax, active_flag, created_by,"
+                + " created_date) values (nextval('seq_tax_bracket'), 2031, 'SINGLE', null,"
+                + " 5000, 20000, 0.1, 0, 'Y', 't', now())");
+      }
+      ExecutorService pool = Executors.newSingleThreadExecutor();
+      try {
+        Future<MvcResult> apiCreate =
+            pool.submit(
+                () ->
+                    mvc.perform(
+                            jsonReq(
+                                post("/api/admin/tax-brackets"),
+                                admin,
+                                json(
+                                    federalBracket(
+                                        2031, "SINGLE", "0.00", "10000.00", "0.1000", "0.00"))))
+                        .andReturn());
+        assertThatThrownBy(() -> apiCreate.get(1500, TimeUnit.MILLISECONDS))
+            .as("API create must wait for the ladder lock holder")
+            .isInstanceOf(TimeoutException.class);
+        c.commit();
+        MvcResult r = apiCreate.get(30, TimeUnit.SECONDS);
+        assertThat(r.getResponse().getStatus()).isEqualTo(409);
+        assertThat(body(r).get("code").asText()).isEqualTo("-20608");
+      } finally {
+        pool.shutdownNow();
+      }
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from tax_brackets where tax_year = 2031 and active_flag = 'Y'",
+                Integer.class))
+        .isEqualTo(1);
+  }
+
   private static Map<String, Object> asRequest(JsonNode pe) {
     Map<String, Object> m = new HashMap<>();
     for (String f :

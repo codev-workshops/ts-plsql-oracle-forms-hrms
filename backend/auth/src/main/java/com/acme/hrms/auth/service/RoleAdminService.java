@@ -118,6 +118,7 @@ public class RoleAdminService {
 
   @Transactional
   public RoleWriteResult update(int roleId, RoleRequest r) {
+    guard.lock();
     Role old = find(roleId);
     if (old.seeded()) {
       requireSeededUnchanged(old, r);
@@ -136,7 +137,6 @@ public class RoleAdminService {
     removed.removeAll(wanted);
     requireCallerHolds(added, "permissions");
 
-    guard.lock();
     Map<String, Object> p = new HashMap<>();
     p.put("id", roleId);
     p.put("name", r.getRoleName());

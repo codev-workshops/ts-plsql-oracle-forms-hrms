@@ -1,6 +1,7 @@
 package com.acme.hrms.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.acme.hrms.common.testsupport.HrmsPostgres;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -502,6 +506,49 @@ class RoleAdminApiTest extends AuthApiTestBase {
 
   private JsonNode body(MvcResult r) throws Exception {
     return json.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8));
+  }
+
+  /**
+   * PUT /users/{id}/roles is a full replacement. A competing writer holding the admin guard grants
+   * an extra role; the API call must wait for it and compute its delta from the committed state, so
+   * the extra role is removed rather than silently surviving a stale read.
+   */
+  @Test
+  void concurrentRoleGrantIsReplacedNotLeakedByStaleDelta() throws Exception {
+    try (Connection c = HrmsPostgres.dataSource().getConnection()) {
+      c.setAutoCommit(false);
+      try (Statement st = c.createStatement()) {
+        st.execute("select pg_advisory_xact_lock(hashtext('hrms.admin_edit_guard'))");
+        st.execute(
+            "insert into user_roles (user_id, role_id, granted_by, granted_date)"
+                + " values (5, 2, 't', now())");
+      }
+      ExecutorService pool = Executors.newSingleThreadExecutor();
+      try {
+        Future<MvcResult> apiReplace =
+            pool.submit(
+                () ->
+                    mvc.perform(
+                            jsonReq(
+                                put("/api/admin/users/5/roles"),
+                                admin,
+                                json(Map.of("roleIds", List.of(1)))))
+                        .andReturn());
+        assertThatThrownBy(() -> apiReplace.get(1500, TimeUnit.MILLISECONDS))
+            .as("role replacement must wait for the admin guard holder")
+            .isInstanceOf(TimeoutException.class);
+        c.commit();
+        MvcResult r = apiReplace.get(30, TimeUnit.SECONDS);
+        assertThat(r.getResponse().getStatus()).isEqualTo(200);
+        assertThat(body(r).get("sessionsRevoked").asInt()).isGreaterThanOrEqualTo(0);
+      } finally {
+        pool.shutdownNow();
+      }
+    }
+    assertThat(
+            jdbc.queryForList(
+                "select role_id from user_roles where user_id = 5 order by role_id", Integer.class))
+        .containsExactly(1);
   }
 
   private String token(String email) {

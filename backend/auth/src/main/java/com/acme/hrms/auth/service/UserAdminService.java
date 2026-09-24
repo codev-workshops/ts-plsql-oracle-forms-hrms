@@ -105,6 +105,7 @@ public class UserAdminService {
 
   @Transactional
   public UserAccountWriteResult replaceRoles(long userId, UserRolesRequest r) {
+    guard.lock();
     UserAccount old = find(userId);
     requireNotSelf(userId);
     Set<Integer> wanted = new LinkedHashSet<>(r.getRoleIds());
@@ -125,7 +126,6 @@ public class UserAdminService {
     granted.removeAll(old.authorities());
     RoleAdminService.requireCallerHolds(granted, "roleIds");
 
-    guard.lock();
     Set<Integer> current = new LinkedHashSet<>();
     for (UserRoleGrant g : old.roles()) {
       current.add(g.roleId());
@@ -169,9 +169,9 @@ public class UserAdminService {
 
   @Transactional
   public UserAccountWriteResult setStatus(long userId, UserStatusRequest r) {
+    guard.lock();
     UserAccount old = find(userId);
     requireNotSelf(userId);
-    guard.lock();
     Map<String, Object> p = new HashMap<>();
     p.put("id", userId);
     p.put("status", r.getStatus());
