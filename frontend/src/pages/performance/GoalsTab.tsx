@@ -16,7 +16,7 @@ export function GoalsTab() {
   return (
     <section aria-labelledby="goals-title">
       <h2 id="goals-title">Goals</h2>
-      {!reviewId && (
+      {!reviewId && reviews.length > 0 && (
         <div className="field">
           <label htmlFor="goal-review">Review</label>
           <select id="goal-review" value={selectedId ?? ''} onChange={(event) => navigate(`/performance/goals?reviewId=${event.target.value}`)}>
@@ -24,7 +24,7 @@ export function GoalsTab() {
           </select>
         </div>
       )}
-      {selected ? <GoalsGrid review={selected} /> : <p>{mine.isPending || direct.isPending ? 'Loading…' : 'No reviews'}</p>}
+      {selected ? <GoalsGrid review={selected} /> : <p>{(reviewId ? direct.isPending : mine.isPending) ? 'Loading…' : 'No reviews'}</p>}
     </section>
   );
 }
