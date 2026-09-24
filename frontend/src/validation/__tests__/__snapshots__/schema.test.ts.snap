@@ -700,6 +700,35 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "decimal",
     },
   },
+  "HolidayRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "floatingFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "holidayDate": {
+      "required": true,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "holidayName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
   "IntegrationFileListQuery": {
     "feed": {
       "required": false,
@@ -1085,6 +1114,68 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "integer",
     },
   },
+  "PayElementRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "calculationType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "defaultAmount": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "defaultPercentage": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "elementCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "elementName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "elementType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "employerPaid": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "glAccountCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "pretaxFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "priorityOrder": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "taxableFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
   "PayPeriodListQuery": {
     "page": {
       "required": false,
@@ -1241,6 +1332,28 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "date",
     },
   },
+  "RoleRequest": {
+    "maxGrade": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "minGrade": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "roleCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "roleName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
   "SalaryChangeRequest": {
     "baseSalary": {
       "required": true,
@@ -1343,6 +1456,51 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "type": "string",
     },
   },
+  "TaxBracketRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "baseTax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "bracketMax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "bracketMin": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "filingStatus": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "stateCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "taxRate": {
+      "required": true,
+      "rules": [
+        "-20603",
+        "-20603",
+      ],
+      "type": "decimal",
+    },
+    "taxYear": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
   "TimeAttendanceLine": {
     "empNumber": {
       "required": true,
@@ -1363,6 +1521,19 @@ exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the page
       "required": true,
       "rules": [],
       "type": "date",
+    },
+  },
+  "UserRolesRequest": {},
+  "UserStatusRequest": {
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "status": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
     },
   },
 }

@@ -39,15 +39,42 @@ so Level 2 parallel-run diffs (`legacy_source=recorded`) can compare it with the
 | `-20703` | per-line (422 body via `-20704` when total) | `TimeAttendanceImportService` | Duplicate `(emp_number, date)` inside one uploaded file. | `line N` | `POST /api/integration/time-attendance/import` |
 | `-20704` | 422 | `TimeAttendanceImportService` | No line of the uploaded file was accepted; `details[]` carries the first 100 line errors (`-20001`, `-20703`, `VALIDATION_FAILED`). | `file` | `POST /api/integration/time-attendance/import` |
 
+### 2.1 Codes added by the §9.2 expansion (holidays, pay elements, tax brackets, role management)
+
+Same convention, `legacy_source=none`. `-2060x` continues the admin range (`-20601`–`-20604`
+are **reused** by the new admin-module routes with the field names below); `-208xx` is a new
+range for the auth-module role-management routes (`/api/admin/roles`, `/api/admin/users`,
+`/api/admin/authorities`), which are served by `backend/auth` – the sole writer of `roles`,
+`role_permissions`, `user_roles`, `user_accounts` (V2).
+
+| `code` | HTTP | Raised by (target) | Triggering rule | `field` | Routes |
+|---|---|---|---|---|---|
+| `-20601` (reuse) | 409 | `HolidayService`, `PayElementService` | Holiday: an **active** row with the same `(holiday_date, coalesce(location_code,'*'))` exists (Java pre-check **and** forward-migration partial unique index `uk_holidays_active_date_loc` on `(holiday_date, coalesce(location_code,'*')) where active_flag='Y'`; the constraint violation of a racing insert maps to this code). Pay element: `uk_pay_elem_code`, or `elementCode` changed on `PUT`. | `holidayDate` / `elementCode` | `POST/PUT /api/admin/holidays…`, `…/pay-elements…` |
+| `-20602` (reuse) | 422 | `PayElementService.deactivate` | Active `EMPLOYEE_PAY_ELEMENTS` rows reference the element. Message: `Pay element {code} has {n} active employee pay elements`. Holidays and tax brackets have no dependants (never raised). | `null` | `DELETE /api/admin/pay-elements/{elementId}` |
+| `-20603` (reuse) | 400 | `PayElementService`, `TaxBracketService`, `RoleService` | Pay element: `calculationType` × defaults rule (`FLAT`/`HOURS` need `defaultAmount >= 0` and null `defaultPercentage`; `PERCENTAGE` needs `0 < defaultPercentage <= 100` and null `defaultAmount`; `FORMULA` needs both null); `pretaxFlag=true` with `elementType != DEDUCTION`. Tax bracket: `bracketMax <= bracketMin`; federal row (`stateCode` null) with `filingStatus=ALL`; state row with `filingStatus != ALL`, `bracketMin != 0` or non-null `bracketMax`. Role: `maxGrade < minGrade` (`chk_roles_grade`). | `defaultAmount` / `defaultPercentage` / `pretaxFlag` / `bracketMax` / `filingStatus` / `bracketMin` / `maxGrade` | `POST/PUT /api/admin/pay-elements…`, `…/tax-brackets…`, `…/roles…` |
+| `-20604` (reuse) | 400 | `HolidayService` | `locationCode` is not an active `LOCATIONS` row. Message: `Invalid or inactive location: {code}`. | `locationCode` | `POST/PUT /api/admin/holidays…` |
+| `-20607` | 422 | `PayElementService` | Reserved row (`0` `ERROR`, `1` `BASE_PAY`, `100` `FED_TAX`, `101` `STATE_TAX`, `102` `FICA`, `103` `MEDICARE` – `PayrollConstants`, `PayElementStartupValidator`): `PUT` changes anything other than `elementName`, `glAccountCode`, `priorityOrder` (row `0`: any change); `DELETE`; or `POST` with `elementType=TAX`. Message: `Pay element {id} ({code}) is reserved: {field} is immutable`. | offending field / `elementType` / `null` | `POST/PUT/DELETE /api/admin/pay-elements…` |
+| `-20608` | 409 | `TaxBracketService` | Half-open `[bracketMin, bracketMax)` (null max = +∞) overlaps another **active** row of the same `(tax_year, filing_status, state_code)` – the addressed row excluded on `PUT`; or a second active state row for `(tax_year, state_code)`. Message: `Bracket [{min}, {max}) overlaps bracket {id} [{min}, {max})`. Contiguity gaps are **not** an error (`GET /api/admin/tax-brackets/ladder-gaps`; engine → `MISSING_TAX_RATE`). | `bracketMin` | `POST/PUT /api/admin/tax-brackets…` |
+| `-20609` | 422 | `TaxBracketService` | `taxYear` is locked: some `PAYROLL_RUNS` row in status `APPROVED`/`PAID` has `PAY_PERIODS.PERIOD_END_DATE` in that year. On `PUT` both the stored and the requested `taxYear` are checked. Message: `Tax year {y} is locked by payroll run {runId} ({status})`. | `taxYear` | `POST/PUT/DELETE /api/admin/tax-brackets…` |
+| `-20801` | 409 | `RoleAdminService` (auth) | `uk_roles_code` (`lower(role_code)` compared) or `roleCode` changed on `PUT`. | `roleCode` | `POST/PUT /api/admin/roles…` |
+| `-20802` | 422 | `RoleAdminService` | Seeded role `1`–`3` (`STAFF`, `MANAGER`, `EXECUTIVE`; P0 truth-table gate) – `PUT` with any differing field or `DELETE`. Message: `Role {code} is seeded and read-only`. | `null` | `PUT/DELETE /api/admin/roles/{roleId}` |
+| `-20803` | 409 | `RoleAdminService.delete` | `user_roles` rows exist. Message: `Role {code} is assigned to {n} accounts`. | `null` | `DELETE /api/admin/roles/{roleId}` |
+| `-20804` | 422 | `UserAdminService` | `jwt.sub == userId` – an actor never changes their own roles or status. Message: `Cannot modify your own account`. | `null` | `PUT /api/admin/users/{userId}/roles`, `…/status` |
+| `-20805` | 422 | `UserAdminService`, `RoleAdminService.update` | After the write no `status='ACTIVE'` account would hold `ADMIN:EDIT` (evaluated after the write inside the transaction, serialized across **all** targets by `pg_advisory_xact_lock(hashtext('hrms.admin_edit_guard'))` taken by every mutation that can lower the holder count; per-row locks are not sufficient). Message: `Cannot remove the last active account holding ADMIN:EDIT`. | `roleIds` / `status` / `permissions` | `PUT /api/admin/users/{userId}/roles`, `…/status`, `PUT /api/admin/roles/{roleId}` |
+| `-20806` | 422 | `RoleAdminService`, `UserAdminService` | Least privilege: an authority the caller does not hold would be granted – role create/update: every authority in `permissions[]` (update: every **added** one); user roles: every authority of the new set the target does not already hold. Message: `Cannot grant {authority}: caller does not hold it`. | `permissions` / `roleIds` | `POST/PUT /api/admin/roles…`, `PUT /api/admin/users/{userId}/roles` |
+| `-20807` | 422 | `UserAdminService` | A `roleIds[]` entry matches no `roles` row. Message: `Unknown role: {id}`. | `roleIds` | `PUT /api/admin/users/{userId}/roles` |
+
 ## 3. Framework codes (not `-20xxx`, not in §11)
 
 | `code` | HTTP | Rule |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | Bean Validation on any DTO / query parameter (`validation-schema.json` module `p5-reporting-decommission`); `details[]` lists all violations; `to < from` on the audit-log search. |
+| `VALIDATION_FAILED` | 400 | Bean Validation on any DTO / query parameter (`validation-schema.json` module `p5-reporting-decommission`); `details[]` lists all violations; `to < from` on the audit-log search. §9.2 admin bodies (`HolidayRequest`, `PayElementRequest`, `TaxBracketRequest`, `RoleRequest`, `UserRolesRequest`, `UserStatusRequest`) are `StrictRequest`s: unknown properties → `details[].code=UnknownProperty`; a `Money`/`taxRate` field sent as a JSON number or with the wrong scale → `details[].code=InvalidFormat` (wire pattern `^-?[0-9]+\.[0-9]{2}$` resp. `^(0\.[0-9]{1,4}\|1\.0{1,4})$`), checked before Bean Validation, after authority/module flag/headers. |
 | `TOKEN_INVALID` | 401 | P0 token filter. |
 | `FORBIDDEN` | 403 | `@PreAuthorize` denied (`REPORTS:VIEW`, `PAYROLL:VIEW`, `PAYROLL:APPROVE`, `PAYROLL:EDIT`, `ADMIN:VIEW`, `ADMIN:EDIT`, `LEAVE:ADMIN`, `EMPLOYEE:VIEW`; `integrationAccess.canDownload`). |
 | `NOT_ACCEPTABLE` | 406 | `Accept` is neither `application/json` nor `text/csv` on a report / audit route. |
-| `REFERENCE_NOT_FOUND` | 404 | Path id / code of an admin route matches no row. |
+| `REFERENCE_NOT_FOUND` | 404 | Path id / code of an admin route matches no row (incl. `holidayId`, `elementId`, `bracketId`). |
+| `ROLE_NOT_FOUND` | 404 | `roleId` path of a role-management route matches no `roles` row. |
+| `USER_NOT_FOUND` | 404 | `userId` path of a role-management route matches no `user_accounts` row. |
 | `PERIOD_NOT_FOUND`, `RUN_NOT_FOUND` | 404 | P4 codes reused for `periodId` / `runId`. |
 | `JOB_NOT_FOUND` | 404 | Unknown leave job id. |
 | `FILE_NOT_FOUND` | 404 | Unknown `fileId`, or the object is missing from storage. |

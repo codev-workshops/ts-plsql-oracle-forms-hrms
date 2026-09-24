@@ -204,6 +204,41 @@ describe('frontend/src/generated/validation-schema.json', () => {
     }
   });
 
+  it('pins the P5 §9.2 admin-expansion DTOs (holidays, pay elements, tax brackets, roles/users; arrays are server-only)', () => {
+    const holidayDate = schema.dtos.HolidayRequest.fields.holidayDate;
+    expect([holidayDate.type, holidayDate.required]).toEqual(['date', true]);
+    expect(holidayDate.rules.map((r) => [r.id, r.value])).toEqual([['holiday.dateWindow', '10']]);
+    expect(schema.dtos.HolidayRequest.fields.locationCode.pattern).toBe('^[A-Z0-9_-]+$');
+    expect(schema.dtos.PayElementRequest.fields.elementType.values).toEqual(['EARNING', 'DEDUCTION', 'TAX', 'BENEFIT', 'REIMBURSEMENT']);
+    expect(schema.dtos.PayElementRequest.fields.calculationType.values).toEqual(['FLAT', 'PERCENTAGE', 'HOURS', 'FORMULA']);
+    expect(schema.dtos.PayElementRequest.fields.priorityOrder.max).toBe(9999);
+    const rate = schema.dtos.TaxBracketRequest.fields.taxRate;
+    expect([rate.required, rate.min, rate.max, rate.scale]).toEqual([true, 0, 1, 4]);
+    expect(rate.rules.map((r) => r.errorCode)).toEqual(['-20603', '-20603']);
+    expect(schema.dtos.TaxBracketRequest.fields.filingStatus.values).toEqual([
+      'SINGLE',
+      'MARRIED_JOINT',
+      'MARRIED_SEPARATE',
+      'HEAD_OF_HOUSEHOLD',
+      'ALL',
+    ]);
+    expect(schema.dtos.RoleRequest.fields.roleCode.pattern).toBe('^[A-Z][A-Z0-9_]*$');
+    expect(Object.keys(schema.dtos.RoleRequest.fields)).not.toContain('permissions');
+    expect(Object.keys(schema.dtos.UserRolesRequest.fields)).toEqual([]);
+    expect(schema.dtos.UserStatusRequest.fields.status.values).toEqual(['ACTIVE', 'DISABLED']);
+    expect(schema.dtos.UserStatusRequest.fields.reason.maxLength).toBe(200);
+    for (const dto of [
+      'HolidayRequest',
+      'PayElementRequest',
+      'TaxBracketRequest',
+      'RoleRequest',
+      'UserRolesRequest',
+      'UserStatusRequest',
+    ] as const) {
+      expect(schema.dtos[dto].module).toBe('p5-reporting-decommission');
+    }
+  });
+
   it('pins the P4 payroll DTOs to PKG_PAYROLL / CHK_RUN_TYPE / CHK_RUN_STATUS (runType required, reversal reason required)', () => {
     expect(schema.dtos.PayrollRunCreateRequest.fields.runType.required).toBe(true);
     expect(schema.dtos.PayrollRunCreateRequest.fields.runType.values).toEqual([

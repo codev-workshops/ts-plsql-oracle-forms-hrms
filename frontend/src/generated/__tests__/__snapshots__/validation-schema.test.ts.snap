@@ -1268,6 +1268,58 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p1-performance",
     },
+    "HolidayRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "floatingFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "holidayDate": {
+          "format": "date",
+          "messages": {
+            "required": "Holiday date is required",
+          },
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "VALIDATION_FAILED",
+              "id": "holiday.dateWindow",
+              "kind": "custom",
+              "message": "Holiday date must be between 1990-01-01 and ten years from today",
+              "value": "10",
+            },
+          ],
+          "type": "date",
+        },
+        "holidayName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Holiday name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "locationCode": {
+          "maxLength": 10,
+          "messages": {
+            "pattern": "Code must be upper-case letters, digits, '_' or '-'",
+          },
+          "pattern": "^[A-Z0-9_-]+$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "IntegrationFileListQuery": {
       "fields": {
         "feed": {
@@ -1921,6 +1973,112 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p5-reporting-decommission",
     },
+    "PayElementRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "calculationType": {
+          "messages": {
+            "required": "Calculation type is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "FLAT",
+            "PERCENTAGE",
+            "HOURS",
+            "FORMULA",
+          ],
+        },
+        "defaultAmount": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "defaultPercentage": {
+          "max": 100,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "elementCode": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Must start with a letter and contain only A-Z, 0-9 or '_'",
+            "required": "Element code is required",
+          },
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "elementName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Element name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "elementType": {
+          "messages": {
+            "required": "Element type is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "EARNING",
+            "DEDUCTION",
+            "TAX",
+            "BENEFIT",
+            "REIMBURSEMENT",
+          ],
+        },
+        "employerPaid": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "glAccountCode": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "GL account must contain only upper-case letters, digits, '.' or '-'",
+          },
+          "pattern": "^[A-Z0-9.-]+$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "pretaxFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "priorityOrder": {
+          "max": 9999,
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "type": "integer",
+        },
+        "taxableFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "PayPeriodListQuery": {
       "fields": {
         "page": {
@@ -2178,6 +2336,51 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p1-performance",
     },
+    "RoleRequest": {
+      "fields": {
+        "maxGrade": {
+          "max": 999,
+          "messages": {
+            "required": "Maximum grade is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "minGrade": {
+          "max": 999,
+          "messages": {
+            "required": "Minimum grade is required",
+          },
+          "min": 1,
+          "required": true,
+          "type": "integer",
+        },
+        "roleCode": {
+          "maxLength": 30,
+          "messages": {
+            "pattern": "Role code must start with a letter and contain only A-Z, 0-9 or '_'",
+            "required": "Role code is required",
+          },
+          "minLength": 2,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+        "roleName": {
+          "maxLength": 100,
+          "messages": {
+            "required": "Role name is required",
+          },
+          "minLength": 1,
+          "required": true,
+          "trim": true,
+          "type": "string",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "SalaryChangeRequest": {
       "fields": {
         "baseSalary": {
@@ -2388,6 +2591,97 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p5-reporting-decommission",
     },
+    "TaxBracketRequest": {
+      "fields": {
+        "activeFlag": {
+          "messages": {},
+          "required": false,
+          "type": "boolean",
+        },
+        "baseTax": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "bracketMax": {
+          "messages": {},
+          "min": 0,
+          "required": false,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "bracketMin": {
+          "messages": {
+            "required": "Bracket minimum is required",
+          },
+          "min": 0,
+          "required": true,
+          "scale": 2,
+          "type": "decimal",
+        },
+        "filingStatus": {
+          "messages": {
+            "required": "Filing status is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "SINGLE",
+            "MARRIED_JOINT",
+            "MARRIED_SEPARATE",
+            "HEAD_OF_HOUSEHOLD",
+            "ALL",
+          ],
+        },
+        "stateCode": {
+          "messages": {
+            "pattern": "State code must be two upper-case letters",
+          },
+          "pattern": "^[A-Z]{2}$",
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "taxRate": {
+          "max": 1,
+          "messages": {
+            "required": "Tax rate is required",
+          },
+          "min": 0,
+          "required": true,
+          "rules": [
+            {
+              "errorCode": "-20603",
+              "id": "tax.rateFraction.min",
+              "kind": "min",
+              "message": "Tax rate is a fraction between 0 and 1 (0.22, never 22)",
+              "value": 0,
+            },
+            {
+              "errorCode": "-20603",
+              "id": "tax.rateFraction.max",
+              "kind": "max",
+              "message": "Tax rate is a fraction between 0 and 1 (0.22, never 22)",
+              "value": 1,
+            },
+          ],
+          "scale": 4,
+          "type": "decimal",
+        },
+        "taxYear": {
+          "max": 2100,
+          "messages": {
+            "required": "Tax year is required",
+          },
+          "min": 2000,
+          "required": true,
+          "type": "integer",
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
     "TimeAttendanceLine": {
       "fields": {
         "empNumber": {
@@ -2431,6 +2725,33 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
       },
       "module": "p5-reporting-decommission",
     },
+    "UserRolesRequest": {
+      "fields": {},
+      "module": "p5-reporting-decommission",
+    },
+    "UserStatusRequest": {
+      "fields": {
+        "reason": {
+          "maxLength": 200,
+          "messages": {},
+          "required": false,
+          "trim": true,
+          "type": "string",
+        },
+        "status": {
+          "messages": {
+            "required": "Status is required",
+          },
+          "required": true,
+          "type": "enum",
+          "values": [
+            "ACTIVE",
+            "DISABLED",
+          ],
+        },
+      },
+      "module": "p5-reporting-decommission",
+    },
   },
   "generator": "hrms-validation:exporter",
   "generatorVersion": "0.1.0",
@@ -2449,6 +2770,6 @@ exports[`frontend/src/generated/validation-schema.json > matches the committed s
     "SECURITY.SESSION_TIMEOUT_MIN": 30,
   },
   "schemaVersion": 1,
-  "sourceHash": "c58e4bed3bbe2c90ede1a1c0cbeee561265646536c8b210f54c74a683ec85fd2",
+  "sourceHash": "2a75a2b652983fd16e9d55f6f186be3a342f9f0c87ec9152637c09cda21f735e",
 }
 `;

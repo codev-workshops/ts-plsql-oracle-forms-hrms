@@ -3,7 +3,7 @@
   "schemaVersion" : 1,
   "generator" : "hrms-validation:exporter",
   "generatorVersion" : "0.1.0",
-  "sourceHash" : "c58e4bed3bbe2c90ede1a1c0cbeee561265646536c8b210f54c74a683ec85fd2",
+  "sourceHash" : "2a75a2b652983fd16e9d55f6f186be3a342f9f0c87ec9152637c09cda21f735e",
   "module" : "hrms",
   "modules" : [ "p0-foundation", "p1-performance", "p2-leave", "p3-employee", "p4-payroll", "p5-reporting-decommission" ],
   "parameters" : {
@@ -2282,6 +2282,302 @@
           "required" : false,
           "min" : 1,
           "max" : 100,
+          "messages" : { }
+        }
+      }
+    },
+    "HolidayRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "holidayDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "holiday.dateWindow",
+            "kind" : "custom",
+            "value" : "10",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "Holiday date must be between 1990-01-01 and ten years from today"
+          } ],
+          "messages" : {
+            "required" : "Holiday date is required"
+          }
+        },
+        "holidayName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Holiday name is required"
+          }
+        },
+        "locationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "floatingFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "PayElementRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "elementCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 30,
+          "pattern" : "^[A-Z][A-Z0-9_]*$",
+          "messages" : {
+            "required" : "Element code is required",
+            "pattern" : "Must start with a letter and contain only A-Z, 0-9 or '_'"
+          }
+        },
+        "elementName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Element name is required"
+          }
+        },
+        "elementType" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "EARNING", "DEDUCTION", "TAX", "BENEFIT", "REIMBURSEMENT" ],
+          "messages" : {
+            "required" : "Element type is required"
+          }
+        },
+        "calculationType" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "FLAT", "PERCENTAGE", "HOURS", "FORMULA" ],
+          "messages" : {
+            "required" : "Calculation type is required"
+          }
+        },
+        "defaultAmount" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "defaultPercentage" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "max" : 100.0,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "taxableFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "pretaxFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "employerPaid" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "glAccountCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^[A-Z0-9.-]+$",
+          "messages" : {
+            "pattern" : "GL account must contain only upper-case letters, digits, '.' or '-'"
+          }
+        },
+        "priorityOrder" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "max" : 9999,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "TaxBracketRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "taxYear" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 2000,
+          "max" : 2100,
+          "messages" : {
+            "required" : "Tax year is required"
+          }
+        },
+        "filingStatus" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "SINGLE", "MARRIED_JOINT", "MARRIED_SEPARATE", "HEAD_OF_HOUSEHOLD", "ALL" ],
+          "messages" : {
+            "required" : "Filing status is required"
+          }
+        },
+        "stateCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z]{2}$",
+          "messages" : {
+            "pattern" : "State code must be two upper-case letters"
+          }
+        },
+        "bracketMin" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "Bracket minimum is required"
+          }
+        },
+        "bracketMax" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "taxRate" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "max" : 1.0,
+          "scale" : 4,
+          "rules" : [ {
+            "id" : "tax.rateFraction.min",
+            "kind" : "min",
+            "value" : 0.0,
+            "errorCode" : "-20603",
+            "message" : "Tax rate is a fraction between 0 and 1 (0.22, never 22)"
+          }, {
+            "id" : "tax.rateFraction.max",
+            "kind" : "max",
+            "value" : 1.0,
+            "errorCode" : "-20603",
+            "message" : "Tax rate is a fraction between 0 and 1 (0.22, never 22)"
+          } ],
+          "messages" : {
+            "required" : "Tax rate is required"
+          }
+        },
+        "baseTax" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "RoleRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "roleCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 2,
+          "maxLength" : 30,
+          "pattern" : "^[A-Z][A-Z0-9_]*$",
+          "messages" : {
+            "required" : "Role code is required",
+            "pattern" : "Role code must start with a letter and contain only A-Z, 0-9 or '_'"
+          }
+        },
+        "roleName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Role name is required"
+          }
+        },
+        "minGrade" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "max" : 999,
+          "messages" : {
+            "required" : "Minimum grade is required"
+          }
+        },
+        "maxGrade" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "max" : 999,
+          "messages" : {
+            "required" : "Maximum grade is required"
+          }
+        }
+      }
+    },
+    "UserRolesRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : { }
+    },
+    "UserStatusRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "status" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "ACTIVE", "DISABLED" ],
+          "messages" : {
+            "required" : "Status is required"
+          }
+        },
+        "reason" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
           "messages" : { }
         }
       }
