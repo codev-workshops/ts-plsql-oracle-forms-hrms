@@ -41,7 +41,6 @@ class SalaryServiceTest {
     assertThat(SalaryService.changePct(BigDecimal.ZERO, new BigDecimal("1"))).isNull();
   }
 
-  /** openapi.yaml: exact ROUND((new - old) / old * 100, 2) over the whole Money range. */
   @Test
   void changePctIsTheExactlyRoundedFormulaForEveryMoneyMagnitude() {
     assertThat(SalaryService.changePct(new BigDecimal("66000.00"), new BigDecimal("999999.00")))
@@ -50,7 +49,6 @@ class SalaryServiceTest {
         .isEqualTo(new BigDecimal("99999999999800.00"));
     assertThat(SalaryService.changePct(new BigDecimal("9999999999.99"), new BigDecimal("0.01")))
         .isEqualTo(new BigDecimal("-100.00"));
-    // exact quotients just below a half-cent boundary round down, never up via an intermediate
     assertThat(SalaryService.changePct(new BigDecimal("66000.01"), new BigDecimal("66003.31")))
         .isEqualTo(new BigDecimal("0.00"));
     assertThat(

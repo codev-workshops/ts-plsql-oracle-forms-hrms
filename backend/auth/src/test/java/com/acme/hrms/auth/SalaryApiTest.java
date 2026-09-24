@@ -133,7 +133,6 @@ class SalaryApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.outOfGradeBand").value(true));
   }
 
-  /** openapi.yaml: changePct is the exact formula for every Money pair, stored as NUMERIC(16,2). */
   @Test
   void changePctAbove999StoresExactValueWithOneActiveRowHistoryAndAudit() throws Exception {
     jdbc.update("update salary_records set base_salary = 66000.00 where emp_id = 1");

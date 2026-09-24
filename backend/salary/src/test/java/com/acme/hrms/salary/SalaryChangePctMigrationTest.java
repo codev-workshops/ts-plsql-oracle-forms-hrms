@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** V11 widens change_pct on an existing V10 database in place, keeping its rows. */
 class SalaryChangePctMigrationTest {
 
   @AfterAll
