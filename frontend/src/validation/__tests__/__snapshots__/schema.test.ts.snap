@@ -1,0 +1,1540 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`validation-schema adapter > snapshot: the DTO/field vocabulary the pages depend on 1`] = `
+{
+  "AccrualRunRequest": {
+    "accrualDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "AcknowledgeRequest": {
+    "employeeComments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "AuditLogSearchQuery": {
+    "actionType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "changedBy": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "from": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "recordId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "tableName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "to": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+  },
+  "BenefitsFeedRequest": {
+    "effectiveDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "BusinessDaysQuery": {
+    "end": {
+      "required": true,
+      "rules": [
+        "-20210",
+      ],
+      "type": "date",
+    },
+    "start": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "CarryoverRunRequest": {
+    "year": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "ChangePasswordRequest": {
+    "currentPassword": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "newPassword": {
+      "required": true,
+      "rules": [
+        "-20310",
+        "-20311",
+        "-20312",
+      ],
+      "type": "string",
+    },
+  },
+  "DepartmentRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "costCenter": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "deptCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "deptName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "parentDeptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "DependentRequest": {
+    "benefitsEnrolled": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "relationship": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+  },
+  "EmergencyContactRequest": {
+    "contactName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phonePrimary": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneSecondary": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "priorityOrder": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "relationship": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeCompensationQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "gradeId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "EmployeeCreateRequest": {
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "deptId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "employmentType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gender": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "hireDate": {
+      "required": true,
+      "rules": [
+        "-20501",
+      ],
+      "type": "date",
+    },
+    "initialSalary": {
+      "required": false,
+      "rules": [
+        "-20101",
+      ],
+      "type": "decimal",
+    },
+    "jobId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "maritalStatus": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "middleName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "nationality": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "notes": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneMobile": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneWork": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeDirectoryQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "EmployeeListQuery": {
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "firstName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "hireDateTo": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "jobId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "q": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "EmployeeSearchQuery": {
+    "fields": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "q": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "EmployeeTerminateRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "reason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeTransferRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "deptId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "newJobId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "newLocationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "newManagerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "reasonCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "EmployeeUpdateRequest": {
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "dateOfBirth": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "email": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "employmentType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "firstName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gender": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "jobId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "lastName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "managerEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "maritalStatus": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "middleName": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "nationality": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "notes": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneMobile": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneWork": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "ssn": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "GlFeedRequest": {
+    "runId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "GoalProgressRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "progressPct": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "GoalRequest": {
+    "goalCategory": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "goalDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "goalTitle": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "targetDate": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "weightPct": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+  },
+  "HolidayRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "floatingFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "holidayDate": {
+      "required": true,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+    "holidayName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "IntegrationFileListQuery": {
+    "feed": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "from": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "to": {
+      "required": false,
+      "rules": [
+        "VALIDATION_FAILED",
+      ],
+      "type": "date",
+    },
+  },
+  "JobGradeRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "gradeCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "gradeName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "maxSalary": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "minSalary": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "overtimeEligible": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
+  "JobTitleRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "eeoCategory": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "flsaStatus": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "gradeId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "jobCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "jobFamily": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "jobTitle": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveApproveRequest": {
+    "comments": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveCancelRequest": {
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveRejectRequest": {
+    "comments": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LeaveRequestCreateRequest": {
+    "endDate": {
+      "required": true,
+      "rules": [
+        "-20210",
+      ],
+      "type": "date",
+    },
+    "halfDay": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "halfDayPeriod": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "leaveTypeId": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "startDate": {
+      "required": true,
+      "rules": [
+        "-20211",
+      ],
+      "type": "date",
+    },
+  },
+  "LeaveSummaryQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "leaveTypeId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "year": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "LeaveTypeRequest": {
+    "accrualFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "accrualFrequency": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "accrualRate": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "carryoverExpiry": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "carryoverMax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "leaveTypeCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "leaveTypeName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "maxBalance": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "minTenureDays": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "paidFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "requiresApproval": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "requiresDocument": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
+  "LocationRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "addressLine1": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "addressLine2": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "city": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "countryCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "locationCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "locationName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "phoneNumber": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "postalCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "stateProvince": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "timezone": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "LoginRequest": {
+    "password": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "username": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "ManagerReviewRequest": {
+    "developmentPlan": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "improvementAreas": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "managerAssessment": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "overallRating": {
+      "required": true,
+      "rules": [
+        "-20403",
+        "-20403",
+      ],
+      "type": "decimal",
+    },
+    "strengths": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "OrgHierarchyQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "maxLevel": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "rootEmpId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "PayElementRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "calculationType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "defaultAmount": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "defaultPercentage": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "elementCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "elementName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "elementType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "employerPaid": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "glAccountCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "pretaxFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "priorityOrder": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "taxableFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+  },
+  "PayPeriodListQuery": {
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "sort": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollDetailListQuery": {
+    "empId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollLatestQuery": {
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "periodId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "PayrollRunCreateRequest": {
+    "runType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollRunListQuery": {
+    "status": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "PayrollRunReverseRequest": {
+    "reason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "PendingApprovalsQuery": {
+    "asOf": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "deptId": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "itemType": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "mine": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "page": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+    "size": {
+      "required": false,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "ReviewCycleRequest": {
+    "calibrationDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "cycleName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "cycleYear": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "endDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "managerReviewDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "selfReviewDue": {
+      "required": false,
+      "rules": [],
+      "type": "date",
+    },
+    "startDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "RoleRequest": {
+    "maxGrade": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "minGrade": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+    "roleCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "roleName": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SalaryChangeRequest": {
+    "baseSalary": {
+      "required": true,
+      "rules": [
+        "-20101",
+      ],
+      "type": "decimal",
+    },
+    "changeReason": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "currencyCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "effectiveDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+    "payFrequency": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+    "salaryBasis": {
+      "required": false,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+  "SelfAssessmentRequest": {
+    "selfAssessment": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SsoExchangeRequest": {
+    "clientIp": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "module": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "returnPath": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SystemParameterRequest": {
+    "dataType": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "editableFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "paramCode": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "paramDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "paramGroup": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "paramValue": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "SystemParameterUpdateRequest": {
+    "paramDescription": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "paramValue": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+  },
+  "TaxBracketRequest": {
+    "activeFlag": {
+      "required": false,
+      "rules": [],
+      "type": "boolean",
+    },
+    "baseTax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "bracketMax": {
+      "required": false,
+      "rules": [],
+      "type": "decimal",
+    },
+    "bracketMin": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "filingStatus": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+    "stateCode": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "taxRate": {
+      "required": true,
+      "rules": [
+        "-20603",
+        "-20603",
+      ],
+      "type": "decimal",
+    },
+    "taxYear": {
+      "required": true,
+      "rules": [],
+      "type": "integer",
+    },
+  },
+  "TimeAttendanceLine": {
+    "empNumber": {
+      "required": true,
+      "rules": [],
+      "type": "string",
+    },
+    "hoursOvertime": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "hoursRegular": {
+      "required": true,
+      "rules": [],
+      "type": "decimal",
+    },
+    "workDate": {
+      "required": true,
+      "rules": [],
+      "type": "date",
+    },
+  },
+  "UserRolesRequest": {},
+  "UserStatusRequest": {
+    "reason": {
+      "required": false,
+      "rules": [],
+      "type": "string",
+    },
+    "status": {
+      "required": true,
+      "rules": [],
+      "type": "enum",
+    },
+  },
+}
+`;

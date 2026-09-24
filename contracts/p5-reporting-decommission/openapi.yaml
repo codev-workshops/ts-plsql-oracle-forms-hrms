@@ -1,0 +1,3614 @@
+openapi: 3.1.0
+info:
+  title: HRMS Phase 5 – Reporting / Integration, reference-data ownership, Forms + Oracle decommission
+  version: 5.0.0-contract
+  description: |
+    Frozen API surface for Phase 5 (CUTOVER_PLAN.md §9, COMPONENT_MAPPING.md §9 rows
+    `PKG_REPORTING` / `PKG_INTEGRATION`, MODERNIZATION_BLUEPRINT.md §8 Reporting row,
+    TEST_STRATEGY.md §5 row 5). Written BEFORE any implementation exists; the backend
+    node implements exactly this file, the frontend node codes against it.
+
+    Target architecture (non-negotiable, MODERNIZATION_BLUEPRINT.md §9 decisions A/B):
+    * Spring Boot (Java 21) on PostgreSQL + React. **No PL/SQL, PL/pgSQL, triggers or
+      .pll in the target.** `PKG_REPORTING`, `PKG_INTEGRATION`, the six `VW_*` views and
+      `HRMS_ADMIN.fmb` / `HRMS_REPORTS.fmb` are read-only characterization references
+      (GOLDEN-ORACLE MODE = OFF: no Oracle runtime exists; expectations are recorded
+      fixtures, `legacy_source=recorded`).
+    * Three Java modules are introduced (ARCH-01/02, one owner per table):
+      - `reporting-module` – **owns no table**. Every report is a read-only Spring Data
+        JDBC projection (plain SQL, `WITH RECURSIVE` for the hierarchy) over tables owned
+        by the P0–P4 modules, executed on the PostgreSQL read replica when one exists.
+        The six `VW_*` views are **not** recreated on PostgreSQL; the report SQL is the
+        `tests/reconciliation/pg/*.sql` transcription (Level 3 pins it).
+      - `admin-module` – owns `DEPARTMENTS`, `LOCATIONS`, `JOB_GRADES`, `JOB_TITLES`,
+        `LEAVE_TYPES`, `SYSTEM_PARAMETERS`, `HOLIDAYS`, `AUDIT_LOG` (**ownership of the
+        reference tables transfers here from `reference-module` (P0 read-only) – P0's
+        `/api/reference/*` GET routes are kept, served by the same repositories**).
+      - `integration-module` – owns `INTEGRATION_LOG` (new, PostgreSQL only) and
+        `integration_files` (new; feed metadata + object-storage key). It reads payroll /
+        employee / benefits data through the owning modules' Java service interfaces.
+    * Identity comes from the P0 JWT (`sub` = `user_accounts.user_id` as a string, `empId`,
+      `authorities[]`; there is **no** `username` claim). No route takes an actor `empId`
+      or `p_user`; `createdBy` / `modifiedBy` / `changedBy` / `startedBy` /
+      `INTEGRATION_LOG.created_by` are always `jwt.sub` (`CurrentCaller.userId()`, as in
+      P3); `jwt.empId` is used only for subject scoping (`mine=true`, manager inbox,
+      employee lookup). Route `{empId}` never appears in this module.
+    * Every failure body is `ApiError {code, message, field?, traceId}`; `code` is the
+      legacy `-20xxx` number as a string (see `error-codes.md`) or a framework code.
+    * Validation lives once in `hrms-validation` (`dto/admin/*`, `dto/reporting/*`,
+      `dto/integration/*`) and is exported to
+      `frontend/src/generated/validation-schema.json`, module `p5-reporting-decommission`.
+    * Reference-data list responses are **unpaged arrays** (the admin grids are ≤ a few
+      hundred rows); audit-log search and every report are paged (`page`, `size`, Spring
+      `Page` envelope) in JSON and **streamed unpaged** as CSV.
+
+    Reports – JSON + CSV (mirroring the six `VW_*` views, TEST_STRATEGY.md §5 row 0/5):
+    * Each `GET /api/reports/{name}` supports content negotiation: `Accept:
+      application/json` (default) → `Page<Row>`; `Accept: text/csv` **or** the `.csv`
+      path suffix (`GET /api/reports/{name}.csv`) → `text/csv; charset=utf-8`, RFC 4180,
+      header row = the JSON property names in the order documented per row schema,
+      `Content-Disposition: attachment; filename="{name}-{asOf}.csv"`, no paging (all
+      rows), numbers unformatted (`Money` two decimals, `Rate` four), dates ISO-8601,
+      `null` → empty field. Filters are identical in both representations.
+    * `asOf` (`YYYY-MM-DD`, default today) replaces every `SYSDATE` in the views
+      (`TENURE_YEARS`, `YEARS_IN_GRADE`, `EXTRACT(YEAR FROM SYSDATE)`, `DAYS_PENDING`).
+      `TENURE_YEARS` / `YEARS_IN_GRADE` reproduce Oracle `MONTHS_BETWEEN` (day-of-month
+      fraction, `tests/golden/README.md`).
+    * `PKG_REPORTING` ref-cursor procedures (`headcount_report`, `compensation_summary`,
+      `turnover_report`, `new_hires_report`, `leave_utilization_report`,
+      `payroll_summary_report`, `eeo_compliance_report`) are **folded into the six report
+      routes as filters/aggregates**: their filters (`deptId`, `locationCode`, `gradeId`,
+      `asOf`, `year`, `periodId`, `from`/`to`) are query parameters here; the aggregate
+      shapes (`compensation_summary` per department, `eeo_compliance_report`) are the
+      `summary` blocks of the corresponding routes. `refresh_reporting_tables` is a
+      legacy no-op and has no target route.
+    * **VAL-05 (frozen here):** `leave-summary.available` =
+      `openingBalance + accrued - used + adjustment - pending`, i.e. **the target
+      subtracts `PENDING`** exactly like `PKG_LEAVE` / `leave_balances.available`. The
+      legacy `VW_LEAVE_SUMMARY.AVAILABLE` omits `- PENDING`; the resulting per-row offset
+      (`legacy.AVAILABLE - target.available == pending`) is the **accepted final
+      difference** and is asserted, not tolerated, by the Level 3 pack (see README.md).
+
+    Admin – reference-data CRUD (`HRMS_ADMIN.fmb` replacement):
+    * Full CRUD for departments, job titles, job grades, locations, leave types, system
+      parameters. Rows are **never physically deleted** (legacy grids only toggled
+      `ACTIVE_FLAG`); `DELETE` = deactivate (`activeFlag=N`) and is refused with `-20602`
+      while active dependants exist. Codes are immutable after creation (`-20601` on a
+      duplicate). Every write appends an `AUDIT_LOG` row (`action_type` INSERT / UPDATE /
+      STATUS_CHANGE, `changed_by = jwt.sub`) from Java – no trigger.
+    * `POST /api/admin/leave/accrual` and `/api/admin/leave/carryover` are the mounted
+      form of the routes P2 declared as `x-deferred` (`/api/leave/admin/accrual/run`,
+      `/api/leave/admin/carryover/run`); the P2 paths become **301 aliases** to these.
+      Both run asynchronously (Spring Batch job in `leave-module`, which still owns
+      `leave_balances` / `leave_accrual_log`; `admin-module` only triggers) and return
+      `202` + `BatchRunResult`.
+    * `GET /api/admin/audit-log` is the read side of `AUDIT_LOG` (replaces the
+      `HRMS_ADMIN` audit block and `trg_*_audit`). Old/new values are returned as
+      opaque JSON strings; never filtered on.
+
+    Integration (`PKG_INTEGRATION` replacement, no `UTL_FILE`):
+    * A feed run creates an `integration_files` row and writes the artefact to object
+      storage (`S3`-compatible bucket `hrms-integration`, key
+      `{feed}/{yyyy}/{MM}/{fileId}-{fileName}`); the API returns metadata + a **download
+      route** (`GET /api/integration/files/{fileId}/content`) that streams the bytes
+      (`Content-Disposition: attachment`). There are **no directory objects**;
+      `GL_FEED_OUT` / `BENEFITS_FEED_OUT` / `TIME_IMPORT_IN` are dropped.
+    * GL feed: pipe-delimited `H|D…|T` exactly as `generate_gl_journal` (earnings →
+      debit, taxes/deductions → credit magnitudes, one `D` per `cost_center × gl_account`,
+      `T|count`). Only runs in `APPROVED` or `PAID` may be exported (`-20701`).
+    * Benefits feed: fixed-width ADP layout of `export_benefits_feed` (employee + dependant
+      records, SSN **masked** `***-**-1234` – the legacy wrote the full SSN; SEC-05).
+    * Time-attendance import (**BUG-08**): the legacy body is a `TODO` that parses
+      `emp_number,date,hours_regular,hours_overtime` and writes nothing. The target
+      **freezes the file grammar, validation and the response** but the persistence
+      target is `x-unspecified` (there is no time/attendance table in the schema and no
+      pay element mapping). `POST /api/integration/time-attendance/import` therefore
+      validates, stages rows into `integration_files` (`status=STAGED`) and returns the
+      per-line verdicts; **no payroll/leave data is mutated in Phase 5**. The unspecified
+      fields are marked `x-unspecified: BUG-08` on the schemas below.
+    * `sync_org_structure` (legacy no-op) has no target route. `get_integration_status`
+      → `GET /api/integration/status`.
+
+    Reference-data ownership / CDC (CUTOVER_PLAN.md §9, §2 rule 6):
+    * In this phase the reference tables' system of record becomes PostgreSQL. CDC
+      direction for the reference group **reverses** (PostgreSQL → Oracle, `tools/cdc-sync
+      reverse --group reference`) for the Forms-decommission window and is then **shut
+      down** (`debezium/hrms-oracle-source.json` `table.include.list` empty, connectors
+      deleted). Declared in README.md; delivered as code + unit tests, `untested-live`.
+
+    Proxy flags (`proxy/flags.env`): `reporting=LEGACY|NEW` gates `/api/reports/**`,
+    `/api/admin/**`, `/api/integration/**` and the React `/reports`, `/admin`,
+    `/integration` routes. `HRMS_FLAG_REPORTING=NEW` is the last flip; after it every
+    flag is `NEW` and the proxy's `LEGACY` upstream is removed (decommission).
+
+    Status codes used by this module: 200, 201, 202, 204, 301, 304, 400, 401, 403,
+    404, 406, 409, 415, 422. Documented `-20xxx` failures are 4xx bodies; framework
+    codes are listed in `error-codes.md` §2.
+servers:
+  - url: /
+    description: Behind the P0 reverse proxy (flag `reporting`).
+security:
+  - bearerAuth: []
+tags:
+  - name: reports
+  - name: admin-reference
+  - name: admin-leave-jobs
+  - name: admin-audit
+  - name: admin-payroll-reference
+  - name: admin-roles
+  - name: integration
+
+paths:
+  # ---------------------------------------------------------------------------
+  # reports (read-only) – JSON page or CSV stream
+  # ---------------------------------------------------------------------------
+  /api/reports/employee-directory:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeDirectory
+      summary: "`VW_ACTIVE_EMPLOYEES` + `PKG_REPORTING.headcount_report` filters"
+      description: |
+        One row per `EMPLOYEES.EMPLOYMENT_STATUS='ACTIVE'` employee joined to department,
+        job, grade, location and manager. `tenureYears = TRUNC(MONTHS_BETWEEN(asOf,
+        hireDate)/12, 1)` (Oracle semantics). `summary.headcountByDepartment` is
+        `headcount_report` (`p_as_of_date`, `p_dept_id`, `p_location`): active employees
+        with `hireDate <= asOf`, grouped by department, with `avgTenureYears`.
+        Sorted by `empId`.
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/DeptId'
+        - $ref: '#/components/parameters/LocationCode'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: "Directory rows (`Accept: application/json` → page; `text/csv` → stream)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDirectoryPage'
+            text/csv:
+              schema: { type: string }
+              example: "empId,empNumber,firstName,lastName,fullName,email,phoneWork,hireDate,tenureYears,deptId,deptCode,deptName,costCenter,jobId,jobCode,jobTitle,jobFamily,gradeId,gradeCode,gradeName,locationCode,locationName,city,stateProvince,managerEmpId,managerName\n"
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/employee-directory.csv:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeDirectoryCsv
+      summary: CSV alias of `/api/reports/employee-directory` (all rows, no paging)
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/DeptId'
+        - $ref: '#/components/parameters/LocationCode'
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/reports/org-hierarchy:
+    get:
+      tags: [reports]
+      operationId: reportOrgHierarchy
+      summary: "`VW_ORG_HIERARCHY` (`CONNECT BY` → `WITH RECURSIVE`)"
+      description: |
+        Walks **all** employees from the roots (`managerEmpId IS NULL`) with `WITH
+        RECURSIVE` and filters `employmentStatus='ACTIVE'` in the outer select, exactly
+        like Oracle applies the view `WHERE` after `CONNECT BY` (active reports of a
+        terminated manager keep their `orgLevel` / `orgPath`, `tests/golden/README.md`).
+        `orgPath = SYS_CONNECT_BY_PATH(fullName, ' > ')` without the leading separator;
+        `isLeaf` = `CONNECT_BY_ISLEAF` (counts terminated children). Cycle protection:
+        a manager chain that revisits an `empId` stops at the repeat (legacy would raise
+        `ORA-01436`); the row is flagged `cycle=true` – a target-only field, `-20004`
+        prevents new cycles at write time (P3). `rootEmpId` restricts to one sub-tree.
+        Sorted by `orgPath`.
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - in: query
+          name: rootEmpId
+          required: false
+          description: Sub-tree root (`EMPLOYEES.EMP_ID`); default = all roots.
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: maxLevel
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 20 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Hierarchy rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgHierarchyPage'
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/org-hierarchy.csv:
+    get:
+      tags: [reports]
+      operationId: reportOrgHierarchyCsv
+      summary: CSV alias of `/api/reports/org-hierarchy`
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - in: query
+          name: rootEmpId
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: maxLevel
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  /api/reports/employee-compensation:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeCompensation
+      summary: "`VW_EMPLOYEE_COMPENSATION` + `PKG_REPORTING.compensation_summary`"
+      description: |
+        One row per active employee with the current `SALARY_RECORDS` row
+        (`endDate IS NULL`), grade band, `compaRatio = ROUND(baseSalary /
+        ((minSalary+maxSalary)/2), 4)` and `yearsInGrade` (`MONTHS_BETWEEN` semantics
+        from `effectiveDate`). `summary.byDepartment` reproduces `compensation_summary`
+        (`p_dept_id`, `p_grade_id`): `headcount`, `avgSalary`, `minSalary`, `maxSalary`,
+        `totalPayroll` per department. **Requires `PAYROLL:VIEW` in addition to
+        `REPORTS:VIEW`** – the legacy `HRMS_REPORTS` form hid this report unless
+        `has_permission('PAYROLL')`. `baseSalary` is never masked in this report (SEC-05
+        applies to SSN/bank data, not salary). Sorted by `empId`.
+      x-preauthorize: hasAuthority('REPORTS:VIEW') and hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/DeptId'
+        - in: query
+          name: gradeId
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Compensation rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeCompensationPage'
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/employee-compensation.csv:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeCompensationCsv
+      summary: CSV alias of `/api/reports/employee-compensation`
+      x-preauthorize: hasAuthority('REPORTS:VIEW') and hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/DeptId'
+        - in: query
+          name: gradeId
+          required: false
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/reports/leave-summary:
+    get:
+      tags: [reports]
+      operationId: reportLeaveSummary
+      summary: "`VW_LEAVE_SUMMARY` with VAL-05 fixed + `leave_utilization_report`"
+      description: |
+        One row per `(activeEmployee, leaveType)` balance of `year` (default
+        `EXTRACT(YEAR FROM asOf)`). **VAL-05:** `available = openingBalance + accrued -
+        used + adjustment - pending` (legacy view omitted `- pending`; accepted final
+        difference, README.md). `utilizationPct = ROUND(used*100 / NULLIF(openingBalance
+        + accrued, 0), 1)` (null when the denominator is 0, as Oracle). `pending` is
+        exposed so the Level 3 pack can assert `legacyAvailable - available == pending`.
+        `summary.byLeaveType` reproduces `leave_utilization_report` (`p_year`,
+        `p_dept_id`): `employees`, `totalAccrued`, `totalUsed`, `avgUtilizationPct`.
+        `EMPLOYEE:VIEW` is not required: the report has no self-scope – `REPORTS:VIEW`
+        holders (MANAGER+) see the whole company, as in `HRMS_REPORTS`. Sorted by `empId`,
+        `leaveTypeName`.
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/DeptId'
+        - in: query
+          name: leaveTypeId
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Leave summary rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveSummaryPage'
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/leave-summary.csv:
+    get:
+      tags: [reports]
+      operationId: reportLeaveSummaryCsv
+      summary: CSV alias of `/api/reports/leave-summary`
+      x-preauthorize: hasAuthority('REPORTS:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/DeptId'
+        - in: query
+          name: leaveTypeId
+          required: false
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/reports/payroll-latest:
+    get:
+      tags: [reports]
+      operationId: reportPayrollLatest
+      summary: "`VW_PAYROLL_LATEST` + `PKG_REPORTING.payroll_summary_report`"
+      description: |
+        Per-employee aggregates of the **latest `PAYROLL_RUNS` row per period**
+        (`MAX(run_id)` per `period_id`, as the view's inline `PAYROLL_RUNS` sub-select),
+        default = the latest period with a run in `APPROVED`/`PAID`; `periodId` selects
+        another. `STATUS='ERROR'` rows are excluded (P4 contract). `grossPay` /
+        `totalTaxes` / `totalDeductions` are positive magnitudes, `netPay = SUM(amount)`
+        (P4 sign convention). `summary` is `payroll_summary_report(p_period_id)`:
+        `employeeCount`, `totalGross`, `totalTaxes`, `totalDeductions`, `totalNet`,
+        `avgNet`. Requires `PAYROLL:VIEW`. Sorted by `empId`.
+      x-preauthorize: hasAuthority('REPORTS:VIEW') and hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/DeptId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Payroll rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollLatestPage'
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PeriodNotFound'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/payroll-latest.csv:
+    get:
+      tags: [reports]
+      operationId: reportPayrollLatestCsv
+      summary: CSV alias of `/api/reports/payroll-latest`
+      x-preauthorize: hasAuthority('REPORTS:VIEW') and hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+        - $ref: '#/components/parameters/DeptId'
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PeriodNotFound'
+
+  /api/reports/pending-approvals:
+    get:
+      tags: [reports]
+      operationId: reportPendingApprovals
+      summary: "`VW_PENDING_APPROVALS` (leave requests ∪ performance reviews)"
+      description: |
+        `UNION ALL` of `LEAVE_REQUESTS.STATUS='PENDING'` (`itemType=LEAVE`) and
+        `PERFORMANCE_REVIEWS.STATUS='SUBMITTED'` (`itemType=REVIEW`), each with the
+        employee, the approver (`manager_emp_id` / `reviewer_emp_id`) and `daysPending =
+        TRUNC(asOf - submittedDate)`. Column names are unified as in the view
+        (`itemType, itemId, empId, empName, deptName, approverEmpId, approverName,
+        submittedDate, daysPending, detail`). `mine=true` restricts to
+        `approverEmpId = jwt.empId` (the manager inbox); without `mine` the caller needs
+        `REPORTS:VIEW`, with `mine=true` `isAuthenticated()` suffices. Sorted by
+        `submittedDate`, `itemType`, `itemId`.
+      x-preauthorize: "hasAuthority('REPORTS:VIEW') or #mine == true"
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - in: query
+          name: itemType
+          required: false
+          schema: { type: string, enum: [LEAVE, REVIEW] }
+        - in: query
+          name: mine
+          required: false
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/DeptId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Pending items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingApprovalPage'
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+  /api/reports/pending-approvals.csv:
+    get:
+      tags: [reports]
+      operationId: reportPendingApprovalsCsv
+      summary: CSV alias of `/api/reports/pending-approvals`
+      x-preauthorize: "hasAuthority('REPORTS:VIEW') or #mine == true"
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+        - in: query
+          name: itemType
+          required: false
+          schema: { type: string, enum: [LEAVE, REVIEW] }
+        - in: query
+          name: mine
+          required: false
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/DeptId'
+      responses:
+        '200':
+          $ref: '#/components/responses/CsvStream'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ---------------------------------------------------------------------------
+  # admin – reference data CRUD (admin-module owns the tables from this phase)
+  # ---------------------------------------------------------------------------
+  /api/admin/departments:
+    get:
+      tags: [admin-reference]
+      operationId: adminListDepartments
+      summary: All departments (active and inactive) for the admin grid
+      description: |
+        Unlike `/api/reference/departments` (active only, cached, dropdown projection)
+        this returns every row with audit columns. Sorted by `deptCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Department' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateDepartment
+      summary: Create a department (`HRMS_ADMIN` DEPARTMENTS block insert)
+      description: |
+        `deptId` from `seq_departments` (server). `parentDeptId` must be an existing
+        **active** department (`-20003`) and must not create a cycle (`-20605`);
+        `managerEmpId` must be an active employee (`-20001`); `locationCode` must be an
+        active location (`-20604`). `createdBy = jwt.sub`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepartmentRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string }, description: "`/api/admin/departments/{deptId}`" }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/departments/{deptId}:
+    parameters:
+      - $ref: '#/components/parameters/DeptIdPath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetDepartment
+      summary: One department
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Department
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateDepartment
+      summary: Full update (code immutable)
+      description: |
+        `deptCode` in the body must equal the stored code (`-20601` otherwise – codes are
+        immutable because `EMPLOYEES`, `ORG_HIERARCHY` paths and the GL feed key on them).
+        Same referential rules as create. `modifiedBy = jwt.sub`; `AUDIT_LOG` UPDATE
+        row with old/new JSON.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepartmentRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeactivateDepartment
+      summary: Deactivate (`activeFlag=N`); never a physical delete
+      description: |
+        Refused with `-20602` while any `EMPLOYEES.EMPLOYMENT_STATUS='ACTIVE'` row or any
+        active child department references it. Idempotent on an already-inactive row
+        (`204`). `AUDIT_LOG` STATUS_CHANGE row.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ReferenceInUse'
+
+  /api/admin/job-grades:
+    get:
+      tags: [admin-reference]
+      operationId: adminListJobGrades
+      summary: All job grades. Sorted by `gradeCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Grades
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobGrade' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateJobGrade
+      summary: Create a job grade (`CHK_SALARY_RANGE` enforced in Java)
+      description: "`maxSalary >= minSalary` else `-20603` (`field=maxSalary`). `gradeId` from `seq_job_grades`."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobGradeRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobGrade' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/job-grades/{gradeId}:
+    parameters:
+      - $ref: '#/components/parameters/GradeIdPath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetJobGrade
+      summary: One grade
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Grade
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobGrade' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateJobGrade
+      summary: Full update (code immutable)
+      description: |
+        Narrowing the band does **not** re-validate existing `SALARY_RECORDS` (legacy
+        did not either); `SalaryService` (P3) applies the new band to future changes.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobGradeRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobGrade' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeactivateJobGrade
+      summary: Deactivate; refused (`-20602`) while an active job title uses the grade
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ReferenceInUse'
+
+  /api/admin/job-titles:
+    get:
+      tags: [admin-reference]
+      operationId: adminListJobTitles
+      summary: All job titles with their grade. Sorted by `jobCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Job titles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobTitle' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateJobTitle
+      summary: Create a job title
+      description: "`gradeId` must be an active grade (`-20604`, `field=gradeId`). `jobId` from `seq_job_titles`."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobTitleRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobTitle' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/job-titles/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobIdPath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetJobTitle
+      summary: One job title
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Job title
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobTitle' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateJobTitle
+      summary: Full update (code immutable)
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobTitleRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobTitle' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeactivateJobTitle
+      summary: Deactivate; refused (`-20602`) while an active employee holds the job
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ReferenceInUse'
+
+  /api/admin/locations:
+    get:
+      tags: [admin-reference]
+      operationId: adminListLocations
+      summary: All locations. Sorted by `locationCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Location' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateLocation
+      summary: Create a location (natural key `locationCode`, supplied by the client)
+      description: "`timezone` must be an IANA zone id (`java.time.ZoneId`); `countryCode` ISO-3166 alpha-2/3."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/locations/{locationCode}:
+    parameters:
+      - $ref: '#/components/parameters/LocationCodePath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetLocation
+      summary: One location
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Location
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateLocation
+      summary: Full update (`locationCode` immutable)
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeactivateLocation
+      summary: Deactivate; refused (`-20602`) while an active employee or department uses it
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ReferenceInUse'
+
+  /api/admin/leave-types:
+    get:
+      tags: [admin-reference]
+      operationId: adminListLeaveTypes
+      summary: All leave types with policy columns. Sorted by `leaveTypeCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Leave types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LeaveType' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateLeaveType
+      summary: Create a leave type (`CHK_ACCRUAL_FREQ` enforced in Java)
+      description: |
+        When `accrualFlag=true`, `accrualRate` and `accrualFrequency` are required
+        (`VALIDATION_FAILED`); `carryoverMax <= maxBalance` when both set (`-20603`,
+        `field=carryoverMax`). `leaveTypeId` from `seq_leave_types`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveTypeRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveType' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/leave-types/{leaveTypeId}:
+    parameters:
+      - $ref: '#/components/parameters/LeaveTypeIdPath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetLeaveType
+      summary: One leave type
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Leave type
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveType' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateLeaveType
+      summary: Full update (code immutable). Policy changes apply to the **next** accrual run only.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveTypeRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveType' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeactivateLeaveType
+      summary: Deactivate; refused (`-20602`) while a `PENDING` leave request of the type exists
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ReferenceInUse'
+
+  /api/admin/system-parameters:
+    get:
+      tags: [admin-reference]
+      operationId: adminListSystemParameters
+      summary: All `SYSTEM_PARAMETERS` (optionally one group). Sorted by `paramGroup`, `paramCode`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - in: query
+          name: group
+          required: false
+          schema: { type: string, maxLength: 50, pattern: '^[A-Z][A-Z0-9_]*$' }
+      responses:
+        '200':
+          description: Parameters
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SystemParameter' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-reference]
+      operationId: adminCreateSystemParameter
+      summary: Create a parameter (`(paramGroup, paramCode)` unique)
+      description: |
+        `paramValue` must parse as `dataType` (`NUMBER` → decimal, `DATE` → `YYYY-MM-DD`,
+        `BOOLEAN` → `Y|N`; `-20603`, `field=paramValue`). Parameters consumed by earlier
+        phases (`SECURITY.PASSWORD_MIN_LENGTH`, `HR.MAX_FUTURE_HIRE_DAYS`, …) are read by
+        the owning modules through `admin-module`'s `SystemParameterService` **at request
+        time** (no restart); `validation-schema.json` `parameters` is regenerated by the
+        exporter at build time and therefore reflects the seed value – the UI treats the
+        server as authoritative (TEST_STRATEGY.md §2.1).
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SystemParameterRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemParameter' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/system-parameters/{paramId}:
+    parameters:
+      - $ref: '#/components/parameters/ParamIdPath'
+    get:
+      tags: [admin-reference]
+      operationId: adminGetSystemParameter
+      summary: One parameter
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Parameter
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemParameter' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-reference]
+      operationId: adminUpdateSystemParameter
+      summary: Update `paramValue` / `paramDescription` (group, code and dataType immutable)
+      description: "Refused with `-20606` when `editableFlag=false` (legacy grid made the row read-only)."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SystemParameterUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemParameter' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ParameterNotEditable'
+    delete:
+      tags: [admin-reference]
+      operationId: adminDeleteSystemParameter
+      summary: Physically delete a parameter (the only hard delete in this module)
+      description: "`SYSTEM_PARAMETERS` has no `ACTIVE_FLAG`; refused with `-20606` when `editableFlag=false`."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/ParameterNotEditable'
+
+  # ---------------------------------------------------------------------------
+  # admin – leave batch triggers (mounted form of the P2 x-deferred routes)
+  # ---------------------------------------------------------------------------
+  /api/admin/leave/accrual:
+    post:
+      tags: [admin-leave-jobs]
+      operationId: adminRunLeaveAccrual
+      summary: "Trigger `LeaveAccrualJob` (`PKG_LEAVE.process_monthly_accrual` / `run_monthly_accrual`)"
+      description: |
+        Runs asynchronously; `202` with the job id. Idempotent through `leave_accrual_log`
+        (`(empId, leaveTypeId, accrualDate, 'ACCRUAL')` unique) – a re-run for the same
+        `accrualDate` reports every row as `skipped`. `-20702` when a run for the same
+        `accrualDate` is still `RUNNING`. Request body = P2 `AccrualRunRequest`. Poll
+        `GET /api/admin/leave/jobs/{jobId}`.
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccrualRunRequest' }
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Location: { schema: { type: string }, description: "`/api/admin/leave/jobs/{jobId}`" }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BatchRunResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/JobAlreadyRunning'
+  /api/admin/leave/carryover:
+    post:
+      tags: [admin-leave-jobs]
+      operationId: adminRunLeaveCarryover
+      summary: "Trigger `LeaveCarryoverJob` (`PKG_LEAVE.process_carryover(p_year)`)"
+      description: |
+        Creates the `year + 1` balance rows with `carryoverFromPrev = LEAST(available,
+        carryoverMax)` where `available` **subtracts `pending`** (VAL-05, consistent with
+        the report). Idempotent through `leave_accrual_log` `'CARRYOVER'`. `-20702` when
+        a carryover for the same `year` is `RUNNING`. Request body = P2
+        `CarryoverRunRequest`.
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CarryoverRunRequest' }
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BatchRunResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/JobAlreadyRunning'
+  /api/admin/leave/jobs/{jobId}:
+    get:
+      tags: [admin-leave-jobs]
+      operationId: adminGetLeaveJob
+      summary: Status of an accrual / carryover job
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BatchRunResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/JobNotFound'
+  /api/leave/admin/accrual/run:
+    post:
+      tags: [admin-leave-jobs]
+      operationId: legacyAccrualRunAlias
+      summary: "P2 declared path → `301 Location: /api/admin/leave/accrual`"
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      responses:
+        '301':
+          description: Moved permanently
+          headers:
+            Location: { schema: { type: string }, example: /api/admin/leave/accrual }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/leave/admin/carryover/run:
+    post:
+      tags: [admin-leave-jobs]
+      operationId: legacyCarryoverRunAlias
+      summary: "P2 declared path → `301 Location: /api/admin/leave/carryover`"
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      responses:
+        '301':
+          description: Moved permanently
+          headers:
+            Location: { schema: { type: string }, example: /api/admin/leave/carryover }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ---------------------------------------------------------------------------
+  # admin – payroll / calendar reference data (admin-module owns reads + writes;
+  # CUTOVER_PLAN.md §9.2 tables HOLIDAYS, PAY_ELEMENTS, TAX_BRACKETS). Not on the
+  # /api/reference/* facade. Readers stay decoupled: BusinessCalendar (hrms-common)
+  # and payroll TaxRuleRepository / EmployeePayInputRepository read the tables
+  # directly per request (no cache) – a write is visible to the next request.
+  # ---------------------------------------------------------------------------
+  /api/admin/holidays:
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminListHolidays
+      summary: Holidays. Sorted by `holidayDate`, then `locationCode` (nulls first).
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+        - name: year
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1990, maximum: 2100 }
+          description: "`EXTRACT(YEAR FROM holiday_date) = :year`"
+        - name: locationCode
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
+          description: "Exact match; company-wide rows (`location_code IS NULL`) are always included."
+      responses:
+        '200':
+          description: Holidays
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Holiday' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-payroll-reference]
+      operationId: adminCreateHoliday
+      summary: Create a holiday
+      description: |
+        `holidayId` from `seq_holiday`. Rules: `holidayDate` within
+        `[1990-01-01, today + 10 years]` (`VALIDATION_FAILED`); `locationCode` null
+        (company-wide) or an **active** `LOCATIONS` row (`-20604`); the pair
+        `(holidayDate, coalesce(locationCode,'*'))` must not exist as an **active** row
+        (`-20601`, `field=holidayDate`). The check is a Java pre-check **plus** a forward
+        migration adding the partial unique expression index
+        `uk_holidays_active_date_loc on holidays (holiday_date, coalesce(location_code,'*'))
+        where active_flag = 'Y'`; a concurrent insert losing the race surfaces as
+        `DataIntegrityViolationException` on that constraint and is mapped to the same
+        `-20601`. Weekend dates are accepted: `BusinessCalendar` shifts the
+        observed date exactly like `PKG_LEAVE.calculate_business_days`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HolidayRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+  /api/admin/holidays/{holidayId}:
+    parameters:
+      - $ref: '#/components/parameters/HolidayIdPath'
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminGetHoliday
+      summary: One holiday
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Holiday
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-payroll-reference]
+      operationId: adminUpdateHoliday
+      summary: Full update (date and location editable; same rules as create)
+      description: |
+        `HOLIDAYS` has no `modified_by/modified_date` columns: the response's `modifiedBy` /
+        `modifiedDate` are always `null` and the actor (`jwt.sub`) is recorded only in the
+        `AUDIT_LOG` row. Already-approved leave requests are **not** recomputed (legacy parity).
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HolidayRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+    delete:
+      tags: [admin-payroll-reference]
+      operationId: adminDeactivateHoliday
+      summary: Deactivate (`active_flag='N'`); no dependants, never `-20602`
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated (idempotent)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+
+  /api/admin/pay-elements:
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminListPayElements
+      summary: Pay elements. Sorted by `priorityOrder`, then `elementCode`.
+      description: "The `ERROR` sentinel row (`elementId 0`, inactive) is included only when `active` is `false` or absent."
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+        - name: elementType
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/PayElementType' }
+      responses:
+        '200':
+          description: Elements
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PayElement' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-payroll-reference]
+      operationId: adminCreatePayElement
+      summary: Create a pay element
+      description: |
+        `elementId` from `seq_pay_element`; the server rejects a generated id that collides
+        with a reserved id (`0`, `1`, `100`–`103`) by drawing the next value. Rules
+        (`PayElementRequest` + `-20603`): `elementType` never `ERROR`
+        (`VALIDATION_FAILED`); `calculationType` × defaults – `FLAT`: `defaultAmount`
+        required `>= 0`, `defaultPercentage` null; `PERCENTAGE`: `defaultPercentage`
+        required `0 < p <= 100`, `defaultAmount` null; `HOURS`: `defaultAmount` (hourly rate)
+        required `>= 0`, `defaultPercentage` null; `FORMULA`: both null (the P4 engine
+        treats it as an explicit-amount element – `EmployeePayCalculator.recurringAmount`
+        default branch). `elementType=TAX` cannot be created through this API
+        (`-20607`): the engine's tax elements are exactly the reserved rows `100`–`103`.
+        `pretaxFlag=true` requires `elementType=DEDUCTION` (`-20603`, `field=pretaxFlag`).
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayElementRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayElement' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+        '422':
+          $ref: '#/components/responses/PayElementProtected'
+  /api/admin/pay-elements/{elementId}:
+    parameters:
+      - $ref: '#/components/parameters/ElementIdPath'
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminGetPayElement
+      summary: One element
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Element
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayElement' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-payroll-reference]
+      operationId: adminUpdatePayElement
+      summary: Full update (`elementCode` immutable; reserved rows restricted)
+      description: |
+        Reserved rows `0` (`ERROR`), `1` (`BASE_PAY`), `100`–`103` (`FED_TAX`, `STATE_TAX`,
+        `FICA`, `MEDICARE`) are load-bearing for the P4 engine and
+        `PayElementStartupValidator`: only `elementName`, `glAccountCode` and `priorityOrder`
+        may change; any other differing field → `-20607`. The `ERROR` row (`0`) cannot be
+        updated at all (`-20607`). Changing defaults or flags is **not** applied to past
+        `PAYROLL_DETAILS` (legacy parity); it affects the next `CALCULATED` run.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayElementRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayElement' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateCode'
+        '422':
+          $ref: '#/components/responses/PayElementProtected'
+    delete:
+      tags: [admin-payroll-reference]
+      operationId: adminDeactivatePayElement
+      summary: Deactivate; refused for reserved rows (`-20607`) or while active `EMPLOYEE_PAY_ELEMENTS` reference it (`-20602`)
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          description: "`-20607` reserved row, or `-20602` active dependants (`{n} active employee pay elements`)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+
+  /api/admin/tax-brackets:
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminListTaxBrackets
+      summary: Tax brackets. Sorted by `taxYear desc`, `stateCode` (nulls first), `filingStatus`, `bracketMin`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+        - name: taxYear
+          in: query
+          required: false
+          schema: { type: integer, minimum: 2000, maximum: 2100 }
+        - name: stateCode
+          in: query
+          required: false
+          schema: { type: string, pattern: '^(FEDERAL|[A-Z]{2})$' }
+          description: "`FEDERAL` selects `state_code IS NULL` rows; a 2-letter code selects that state."
+        - name: filingStatus
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/FilingStatus' }
+      responses:
+        '200':
+          description: Brackets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TaxBracket' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-payroll-reference]
+      operationId: adminCreateTaxBracket
+      summary: Create a bracket (federal ladder step or state flat row)
+      description: |
+        `bracketId` from `seq_tax_bracket`. Shape rules (`-20603`): **federal** row =
+        `stateCode` null and `filingStatus != ALL`; **state** row = `stateCode` `^[A-Z]{2}$`
+        and `filingStatus = ALL` and `bracketMin = 0` and `bracketMax` null (P4 lookup:
+        the single active row per `(taxYear, stateCode)`); `bracketMax` null or
+        `> bracketMin`; `taxRate` in `[0, 1]` (fraction, `NUMERIC(5,4)`); `baseTax >= 0`.
+        Ladder rules over **active** rows of the same `(taxYear, filingStatus, stateCode)`:
+        no overlap – `[bracketMin, bracketMax)` half-open, a null `bracketMax` is +∞
+        (`-20608`); a second active state row for the same `(taxYear, stateCode)` is
+        `-20608` too. Contiguity from `0` is **not** enforced on write (the engine reports
+        `MISSING_TAX_RATE` at run time); `GET …/tax-brackets/ladder-gaps` lists gaps.
+        Locked years: a `taxYear` for which any `PAYROLL_RUNS` row in status `APPROVED` or
+        `PAID` has `PAY_PERIODS.PERIOD_END_DATE` in that year is read-only (`-20609`).
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxBracketRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxBracket' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/TaxBracketOverlap'
+        '422':
+          $ref: '#/components/responses/TaxYearLocked'
+  /api/admin/tax-brackets/ladder-gaps:
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminTaxLadderGaps
+      summary: Federal ladders of a year that are not contiguous from 0 to +∞
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - name: taxYear
+          in: query
+          required: true
+          schema: { type: integer, minimum: 2000, maximum: 2100 }
+      responses:
+        '200':
+          description: One entry per `filingStatus` (never `ALL`) whose active federal ladder has a gap, overlap-free by construction, or no rows at all; empty array = every ladder complete
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TaxLadderGap' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/tax-brackets/{bracketId}:
+    parameters:
+      - $ref: '#/components/parameters/BracketIdPath'
+    get:
+      tags: [admin-payroll-reference]
+      operationId: adminGetTaxBracket
+      summary: One bracket
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Bracket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxBracket' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+    put:
+      tags: [admin-payroll-reference]
+      operationId: adminUpdateTaxBracket
+      summary: Full update (same shape/ladder/lock rules; the row itself is excluded from the overlap check)
+      description: "`TAX_BRACKETS` has no `modified_by/modified_date`: `modifiedBy`/`modifiedDate` are always null; the actor is in `AUDIT_LOG` only."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxBracketRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxBracket' }
+        '400':
+          $ref: '#/components/responses/ReferenceInvalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '409':
+          $ref: '#/components/responses/TaxBracketOverlap'
+        '422':
+          $ref: '#/components/responses/TaxYearLocked'
+    delete:
+      tags: [admin-payroll-reference]
+      operationId: adminDeactivateTaxBracket
+      summary: Deactivate; refused for a locked year (`-20609`)
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deactivated (idempotent)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ReferenceNotFound'
+        '422':
+          $ref: '#/components/responses/TaxYearLocked'
+
+  # ---------------------------------------------------------------------------
+  # admin – role management. OWNER = auth-module (V2: roles, role_permissions,
+  # user_roles, user_accounts). backend/auth already depends on backend/admin, so
+  # these controllers/services live in backend/auth (package
+  # com.acme.hrms.auth.web / .service) and only share the /api/admin URL prefix,
+  # the ADMIN:* authorities and the AUDIT_LOG conventions with admin-module.
+  # admin-module must not gain an auth dependency (Maven cycle) nor SQL on these
+  # tables. Every write revokes all sessions of the affected user (SessionRevoker):
+  # refresh tokens + current access-token jti, so authorities are re-resolved on
+  # the next login – no access token ever carries stale roles past its revocation.
+  # ---------------------------------------------------------------------------
+  /api/admin/authorities:
+    get:
+      tags: [admin-roles]
+      operationId: adminListAuthorities
+      summary: The assignable authority vocabulary (`chk_rp_authority`, V4 form), sorted
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Authorities
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Authority' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/roles:
+    get:
+      tags: [admin-roles]
+      operationId: adminListRoles
+      summary: All roles with their permissions and user count. Sorted by `roleId`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [admin-roles]
+      operationId: adminCreateRole
+      summary: Create a custom role
+      description: |
+        `roleId` = `nextval('seq_role')`. The sequence already exists from V2 (`start with 1`,
+        never called; V2 seeds 1–3 with literal ids), so the forward V12 migration does **not**
+        create it: it advances it with `setval('seq_role', greatest(1000, max(role_id)+1,
+        last_value+1), false)` so the next id is `>= 1000` and greater than every existing
+        `role_id` and the prior sequence value, on fresh and upgraded databases alike.
+        `max(role_id)+1` in Java is not allowed – it collides under concurrency. `roleCode` unique case-insensitively (`uk_roles_code`, `-20801`);
+        `maxGrade >= minGrade` (`chk_roles_grade`, `-20603` `field=maxGrade`);
+        `permissions[]` non-empty, distinct, each in the vocabulary (`VALIDATION_FAILED`).
+        **Least privilege:** the caller must hold every authority in `permissions[]`,
+        otherwise `-20806` (`field=permissions`). Grade bands of custom roles are
+        informational (no automatic grade-based assignment exists after P0 seeding).
+        `created_by = jwt.sub`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/DuplicateRoleCode'
+        '422':
+          $ref: '#/components/responses/PrivilegeExceedsCaller'
+  /api/admin/roles/{roleId}:
+    parameters:
+      - $ref: '#/components/parameters/RoleIdPath'
+    get:
+      tags: [admin-roles]
+      operationId: adminGetRole
+      summary: One role
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoleNotFound'
+    put:
+      tags: [admin-roles]
+      operationId: adminUpdateRole
+      summary: Replace name, grade band and permission set (`roleCode` immutable)
+      description: |
+        Seeded roles `1`–`3` (`STAFF`, `MANAGER`, `EXECUTIVE`) reproduce the
+        `PKG_SECURITY.has_permission` truth table (TEST_STRATEGY.md §5 row 0, P0 gate) and
+        are **read-only**: any differing field → `-20802`. For custom roles the permission
+        diff is applied as `delete`/`insert` on `role_permissions`; least-privilege
+        (`-20806`) applies to every authority **added**. Removing an authority that would
+        leave no `ACTIVE` account with `ADMIN:EDIT` → `-20805`, evaluated under the common
+        admin-guard lock (see `UserRolesRequest` description). All sessions of every user
+        holding the role are revoked; `sessionsRevoked` is returned.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleWriteResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoleNotFound'
+        '409':
+          $ref: '#/components/responses/DuplicateRoleCode'
+        '422':
+          $ref: '#/components/responses/RoleRuleViolation'
+    delete:
+      tags: [admin-roles]
+      operationId: adminDeleteRole
+      summary: Physical delete of an unassigned custom role
+      description: "`ROLES` has no `active_flag`: delete is physical. Seeded roles → `-20802`; any `user_roles` row → `-20803` (unassign first). `AUDIT_LOG` row `ACTION='DELETE'` keeps the old values."
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoleNotFound'
+        '409':
+          $ref: '#/components/responses/RoleInUse'
+        '422':
+          $ref: '#/components/responses/RoleRuleViolation'
+
+  /api/admin/users:
+    get:
+      tags: [admin-roles]
+      operationId: adminSearchUserAccounts
+      summary: User accounts with their roles (paged). Sorted by `username`.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 100 }
+          description: "Case-insensitive contains on `username`, employee number, first or last name."
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/AccountStatus' }
+        - name: roleId
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - name: locked
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: "`true` → `locked_until > now()` only."
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of accounts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccountPage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    get:
+      tags: [admin-roles]
+      operationId: adminGetUserAccount
+      summary: One account with roles and effective authorities
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccount' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+  /api/admin/users/{userId}/roles:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    put:
+      tags: [admin-roles]
+      operationId: adminReplaceUserRoles
+      summary: Replace the account's role set
+      description: |
+        Idempotent set replacement on `user_roles` (`granted_by = jwt.sub` on inserted rows).
+        Rules: `roleIds` non-empty, distinct, every id exists (`-20807`
+        `field=roleIds`); the caller may not change **their own** account
+        (`jwt.sub == userId`, `-20804`); **least privilege** – every authority granted by the
+        new set that the target does not already hold must be held by the caller (`-20806`);
+        **last admin** – the result must leave at least one `ACTIVE` account with
+        `ADMIN:EDIT` (`-20805`). Because the invariant spans *all* accounts, every mutation
+        that can lower the `ADMIN:EDIT` holder count (`PUT …/roles`, `PUT …/status`,
+        `PUT /api/admin/roles/{roleId}`) first takes the same transaction-scoped
+        `pg_advisory_xact_lock(hashtext('hrms.admin_edit_guard'))`, then applies the write,
+        then re-counts `ACTIVE` accounts holding `ADMIN:EDIT` and rolls back with `-20805`
+        if zero; row locks alone are insufficient. Then all sessions of the target are revoked
+        (`SessionRevoker`): the target's next `/api/auth/refresh` returns `401 TOKEN_INVALID`
+        and they must log in again; `UserAccount.authorities` shows the new effective set.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserRolesRequest' }
+      responses:
+        '200':
+          description: Replaced
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccountWriteResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '422':
+          $ref: '#/components/responses/RoleRuleViolation'
+  /api/admin/users/{userId}/status:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPath'
+    put:
+      tags: [admin-roles]
+      operationId: adminSetUserAccountStatus
+      summary: Enable / disable the account (`user_accounts.status`)
+      description: |
+        `DISABLED` revokes all sessions and makes `/api/auth/login` answer `401 TOKEN_INVALID`
+        family (P0 `ACCOUNT_DISABLED`); `ACTIVE` re-enables and clears `locked_until` /
+        `failed_attempts` (admin unlock). Self (`-20804`) and last-admin (`-20805`) rules
+        apply. `modified_by = jwt.sub`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserStatusRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccountWriteResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '422':
+          $ref: '#/components/responses/RoleRuleViolation'
+
+  # ---------------------------------------------------------------------------
+  # admin – audit log search
+  # ---------------------------------------------------------------------------
+  /api/admin/audit-log:
+    get:
+      tags: [admin-audit]
+      operationId: adminSearchAuditLog
+      summary: Paged `AUDIT_LOG` search (`HRMS_ADMIN` audit block replacement)
+      description: |
+        Filters are ANDed. `tableName` is the PostgreSQL lower-case name
+        (`employees`, `salary_records`, …); `from`/`to` bound `changedDate` inclusive
+        (`to >= from` else `-20210`-style `VALIDATION_FAILED`, `field=to`); `changedBy`
+        matches `AUDIT_LOG.CHANGED_BY` exactly (the actor's `jwt.sub` user-account id as
+        a string for target-written rows). `oldValues` / `newValues`
+        are returned verbatim (JSON text, may contain **masked** SSN/bank fields – the
+        P3 employee module already masks before writing). Sorted `changedDate desc,
+        auditId desc`. Max range 366 days.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - in: query
+          name: tableName
+          required: false
+          schema: { type: string, maxLength: 60, pattern: '^[a-z][a-z0-9_]*$' }
+        - in: query
+          name: recordId
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: actionType
+          required: false
+          schema: { type: string, enum: [INSERT, UPDATE, DELETE, STATUS_CHANGE, LOGIN, LOGOUT] }
+        - in: query
+          name: changedBy
+          required: false
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: from
+          required: false
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: false
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Audit rows
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditLogPage' }
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+
+  # ---------------------------------------------------------------------------
+  # integration – feeds to object storage / HTTP download (no UTL_FILE)
+  # ---------------------------------------------------------------------------
+  /api/integration/gl-feed:
+    post:
+      tags: [integration]
+      operationId: integrationGenerateGlFeed
+      summary: "`PKG_INTEGRATION.generate_gl_journal(p_run_id)` → object storage"
+      description: |
+        Synchronous (a run is ≤ a few thousand `PAYROLL_DETAILS` rows). Writes
+        `GL_JOURNAL_{runId}_{yyyyMMdd}.txt`, pipe-delimited:
+        `H|HRMS_PAYROLL|{payDate:yyyy-MM-dd}|{runId}`, one
+        `D|{costCenter}|{glAccount}|{debit}|{credit}|{description}|RUN-{runId}` per
+        `cost_center × gl_account` (EARNING → `debit`, DEDUCTION/TAX → `credit`,
+        magnitudes with two decimals, other side `0.00`), `T|{detailCount}`. `glAccount`
+        comes from `PAY_ELEMENTS.GL_ACCOUNT`, `costCenter` from `DEPARTMENTS.COST_CENTER`
+        (`UNASSIGNED` when null – legacy emitted an empty field; documented divergence).
+        Only `APPROVED`/`PAID` runs are exportable (`-20701`). Re-running for the same
+        run creates a **new** file version (legacy overwrote); `INTEGRATION_LOG` row
+        `GL_JOURNAL` `SUCCESS|FAILED` with `created_by = jwt.sub`.
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GlFeedRequest' }
+      responses:
+        '201':
+          description: Feed written
+          headers:
+            Location: { schema: { type: string }, description: "`/api/integration/files/{fileId}`" }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationFile' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+        '422':
+          $ref: '#/components/responses/RunNotExportable'
+  /api/integration/benefits-feed:
+    post:
+      tags: [integration]
+      operationId: integrationExportBenefitsFeed
+      summary: "`PKG_INTEGRATION.export_benefits_feed(p_effective_date)` → object storage"
+      description: |
+        Fixed-width ADP layout: one `E` record per active employee (`empNumber` 10,
+        `lastName` 30, `firstName` 30, `ssnMasked` 11, `dateOfBirth` yyyyMMdd, `gender`
+        1, `hireDate` yyyyMMdd, `maritalStatus` 1, `baseSalary` 12.2, `deptCode` 20,
+        `locationCode` 10) followed by one `D` record per `EMPLOYEE_DEPENDENTS` row with
+        `IS_BENEFICIARY='Y'` (`relationship` 20, `lastName` 30, `firstName` 30,
+        `dateOfBirth` yyyyMMdd, `ssnMasked` 11). **SSN is masked `***-**-dddd`** (SEC-05;
+        the legacy feed carried the full SSN – intentionally not reproduced). File name
+        `BENEFITS_{yyyyMMdd}.txt`. `INTEGRATION_LOG` row `BENEFITS_FEED`.
+      x-preauthorize: hasAuthority('ADMIN:EDIT') and hasAuthority('EMPLOYEE:VIEW')
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BenefitsFeedRequest' }
+      responses:
+        '201':
+          description: Feed written
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationFile' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/integration/time-attendance/import:
+    post:
+      tags: [integration]
+      operationId: integrationImportTimeAttendance
+      summary: "`PKG_INTEGRATION.import_time_attendance` – BUG-08: validate + stage only"
+      description: |
+        `multipart/form-data` upload (`file`, ≤ 5 MiB, `text/csv`) replacing the
+        `TIME_IMPORT_IN` directory read. Grammar frozen from the legacy comment:
+        `emp_number,date,hours_regular,hours_overtime`, optional header row, `date` =
+        `YYYY-MM-DD`, hours `0.00`–`24.00` with ≤ 2 decimals, `hours_regular +
+        hours_overtime <= 24`. Per-line verdicts: `ACCEPTED`, or `REJECTED` with
+        `ApiError` (`-20001` unknown/inactive `emp_number`; `VALIDATION_FAILED` bad
+        date/hours; `-20703` duplicate `(emp_number, date)` within the file). The whole
+        file is rejected with `415` on a wrong content type and `422` (`-20704`) when
+        **no** line is accepted.
+
+        **BUG-08 – `x-unspecified`:** the legacy procedure never wrote anything (its loop
+        body is `-- TODO`). The target **does not invent** the persistence: accepted rows
+        are staged (`integration_files.status = STAGED`, rows kept as the file content)
+        and **no `PAYROLL_*`, `EMPLOYEE_PAY_ELEMENTS` or `LEAVE_*` row is touched**. The
+        mapping of `hours_regular`/`hours_overtime` to pay elements and the target
+        table are marked `x-unspecified: BUG-08` on `TimeAttendanceImportResult` and
+        require a product decision before any later phase mounts a `POST
+        /api/integration/time-attendance/{fileId}/apply`. Overtime eligibility
+        (`JOB_GRADES.OVERTIME_ELIGIBLE`) is **reported** per line (`overtimeEligible`)
+        but not enforced, for the same reason.
+      x-preauthorize: hasAuthority('PAYROLL:EDIT')
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "`text/csv`, UTF-8, ≤ 5 MiB, ≤ 50 000 lines"
+                hasHeader:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Staged (at least one line accepted)
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeAttendanceImportResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: File larger than 5 MiB
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: PAYLOAD_TOO_LARGE, message: File exceeds 5 MiB, field: file, traceId: 4f3c… }
+        '415':
+          description: Not `text/csv`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+              example: { code: UNSUPPORTED_MEDIA_TYPE, message: Expected text/csv, field: file, traceId: 4f3c… }
+        '422':
+          $ref: '#/components/responses/ImportRejected'
+  /api/integration/files:
+    get:
+      tags: [integration]
+      operationId: integrationListFiles
+      summary: Paged feed / import file metadata (`INTEGRATION_LOG` joined)
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - in: query
+          name: feed
+          required: false
+          schema: { $ref: '#/components/schemas/FeedType' }
+        - in: query
+          name: status
+          required: false
+          schema: { $ref: '#/components/schemas/IntegrationFileStatus' }
+        - in: query
+          name: from
+          required: false
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: false
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationFilePage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/integration/files/{fileId}:
+    get:
+      tags: [integration]
+      operationId: integrationGetFile
+      summary: Metadata of one file
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      parameters:
+        - $ref: '#/components/parameters/FileIdPath'
+      responses:
+        '200':
+          description: File metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationFile' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+  /api/integration/files/{fileId}/content:
+    get:
+      tags: [integration]
+      operationId: integrationDownloadFile
+      summary: Stream the artefact from object storage (`UTL_FILE` directory replacement)
+      description: |
+        `Content-Disposition: attachment; filename="{fileName}"`, `Content-Type` =
+        `text/plain; charset=utf-8` for GL/benefits, `text/csv` for imports, `ETag` =
+        `sha256`. GL files require `PAYROLL:VIEW`, benefits files `EMPLOYEE:VIEW`
+        (masked SSN notwithstanding), imports `PAYROLL:VIEW`; `ADMIN:VIEW` alone gets
+        the metadata but a `403` here.
+      x-preauthorize: "hasAuthority('ADMIN:VIEW') and @integrationAccess.canDownload(#fileId, authentication)"
+      parameters:
+        - $ref: '#/components/parameters/FileIdPath'
+      responses:
+        '200':
+          description: File bytes
+          headers:
+            Content-Disposition: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            text/plain:
+              schema: { type: string }
+            text/csv:
+              schema: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+  /api/integration/status:
+    get:
+      tags: [integration]
+      operationId: integrationStatus
+      summary: "`PKG_INTEGRATION.get_integration_status` for every feed"
+      description: Latest `INTEGRATION_LOG` row per feed (`status`, `lastRunAt`, `lastFileId`, `message`); `NEVER_RUN` when none.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Status per feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IntegrationStatus' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: P0 access token; claims `sub` (user-account id, string), `empId`, `authorities[]`.
+
+  parameters:
+    AsOf:
+      in: query
+      name: asOf
+      required: false
+      description: Replaces `SYSDATE` in the view / ref cursor; default today (server clock, UTC date).
+      schema: { type: string, format: date }
+    Year:
+      in: query
+      name: year
+      required: false
+      description: "`LEAVE_BALANCES.CALENDAR_YEAR`; default `EXTRACT(YEAR FROM asOf)`."
+      schema: { type: integer, minimum: 2000, maximum: 2099 }
+    DeptId:
+      in: query
+      name: deptId
+      required: false
+      description: "`DEPARTMENTS.DEPT_ID` filter (`p_dept_id`)."
+      schema: { type: integer, format: int64, minimum: 1 }
+    LocationCode:
+      in: query
+      name: locationCode
+      required: false
+      description: "`LOCATIONS.LOCATION_CODE` filter (`p_location`)."
+      schema: { type: string, maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
+    PeriodId:
+      in: query
+      name: periodId
+      required: false
+      description: "`PAY_PERIODS.PERIOD_ID`; default = latest period with an APPROVED/PAID run."
+      schema: { type: integer, format: int64, minimum: 1 }
+    ActiveFilter:
+      in: query
+      name: active
+      required: false
+      description: "`true` → `active_flag='Y'`, `false` → `'N'`, absent → all rows."
+      schema: { type: boolean }
+    Page:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    HolidayIdPath:
+      in: path
+      name: holidayId
+      required: true
+      schema: { type: integer, minimum: 1 }
+    ElementIdPath:
+      in: path
+      name: elementId
+      required: true
+      schema: { type: integer, format: int64, minimum: 0 }
+    BracketIdPath:
+      in: path
+      name: bracketId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    RoleIdPath:
+      in: path
+      name: roleId
+      required: true
+      schema: { type: integer, minimum: 1 }
+    UserIdPath:
+      in: path
+      name: userId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    DeptIdPath:
+      in: path
+      name: deptId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    GradeIdPath:
+      in: path
+      name: gradeId
+      required: true
+      schema: { type: integer, minimum: 1 }
+    JobIdPath:
+      in: path
+      name: jobId
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    LocationCodePath:
+      in: path
+      name: locationCode
+      required: true
+      schema: { type: string, maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
+    LeaveTypeIdPath:
+      in: path
+      name: leaveTypeId
+      required: true
+      schema: { type: integer, minimum: 1 }
+    ParamIdPath:
+      in: path
+      name: paramId
+      required: true
+      schema: { type: integer, minimum: 1 }
+    FileIdPath:
+      in: path
+      name: fileId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    CsvStream:
+      description: "`text/csv; charset=utf-8`, RFC 4180, header row = JSON property names, all rows, `Content-Disposition: attachment`"
+      headers:
+        Content-Disposition: { schema: { type: string }, example: 'attachment; filename="leave-summary-2024-06-30.csv"' }
+      content:
+        text/csv:
+          schema: { type: string }
+    ValidationFailed:
+      description: Bean Validation / unsupported query value (`validation-schema.json` module `p5-reporting-decommission`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: VALIDATION_FAILED, message: asOf must be a date (YYYY-MM-DD), field: asOf, traceId: 4f3c… }
+    Unauthorized:
+      description: Missing / invalid / revoked token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: TOKEN_INVALID, message: Access token is missing or invalid, traceId: 4f3c… }
+    Forbidden:
+      description: "`@PreAuthorize` denied (`REPORTS:VIEW`, `PAYROLL:VIEW`, `ADMIN:VIEW`, `ADMIN:EDIT`, `LEAVE:ADMIN`, `PAYROLL:APPROVE`, `PAYROLL:EDIT`, `EMPLOYEE:VIEW`)"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: FORBIDDEN, message: Access denied, traceId: 4f3c… }
+    NotAcceptable:
+      description: "`Accept` is neither `application/json` nor `text/csv`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: NOT_ACCEPTABLE, message: Supported representations are application/json and text/csv, traceId: 4f3c… }
+    EmployeeNotFound:
+      description: "`-20001`: `rootEmpId` / `managerEmpId` / `emp_number` matches no active employee"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20001', message: 'Employee not found or not active: 999', field: managerEmpId, traceId: 4f3c… }
+    PeriodNotFound:
+      description: "`PERIOD_NOT_FOUND`: `periodId` matches no `PAY_PERIODS` row (P4 framework code)"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: PERIOD_NOT_FOUND, message: 'Pay period not found: 202407', field: periodId, traceId: 4f3c… }
+    RunNotFound:
+      description: "`RUN_NOT_FOUND`: `runId` matches no `PAYROLL_RUNS` row (P4 framework code)"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: RUN_NOT_FOUND, message: 'Payroll run not found: 1001', field: runId, traceId: 4f3c… }
+    ReferenceNotFound:
+      description: "`REFERENCE_NOT_FOUND`: the path id / code matches no row of the addressed reference table"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: REFERENCE_NOT_FOUND, message: 'Department not found: 42', traceId: 4f3c… }
+    ReferenceInvalid:
+      description: |
+        Referential rule of the addressed row: `-20003` inactive/unknown parent department,
+        `-20011` inactive/unknown job (`jobId` on a job-title dependent row), `-20604`
+        inactive/unknown grade or location, `-20605` department parent cycle, `-20603`
+        band/value rule, or `VALIDATION_FAILED`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20003', message: 'Invalid or inactive department: 42', field: parentDeptId, traceId: 4f3c… }
+    DuplicateCode:
+      description: "`-20601`: the natural code already exists (`uk_dept_code`, `uk_grade_code`, `uk_job_code`, `pk_locations`, `uk_leave_type_code`, `uk_sys_param`) or an immutable code was changed"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20601', message: 'Reference code already exists: ENG', field: deptCode, traceId: 4f3c… }
+    ReferenceInUse:
+      description: "`-20602`: cannot deactivate – active dependants reference the row"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20602', message: 'Department ENG has 12 active employees', traceId: 4f3c… }
+    ParameterNotEditable:
+      description: "`-20606`: `SYSTEM_PARAMETERS.EDITABLE_FLAG='N'`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20606', message: 'Parameter SECURITY.TOKEN_TTL_MINUTES is not editable', traceId: 4f3c… }
+    PayElementProtected:
+      description: "`-20607`: reserved pay element (`0`, `1`, `100`–`103`) – restricted field changed, deactivation attempted, or `elementType=TAX` on create"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20607', message: 'Pay element 100 (FED_TAX) is reserved: elementType is immutable', field: elementType, traceId: 4f3c… }
+    TaxBracketOverlap:
+      description: "`-20608`: `[bracketMin, bracketMax)` overlaps an active bracket of the same `(taxYear, filingStatus, stateCode)`, or a second active state row for `(taxYear, stateCode)`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20608', message: 'Bracket [40000, 60000) overlaps bracket 9002 [11600, 47150)', field: bracketMin, traceId: 4f3c… }
+    TaxYearLocked:
+      description: "`-20609`: `taxYear` has an `APPROVED`/`PAID` payroll run – brackets are read-only"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20609', message: 'Tax year 2024 is locked by payroll run 17 (PAID)', field: taxYear, traceId: 4f3c… }
+    RoleNotFound:
+      description: "`ROLE_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: ROLE_NOT_FOUND, message: 'Role not found: 42', traceId: 4f3c… }
+    UserNotFound:
+      description: "`USER_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: USER_NOT_FOUND, message: 'User account not found: 42', traceId: 4f3c… }
+    DuplicateRoleCode:
+      description: "`-20801`: `roleCode` already exists (`uk_roles_code`, case-insensitive) or was changed on `PUT`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20801', message: 'Role code already exists: PAYROLL_CLERK', field: roleCode, traceId: 4f3c… }
+    RoleInUse:
+      description: "`-20803`: the role is assigned to `{n}` accounts"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20803', message: 'Role PAYROLL_CLERK is assigned to 3 accounts', traceId: 4f3c… }
+    PrivilegeExceedsCaller:
+      description: "`-20806`: the caller does not hold an authority they are trying to grant"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20806', message: 'Cannot grant PAYROLL:APPROVE: caller does not hold it', field: permissions, traceId: 4f3c… }
+    RoleRuleViolation:
+      description: "`-20802` seeded role read-only, `-20804` self-modification, `-20805` last `ADMIN:EDIT` account, `-20806` privilege exceeds caller, `-20807` unknown role id"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20805', message: 'Cannot remove the last active account holding ADMIN:EDIT', field: roleIds, traceId: 4f3c… }
+    JobAlreadyRunning:
+      description: "`-20702`: an accrual / carryover job for the same key is still RUNNING"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20702', message: 'Accrual for 2024-07-01 is already running', field: accrualDate, traceId: 4f3c… }
+    JobNotFound:
+      description: "`JOB_NOT_FOUND`: unknown `jobId`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: JOB_NOT_FOUND, message: 'Job not found', traceId: 4f3c… }
+    RunNotExportable:
+      description: "`-20701`: `PAYROLL_RUNS.STATUS` is not `APPROVED` or `PAID`"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: '-20701', message: 'Cannot export GL feed for run in status: CALCULATED', field: runId, traceId: 4f3c… }
+    ImportRejected:
+      description: "`-20704`: no line of the time-attendance file was accepted; `details` carries the first 100 line errors"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example:
+            code: '-20704'
+            message: 'No valid rows in time-attendance file (12 lines rejected)'
+            field: file
+            traceId: 4f3c…
+            details: [{ field: 'line 2', message: '-20001 Employee not found or not active: E9999' }]
+    FileNotFound:
+      description: "`FILE_NOT_FOUND`: unknown `fileId` (metadata) or the object is gone from storage"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example: { code: FILE_NOT_FOUND, message: 'Integration file not found', traceId: 4f3c… }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Legacy `-20xxx` as a string, or a framework code (`error-codes.md`).
+        message: { type: string }
+        field:
+          type: [string, 'null']
+          description: Offending request field (body property, query parameter, multipart part or `line N`) when attributable.
+        traceId:
+          type: string
+          description: Correlates with `error_log.trace_id` / `X-Trace-Id`.
+        details:
+          type: array
+          description: All violations for `VALIDATION_FAILED` / `-20704`.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    Money:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]{2}$'
+      description: Decimal string with exactly two decimals (`NUMBER(12,2)`); never a float.
+    Rate:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]{4}$'
+      description: Four-decimal ratio (`compaRatio`).
+    Days:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]{2}$'
+      description: Leave days with two decimals (`NUMBER(6,2)`).
+    Years:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]$'
+      description: "`TRUNC(MONTHS_BETWEEN(...)/12, 1)` – one decimal, Oracle semantics."
+    Percent:
+      type: [string, 'null']
+      pattern: '^-?[0-9]+\.[0-9]$'
+      description: "`ROUND(x*100/NULLIF(denominator,0), 1)`; null when the denominator is 0."
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    AuditColumns:
+      type: object
+      required: [activeFlag, createdBy, createdDate]
+      properties:
+        activeFlag: { type: boolean, description: "`ACTIVE_FLAG` `Y/N` → boolean" }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    # ---- admin payroll / calendar reference (admin-module) ---------------------
+    HolidayRequest:
+      type: object
+      required: [holidayDate, holidayName]
+      additionalProperties: false
+      properties:
+        holidayDate: { type: string, format: date, description: "`[1990-01-01, today + 10y]`" }
+        holidayName: { type: string, minLength: 1, maxLength: 100 }
+        locationCode:
+          type: [string, 'null']
+          maxLength: 10
+          pattern: '^[A-Z0-9_-]+$'
+          description: "null = company-wide; otherwise an active `LOCATIONS.LOCATION_CODE` (`-20604`)."
+        floatingFlag: { type: boolean, default: false, description: "`FLOATING_FLAG` `Y/N`; informational, does not change `BusinessCalendar`." }
+        activeFlag: { type: boolean, default: true }
+    Holiday:
+      allOf:
+        - $ref: '#/components/schemas/HolidayRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [holidayId]
+          properties:
+            holidayId: { type: integer }
+            observedDate:
+              type: string
+              format: date
+              description: "The date `BusinessCalendar` actually excludes (Saturday → Friday, Sunday → Monday); derived, never stored."
+    PayElementType:
+      type: string
+      enum: [EARNING, DEDUCTION, TAX, BENEFIT, REIMBURSEMENT, ERROR]
+      description: "`CHK_ELEM_TYPE` (V7 form). `ERROR` is read-only (sentinel row `0`); requests never carry it. `TAX` is read-only (rows `100`–`103`)."
+    CalculationType:
+      type: string
+      enum: [FLAT, PERCENTAGE, HOURS, FORMULA]
+      description: "`CHK_CALC_TYPE`."
+    PayElementRequest:
+      type: object
+      required: [elementCode, elementName, elementType, calculationType]
+      additionalProperties: false
+      properties:
+        elementCode: { type: string, minLength: 1, maxLength: 30, pattern: '^[A-Z][A-Z0-9_]*$', description: "Immutable (`uk_pay_elem_code`, `-20601`)." }
+        elementName: { type: string, minLength: 1, maxLength: 100 }
+        elementType: { $ref: '#/components/schemas/PayElementType' }
+        calculationType: { $ref: '#/components/schemas/CalculationType' }
+        defaultAmount:
+          type: [string, 'null']
+          pattern: '^[0-9]{1,10}\.[0-9]{2}$'
+          description: "`NUMERIC(12,2)` as a string; required `>= 0` for `FLAT`/`HOURS`, must be null otherwise (`-20603`)."
+        defaultPercentage:
+          type: [string, 'null']
+          pattern: '^[0-9]{1,3}\.[0-9]{2}$'
+          description: "`NUMERIC(5,2)` as a string; required `0 < p <= 100` for `PERCENTAGE`, must be null otherwise (`-20603`)."
+        taxableFlag: { type: boolean, default: true }
+        pretaxFlag: { type: boolean, default: false, description: "`true` only with `elementType=DEDUCTION` (`-20603`)." }
+        employerPaid: { type: boolean, default: false }
+        glAccountCode: { type: [string, 'null'], maxLength: 30, pattern: '^[A-Z0-9.-]+$' }
+        priorityOrder: { type: integer, minimum: 0, maximum: 9999, default: 100 }
+        activeFlag: { type: boolean, default: true }
+    PayElement:
+      allOf:
+        - $ref: '#/components/schemas/PayElementRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [elementId, reserved]
+          properties:
+            elementId: { type: integer, format: int64 }
+            reserved: { type: boolean, description: "`true` for `0`, `1`, `100`–`103` (`-20607` rules apply)." }
+            activeEmployeeElements: { type: integer, minimum: 0, description: "Active `EMPLOYEE_PAY_ELEMENTS` rows (dependants for `-20602`)." }
+    FilingStatus:
+      type: string
+      enum: [SINGLE, MARRIED_JOINT, MARRIED_SEPARATE, HEAD_OF_HOUSEHOLD, ALL]
+      description: "`CHK_FILING_STATUS` (V7 form). `ALL` only on state rows."
+    TaxBracketRequest:
+      type: object
+      required: [taxYear, filingStatus, bracketMin, taxRate]
+      additionalProperties: false
+      properties:
+        taxYear: { type: integer, minimum: 2000, maximum: 2100 }
+        filingStatus: { $ref: '#/components/schemas/FilingStatus' }
+        stateCode:
+          type: [string, 'null']
+          pattern: '^[A-Z]{2}$'
+          description: "null = federal ladder step; 2-letter state = flat state row (`filingStatus=ALL`, `bracketMin=0`, `bracketMax=null`)."
+        bracketMin:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: "`>= 0`. Half-open lower bound."
+        bracketMax:
+          type: [string, 'null']
+          pattern: '^[0-9]{1,10}\.[0-9]{2}$'
+          description: "null = +∞ (top step); else `> bracketMin` (`-20603`)."
+        taxRate:
+          type: string
+          pattern: '^(0\.[0-9]{1,4}|1\.0{1,4})$'
+          description: "Fraction `[0, 1]`, `NUMERIC(5,4)` as a string (`0.22`, never `22`)."
+        baseTax:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          default: '0.00'
+          description: "`>= 0`; cumulative tax of the lower steps (legacy `PKG_PAYROLL` ladder form)."
+        activeFlag: { type: boolean, default: true }
+    TaxBracket:
+      allOf:
+        - $ref: '#/components/schemas/TaxBracketRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [bracketId, locked]
+          properties:
+            bracketId: { type: integer, format: int64 }
+            locked: { type: boolean, description: "`true` when `taxYear` has an `APPROVED`/`PAID` run (`-20609`)." }
+    TaxLadderGap:
+      type: object
+      required: [taxYear, filingStatus, gaps]
+      properties:
+        taxYear: { type: integer }
+        filingStatus: { $ref: '#/components/schemas/FilingStatus' }
+        gaps:
+          type: array
+          description: "Uncovered `[from, to)` ranges; `to` null = +∞. An empty ladder yields one gap `[0, null)`."
+          items:
+            type: object
+            required: [from, to]
+            properties:
+              from: { $ref: '#/components/schemas/Money' }
+              to: { type: [string, 'null'], pattern: '^[0-9]{1,10}\.[0-9]{2}$' }
+
+    # ---- role management (auth-module) -----------------------------------------
+    Authority:
+      type: string
+      pattern: '^(PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS|PERFORMANCE):(VIEW|EDIT|APPROVE|CREATE|ADMIN|VIEW_ALL)$'
+      description: |
+        `role_permissions.authority` (`chk_rp_authority` as widened by V4). The assignable
+        vocabulary served by `GET /api/admin/authorities` is exactly the set the backend
+        references in `@PreAuthorize`: the P0 table `PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS`
+        × `VIEW|EDIT|APPROVE|CREATE` plus `LEAVE:ADMIN`, `LEAVE:VIEW_ALL` and the
+        `PERFORMANCE:*` actions. Values matching the pattern but absent from that set are
+        `VALIDATION_FAILED` (`field=permissions`).
+    AccountStatus:
+      type: string
+      enum: [ACTIVE, DISABLED]
+      description: "`user_accounts.status` (`chk_ua_status`)."
+    RoleRequest:
+      type: object
+      required: [roleCode, roleName, minGrade, maxGrade, permissions]
+      additionalProperties: false
+      properties:
+        roleCode: { type: string, minLength: 2, maxLength: 30, pattern: '^[A-Z][A-Z0-9_]*$', description: "Immutable (`-20801`)." }
+        roleName: { type: string, minLength: 1, maxLength: 100 }
+        minGrade: { type: integer, minimum: 1, maximum: 999 }
+        maxGrade: { type: integer, minimum: 1, maximum: 999, description: "`>= minGrade` (`chk_roles_grade`, `-20603`)." }
+        permissions:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: "Bounded only by the finite assignable vocabulary (`GET /api/admin/authorities`) and distinctness; no arbitrary cap."
+          items: { $ref: '#/components/schemas/Authority' }
+    Role:
+      allOf:
+        - $ref: '#/components/schemas/RoleRequest'
+        - type: object
+          required: [roleId, seeded, userCount, createdBy, createdDate]
+          properties:
+            roleId: { type: integer }
+            seeded: { type: boolean, description: "`true` for `1`–`3`; read-only (`-20802`)." }
+            userCount: { type: integer, minimum: 0, description: "`user_roles` rows." }
+            createdBy: { type: string, description: "`jwt.sub` of the creator, or `SYSTEM` for seeded roles." }
+            createdDate: { type: string, format: date-time }
+    RoleWriteResult:
+      allOf:
+        - $ref: '#/components/schemas/Role'
+        - type: object
+          required: [sessionsRevoked]
+          properties:
+            sessionsRevoked: { type: integer, minimum: 0, description: "Sessions closed by `SessionRevoker` across every holder of the role." }
+    UserRoleGrant:
+      type: object
+      required: [roleId, roleCode, roleName, grantedBy, grantedDate]
+      properties:
+        roleId: { type: integer }
+        roleCode: { type: string }
+        roleName: { type: string }
+        grantedBy: { type: string, description: "`user_roles.granted_by` – `jwt.sub` of the grantor or `SYSTEM`." }
+        grantedDate: { type: string, format: date-time }
+    UserAccount:
+      type: object
+      required: [userId, empId, empNumber, fullName, username, status, locked, mustChangePassword, roles, authorities, createdBy, createdDate]
+      properties:
+        userId: { type: integer, format: int64, description: "= `jwt.sub` of that user." }
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        fullName: { type: string }
+        username: { type: string }
+        status: { $ref: '#/components/schemas/AccountStatus' }
+        locked: { type: boolean, description: "`locked_until > now()`." }
+        lockedUntil: { type: [string, 'null'], format: date-time }
+        failedAttempts: { type: integer, minimum: 0 }
+        mustChangePassword: { type: boolean }
+        passwordChangedAt: { type: [string, 'null'], format: date-time }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/UserRoleGrant' }
+        authorities:
+          type: array
+          description: "Effective set = `UserAccountRepository.authorities(userId)` (distinct union over roles), sorted."
+          items: { $ref: '#/components/schemas/Authority' }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+    UserAccountPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/UserAccount' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+    UserRolesRequest:
+      type: object
+      required: [roleIds]
+      additionalProperties: false
+      properties:
+        roleIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: "Bounded only by the set of existing roles and distinctness; no arbitrary cap."
+          items: { type: integer, minimum: 1 }
+    UserStatusRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/AccountStatus' }
+        reason: { type: [string, 'null'], maxLength: 200, description: "Copied into the `AUDIT_LOG` row's `new_values.reason`; never stored on `user_accounts`." }
+    UserAccountWriteResult:
+      allOf:
+        - $ref: '#/components/schemas/UserAccount'
+        - type: object
+          required: [sessionsRevoked]
+          properties:
+            sessionsRevoked: { type: integer, minimum: 0 }
+
+    # --- reports ---------------------------------------------------------------
+    EmployeeDirectoryRow:
+      type: object
+      description: "`VW_ACTIVE_EMPLOYEES` row; CSV column order = property order below."
+      required: [empId, empNumber, firstName, lastName, fullName, hireDate, tenureYears, deptId, deptCode, deptName, jobId, jobCode, jobTitle, gradeId, gradeCode]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        fullName: { type: string, description: "`FIRST_NAME || ' ' || LAST_NAME`" }
+        email: { type: [string, 'null'] }
+        phoneWork: { type: [string, 'null'] }
+        hireDate: { type: string, format: date }
+        tenureYears: { $ref: '#/components/schemas/Years' }
+        deptId: { type: integer, format: int64 }
+        deptCode: { type: string }
+        deptName: { type: string }
+        costCenter: { type: [string, 'null'] }
+        jobId: { type: integer, format: int64 }
+        jobCode: { type: string }
+        jobTitle: { type: string }
+        jobFamily: { type: [string, 'null'] }
+        gradeId: { type: integer }
+        gradeCode: { type: string }
+        gradeName: { type: string }
+        locationCode: { type: [string, 'null'] }
+        locationName: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        stateProvince: { type: [string, 'null'] }
+        managerEmpId: { type: [integer, 'null'], format: int64 }
+        managerName: { type: [string, 'null'] }
+    HeadcountByDepartment:
+      type: object
+      description: "`PKG_REPORTING.headcount_report` aggregate row."
+      required: [deptId, deptCode, deptName, headcount, avgTenureYears]
+      properties:
+        deptId: { type: integer, format: int64 }
+        deptCode: { type: string }
+        deptName: { type: string }
+        locationCode: { type: [string, 'null'] }
+        headcount: { type: integer, minimum: 0 }
+        avgTenureYears: { $ref: '#/components/schemas/Years' }
+    EmployeeDirectoryPage:
+      type: object
+      required: [asOf, content, page, summary]
+      properties:
+        asOf: { type: string, format: date }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/EmployeeDirectoryRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+        summary:
+          type: object
+          required: [totalHeadcount, headcountByDepartment]
+          properties:
+            totalHeadcount: { type: integer, minimum: 0 }
+            headcountByDepartment:
+              type: array
+              items: { $ref: '#/components/schemas/HeadcountByDepartment' }
+
+    OrgHierarchyRow:
+      type: object
+      description: "`VW_ORG_HIERARCHY` row (`CONNECT BY` semantics, see route)."
+      required: [empId, empNumber, fullName, jobTitle, deptName, orgLevel, orgPath, isLeaf, cycle]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        fullName: { type: string }
+        jobTitle: { type: string }
+        deptName: { type: string }
+        managerEmpId: { type: [integer, 'null'], format: int64 }
+        managerName: { type: [string, 'null'] }
+        orgLevel: { type: integer, minimum: 1, description: "`LEVEL`" }
+        orgPath: { type: string, description: "`SYS_CONNECT_BY_PATH(full_name, ' > ')` without the leading ` > `" }
+        isLeaf: { type: boolean, description: "`CONNECT_BY_ISLEAF = 1`" }
+        directReports: { type: integer, minimum: 0, description: Active direct reports (target addition). }
+        cycle: { type: boolean, description: Target-only; true when the walk stopped at a repeated `empId`. }
+    OrgHierarchyPage:
+      type: object
+      required: [asOf, content, page]
+      properties:
+        asOf: { type: string, format: date }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/OrgHierarchyRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    EmployeeCompensationRow:
+      type: object
+      description: "`VW_EMPLOYEE_COMPENSATION` row."
+      required: [empId, empNumber, fullName, deptName, jobTitle, gradeCode, baseSalary, currencyCode, payFrequency, effectiveDate, yearsInGrade, minSalary, maxSalary, compaRatio]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        fullName: { type: string }
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string }
+        jobTitle: { type: string }
+        gradeId: { type: integer }
+        gradeCode: { type: string }
+        baseSalary: { $ref: '#/components/schemas/Money' }
+        currencyCode: { type: string }
+        payFrequency: { type: string }
+        effectiveDate: { type: string, format: date }
+        yearsInGrade: { $ref: '#/components/schemas/Years' }
+        minSalary: { $ref: '#/components/schemas/Money' }
+        maxSalary: { $ref: '#/components/schemas/Money' }
+        compaRatio: { $ref: '#/components/schemas/Rate' }
+    CompensationByDepartment:
+      type: object
+      description: "`PKG_REPORTING.compensation_summary` aggregate row."
+      required: [deptId, deptName, headcount, avgSalary, minSalary, maxSalary, totalPayroll]
+      properties:
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string }
+        headcount: { type: integer, minimum: 0 }
+        avgSalary: { $ref: '#/components/schemas/Money' }
+        minSalary: { $ref: '#/components/schemas/Money' }
+        maxSalary: { $ref: '#/components/schemas/Money' }
+        totalPayroll: { $ref: '#/components/schemas/Money' }
+    EmployeeCompensationPage:
+      type: object
+      required: [asOf, content, page, summary]
+      properties:
+        asOf: { type: string, format: date }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/EmployeeCompensationRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+        summary:
+          type: object
+          required: [byDepartment]
+          properties:
+            byDepartment:
+              type: array
+              items: { $ref: '#/components/schemas/CompensationByDepartment' }
+
+    LeaveSummaryRow:
+      type: object
+      description: |
+        `VW_LEAVE_SUMMARY` row with **VAL-05 fixed**: `available` subtracts `pending`.
+        `legacyAvailable` (target addition, JSON only – not in the CSV) is the legacy
+        expression so a diff can be reasoned about client-side; `legacyAvailable -
+        available == pending` always.
+      required: [empId, empNumber, empName, deptName, leaveTypeId, leaveTypeName, calendarYear, openingBalance, accrued, used, adjustment, pending, available, utilizationPct]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        leaveTypeId: { type: integer }
+        leaveTypeName: { type: string }
+        calendarYear: { type: integer }
+        openingBalance: { $ref: '#/components/schemas/Days' }
+        accrued: { $ref: '#/components/schemas/Days' }
+        used: { $ref: '#/components/schemas/Days' }
+        adjustment: { $ref: '#/components/schemas/Days' }
+        pending: { $ref: '#/components/schemas/Days' }
+        available:
+          allOf: [{ $ref: '#/components/schemas/Days' }]
+          description: "`openingBalance + accrued - used + adjustment - pending` (VAL-05)."
+        utilizationPct: { $ref: '#/components/schemas/Percent' }
+        legacyAvailable:
+          allOf: [{ $ref: '#/components/schemas/Days' }]
+          description: "`openingBalance + accrued - used + adjustment` – the legacy view's value, JSON only."
+    LeaveUtilizationByType:
+      type: object
+      description: "`PKG_REPORTING.leave_utilization_report` aggregate row."
+      required: [leaveTypeId, leaveTypeName, employees, totalAccrued, totalUsed, avgUtilizationPct]
+      properties:
+        leaveTypeId: { type: integer }
+        leaveTypeName: { type: string }
+        employees: { type: integer, minimum: 0 }
+        totalAccrued: { $ref: '#/components/schemas/Days' }
+        totalUsed: { $ref: '#/components/schemas/Days' }
+        avgUtilizationPct: { $ref: '#/components/schemas/Percent' }
+    LeaveSummaryPage:
+      type: object
+      required: [asOf, year, content, page, summary]
+      properties:
+        asOf: { type: string, format: date }
+        year: { type: integer }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/LeaveSummaryRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+        summary:
+          type: object
+          required: [byLeaveType]
+          properties:
+            byLeaveType:
+              type: array
+              items: { $ref: '#/components/schemas/LeaveUtilizationByType' }
+
+    PayrollLatestRow:
+      type: object
+      description: "`VW_PAYROLL_LATEST` row (P4 sign convention; `ERROR` rows excluded)."
+      required: [empId, empNumber, empName, deptName, periodId, periodName, payDate, runId, runType, runStatus, grossPay, totalTaxes, totalDeductions, netPay]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        periodId: { type: integer, format: int64 }
+        periodName: { type: string }
+        payDate: { type: string, format: date }
+        runId: { type: integer, format: int64 }
+        runType: { type: string, enum: [REGULAR, SUPPLEMENTAL, BONUS, FINAL] }
+        runStatus: { type: string, enum: [APPROVED, PAID] }
+        grossPay: { $ref: '#/components/schemas/Money' }
+        totalTaxes: { $ref: '#/components/schemas/Money' }
+        totalDeductions: { $ref: '#/components/schemas/Money' }
+        netPay: { $ref: '#/components/schemas/Money' }
+    PayrollSummary:
+      type: object
+      description: "`PKG_REPORTING.payroll_summary_report(p_period_id)`."
+      required: [periodId, employeeCount, totalGross, totalTaxes, totalDeductions, totalNet, avgNet]
+      properties:
+        periodId: { type: integer, format: int64 }
+        employeeCount: { type: integer, minimum: 0 }
+        totalGross: { $ref: '#/components/schemas/Money' }
+        totalTaxes: { $ref: '#/components/schemas/Money' }
+        totalDeductions: { $ref: '#/components/schemas/Money' }
+        totalNet: { $ref: '#/components/schemas/Money' }
+        avgNet: { $ref: '#/components/schemas/Money' }
+    PayrollLatestPage:
+      type: object
+      required: [content, page, summary]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/PayrollLatestRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+        summary: { $ref: '#/components/schemas/PayrollSummary' }
+
+    PendingApprovalRow:
+      type: object
+      description: "`VW_PENDING_APPROVALS` row."
+      required: [itemType, itemId, empId, empName, deptName, submittedDate, daysPending, detail]
+      properties:
+        itemType: { type: string, enum: [LEAVE, REVIEW] }
+        itemId: { type: integer, format: int64, description: "`REQUEST_ID` / `REVIEW_ID`" }
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        approverEmpId: { type: [integer, 'null'], format: int64 }
+        approverName: { type: [string, 'null'] }
+        submittedDate: { type: string, format: date }
+        daysPending: { type: integer, minimum: 0, description: "`TRUNC(asOf - submittedDate)`" }
+        detail: { type: string, description: "Leave: `{leaveTypeName} {startDate}..{endDate} ({totalDays}d)`; review: `{cycleName}`." }
+    PendingApprovalPage:
+      type: object
+      required: [asOf, content, page, summary]
+      properties:
+        asOf: { type: string, format: date }
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/PendingApprovalRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+        summary:
+          type: object
+          required: [leave, review]
+          properties:
+            leave: { type: integer, minimum: 0 }
+            review: { type: integer, minimum: 0 }
+
+    # --- admin reference data ----------------------------------------------------
+    DepartmentRequest:
+      type: object
+      required: [deptCode, deptName]
+      additionalProperties: false
+      description: "`hrms-validation` `DepartmentRequest`."
+      properties:
+        deptCode: { type: string, minLength: 1, maxLength: 20, pattern: '^[A-Z0-9_-]+$', description: Immutable after create. }
+        deptName: { type: string, minLength: 1, maxLength: 100 }
+        parentDeptId: { type: [integer, 'null'], format: int64, minimum: 1 }
+        costCenter: { type: [string, 'null'], maxLength: 20, pattern: '^[A-Z0-9_-]+$' }
+        managerEmpId: { type: [integer, 'null'], format: int64, minimum: 1, description: "The department head (a subject, never the actor)." }
+        locationCode: { type: [string, 'null'], maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
+        activeFlag: { type: boolean, default: true }
+    Department:
+      allOf:
+        - $ref: '#/components/schemas/DepartmentRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [deptId]
+          properties:
+            deptId: { type: integer, format: int64 }
+            parentDeptName: { type: [string, 'null'] }
+            managerName: { type: [string, 'null'] }
+            activeEmployees: { type: integer, minimum: 0, description: Drives the deactivate button (`-20602` pre-warning). }
+
+    JobGradeRequest:
+      type: object
+      required: [gradeCode, gradeName, minSalary, maxSalary]
+      additionalProperties: false
+      properties:
+        gradeCode: { type: string, minLength: 1, maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
+        gradeName: { type: string, minLength: 1, maxLength: 50 }
+        minSalary: { $ref: '#/components/schemas/Money' }
+        maxSalary:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: "`>= minSalary` (`CHK_SALARY_RANGE`, `-20603`)."
+        overtimeEligible: { type: boolean, default: false }
+        activeFlag: { type: boolean, default: true }
+    JobGrade:
+      allOf:
+        - $ref: '#/components/schemas/JobGradeRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [gradeId]
+          properties:
+            gradeId: { type: integer }
+            activeJobTitles: { type: integer, minimum: 0 }
+
+    JobTitleRequest:
+      type: object
+      required: [jobCode, jobTitle, gradeId]
+      additionalProperties: false
+      properties:
+        jobCode: { type: string, minLength: 1, maxLength: 20, pattern: '^[A-Z0-9_-]+$' }
+        jobTitle: { type: string, minLength: 1, maxLength: 100 }
+        jobFamily: { type: [string, 'null'], maxLength: 50 }
+        gradeId: { type: integer, minimum: 1 }
+        eeoCategory: { type: [string, 'null'], maxLength: 10 }
+        flsaStatus: { type: string, enum: [EXEMPT, NON_EXEMPT], default: EXEMPT }
+        activeFlag: { type: boolean, default: true }
+    JobTitle:
+      allOf:
+        - $ref: '#/components/schemas/JobTitleRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [jobId, gradeCode]
+          properties:
+            jobId: { type: integer, format: int64 }
+            gradeCode: { type: string }
+            activeEmployees: { type: integer, minimum: 0 }
+
+    LocationRequest:
+      type: object
+      required: [locationCode, locationName]
+      additionalProperties: false
+      properties:
+        locationCode: { type: string, minLength: 1, maxLength: 10, pattern: '^[A-Z0-9_-]+$', description: Natural key; immutable. }
+        locationName: { type: string, minLength: 1, maxLength: 100 }
+        addressLine1: { type: [string, 'null'], maxLength: 200 }
+        addressLine2: { type: [string, 'null'], maxLength: 200 }
+        city: { type: [string, 'null'], maxLength: 100 }
+        stateProvince: { type: [string, 'null'], maxLength: 100 }
+        postalCode: { type: [string, 'null'], maxLength: 20 }
+        countryCode: { type: [string, 'null'], minLength: 2, maxLength: 3, pattern: '^[A-Z]{2,3}$' }
+        phoneNumber: { type: [string, 'null'], maxLength: 30, pattern: '^(?:\D*\d){10,11}\D*$' }
+        timezone: { type: string, maxLength: 50, default: America/New_York, description: IANA zone id. }
+        activeFlag: { type: boolean, default: true }
+    Location:
+      allOf:
+        - $ref: '#/components/schemas/LocationRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          properties:
+            activeEmployees: { type: integer, minimum: 0 }
+            activeDepartments: { type: integer, minimum: 0 }
+
+    LeaveTypeRequest:
+      type: object
+      required: [leaveTypeCode, leaveTypeName]
+      additionalProperties: false
+      properties:
+        leaveTypeCode: { type: string, minLength: 1, maxLength: 20, pattern: '^[A-Z0-9_-]+$' }
+        leaveTypeName: { type: string, minLength: 1, maxLength: 50 }
+        paidFlag: { type: boolean, default: true }
+        accrualFlag: { type: boolean, default: true }
+        accrualRate: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$', description: Required when `accrualFlag`; days per `accrualFrequency`. }
+        accrualFrequency: { type: [string, 'null'], enum: [MONTHLY, BIWEEKLY, ANNUAL, null], description: "`CHK_ACCRUAL_FREQ`; required when `accrualFlag`." }
+        maxBalance: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        carryoverMax: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$', description: "`<= maxBalance` when both set (`-20603`)." }
+        carryoverExpiry: { type: [integer, 'null'], minimum: 0, maximum: 12, description: Months after year start before carryover expires. }
+        minTenureDays: { type: integer, minimum: 0, maximum: 3650, default: 0 }
+        requiresApproval: { type: boolean, default: true }
+        requiresDocument: { type: boolean, default: false }
+        activeFlag: { type: boolean, default: true }
+    LeaveType:
+      allOf:
+        - $ref: '#/components/schemas/LeaveTypeRequest'
+        - $ref: '#/components/schemas/AuditColumns'
+        - type: object
+          required: [leaveTypeId]
+          properties:
+            leaveTypeId: { type: integer }
+            pendingRequests: { type: integer, minimum: 0 }
+
+    SystemParameterRequest:
+      type: object
+      required: [paramGroup, paramCode, paramValue, dataType]
+      additionalProperties: false
+      properties:
+        paramGroup: { type: string, minLength: 1, maxLength: 50, pattern: '^[A-Z][A-Z0-9_]*$' }
+        paramCode: { type: string, minLength: 1, maxLength: 50, pattern: '^[A-Z][A-Z0-9_]*$' }
+        paramValue: { type: string, minLength: 1, maxLength: 4000 }
+        paramDescription: { type: [string, 'null'], maxLength: 200 }
+        dataType: { type: string, enum: [VARCHAR2, NUMBER, DATE, BOOLEAN], description: "Legacy vocabulary kept verbatim (`VARCHAR2` = free text)." }
+        editableFlag: { type: boolean, default: true }
+    SystemParameterUpdateRequest:
+      type: object
+      required: [paramValue]
+      additionalProperties: false
+      properties:
+        paramValue: { type: string, minLength: 1, maxLength: 4000 }
+        paramDescription: { type: [string, 'null'], maxLength: 200 }
+    SystemParameter:
+      allOf:
+        - $ref: '#/components/schemas/SystemParameterRequest'
+        - type: object
+          required: [paramId, createdBy, createdDate]
+          properties:
+            paramId: { type: integer }
+            createdBy: { type: string }
+            createdDate: { type: string, format: date-time }
+            modifiedBy: { type: [string, 'null'] }
+            modifiedDate: { type: [string, 'null'], format: date-time }
+
+    # --- admin leave jobs (P2 request DTOs, unchanged) ---------------------------
+    AccrualRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        accrualDate: { type: string, format: date, description: "Defaults to today (`p_accrual_date DEFAULT SYSDATE`)." }
+    CarryoverRunRequest:
+      type: object
+      required: [year]
+      additionalProperties: false
+      properties:
+        year: { type: integer, minimum: 2000, maximum: 2099, description: "Source year; rows are created for `year + 1`." }
+    BatchRunResult:
+      type: object
+      required: [jobId, jobType, status, processed, skipped, failed, startedAt, startedBy]
+      additionalProperties: false
+      properties:
+        jobId: { type: string, format: uuid }
+        jobType: { type: string, enum: [ACCRUAL, CARRYOVER] }
+        status: { type: string, enum: [RUNNING, COMPLETED, FAILED] }
+        processed: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0, description: Rows already present in `leave_accrual_log` (idempotency). }
+        failed: { type: integer, minimum: 0 }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        startedBy: { type: string, description: "`jwt.sub` (user-account id as a string)" }
+        message: { type: [string, 'null'] }
+
+    # --- audit -------------------------------------------------------------------
+    AuditLogRow:
+      type: object
+      required: [auditId, tableName, recordId, actionType, changedBy, changedDate]
+      properties:
+        auditId: { type: integer, format: int64 }
+        tableName: { type: string }
+        recordId: { type: integer, format: int64 }
+        actionType: { type: string, enum: [INSERT, UPDATE, DELETE, STATUS_CHANGE, LOGIN, LOGOUT] }
+        oldValues: { type: [string, 'null'], description: "JSON text, verbatim." }
+        newValues: { type: [string, 'null'], description: "JSON text, verbatim." }
+        changedBy: { type: string }
+        changedDate: { type: string, format: date-time }
+        ipAddress: { type: [string, 'null'] }
+        sessionId: { type: [string, 'null'] }
+    AuditLogPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/AuditLogRow' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    # --- integration -------------------------------------------------------------
+    FeedType:
+      type: string
+      enum: [GL_JOURNAL, BENEFITS_FEED, TIME_ATTENDANCE]
+    IntegrationFileStatus:
+      type: string
+      enum: [SUCCESS, FAILED, STAGED]
+      description: "`STAGED` only for time-attendance imports (BUG-08)."
+    GlFeedRequest:
+      type: object
+      required: [runId]
+      additionalProperties: false
+      properties:
+        runId: { type: integer, format: int64, minimum: 1, description: "`PAYROLL_RUNS.RUN_ID`, status APPROVED/PAID." }
+    BenefitsFeedRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        effectiveDate: { type: string, format: date, description: "Defaults to today (`p_effective_date DEFAULT SYSDATE`); selects active employees hired on/before it." }
+    IntegrationFile:
+      type: object
+      required: [fileId, feed, fileName, status, sizeBytes, sha256, recordCount, createdBy, createdAt, contentUrl]
+      properties:
+        fileId: { type: string, format: uuid }
+        feed: { $ref: '#/components/schemas/FeedType' }
+        fileName: { type: string, example: GL_JOURNAL_1001_20240705.txt }
+        status: { $ref: '#/components/schemas/IntegrationFileStatus' }
+        sizeBytes: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        recordCount: { type: integer, minimum: 0, description: "`D` records / `E`+`D` records / accepted lines." }
+        sourceRef: { type: [string, 'null'], description: "`runId` for GL, `effectiveDate` for benefits, original upload name for imports." }
+        storageKey: { type: string, description: "`{feed}/{yyyy}/{MM}/{fileId}-{fileName}` in bucket `hrms-integration`." }
+        contentUrl: { type: string, description: "`/api/integration/files/{fileId}/content`" }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        message: { type: [string, 'null'] }
+    IntegrationFilePage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/IntegrationFile' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+    TimeAttendanceLine:
+      type: object
+      required: [line, empNumber, workDate, hoursRegular, hoursOvertime, verdict]
+      properties:
+        line: { type: integer, minimum: 1 }
+        empNumber: { type: string }
+        empId: { type: [integer, 'null'], format: int64 }
+        workDate: { type: string, format: date }
+        hoursRegular: { type: string, pattern: '^[0-9]{1,2}\.[0-9]{2}$' }
+        hoursOvertime: { type: string, pattern: '^[0-9]{1,2}\.[0-9]{2}$' }
+        overtimeEligible: { type: [boolean, 'null'], description: "`JOB_GRADES.OVERTIME_ELIGIBLE` of the employee's grade – reported, not enforced (BUG-08)." }
+        verdict: { type: string, enum: [ACCEPTED, REJECTED] }
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ApiError'
+            - type: 'null'
+    TimeAttendanceImportResult:
+      type: object
+      required: [file, accepted, rejected, lines, applied, targetTable, payElementMapping]
+      properties:
+        file: { $ref: '#/components/schemas/IntegrationFile' }
+        accepted: { type: integer, minimum: 0 }
+        rejected: { type: integer, minimum: 0 }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/TimeAttendanceLine' }
+        applied:
+          type: boolean
+          const: false
+          description: Always `false` in Phase 5 – rows are staged only.
+          x-unspecified: BUG-08
+        targetTable:
+          type: 'null'
+          description: The table the hours would be written to. **Unspecified by the legacy source** (no time/attendance table exists).
+          x-unspecified: BUG-08
+        payElementMapping:
+          type: 'null'
+          description: Which `PAY_ELEMENTS` rows `hours_regular` / `hours_overtime` map to. **Unspecified by the legacy source.**
+          x-unspecified: BUG-08
+    IntegrationStatus:
+      type: object
+      required: [feed, status]
+      properties:
+        feed: { $ref: '#/components/schemas/FeedType' }
+        status: { type: string, enum: [NEVER_RUN, SUCCESS, FAILED, STAGED] }
+        lastRunAt: { type: [string, 'null'], format: date-time }
+        lastFileId: { type: [string, 'null'], format: uuid }
+        lastRunBy: { type: [string, 'null'] }
+        message: { type: [string, 'null'] }
