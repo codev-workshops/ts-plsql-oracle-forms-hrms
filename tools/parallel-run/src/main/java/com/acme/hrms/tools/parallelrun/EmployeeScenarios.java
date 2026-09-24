@@ -238,7 +238,10 @@ final class EmployeeScenarios {
                     + " :user); end;",
                 List.of()),
             call(
-                "POST", "/api/employees", with(create("v5@company.com"), "initialSalary", 0), EXEC),
+                "POST",
+                "/api/employees",
+                with(create("v5@company.com"), "initialSalary", "0.00"),
+                EXEC),
             Outcome.error("-20101")),
         // ---- TRG_EMPLOYEES rules -----------------------------------------------------------
         new Scenario(
@@ -295,7 +298,7 @@ final class EmployeeScenarios {
     m.put("managerEmpId", 31);
     m.put("locationCode", "CHI");
     m.put("employmentType", "FULL_TIME");
-    m.put("initialSalary", 85000);
+    m.put("initialSalary", "85000.00");
     m.put("email", email);
     return Map.copyOf(m);
   }

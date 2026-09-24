@@ -41,7 +41,7 @@ final class SalaryScenarios {
                 "/api/employees/1/salary",
                 Map.of(
                     "effectiveDate", "2030-01-01",
-                    "baseSalary", "460000",
+                    "baseSalary", "460000.00",
                     "changeReason", "MERIT"),
                 EXEC),
             Outcome.ok(Map.of("baseSalary", "460000.00", "active", "true", "changePct", "2.22"))),
@@ -62,7 +62,7 @@ final class SalaryScenarios {
                             "/api/employees/1/salary",
                             Map.of(
                                 "effectiveDate", "2030-01-01",
-                                "baseSalary", "460000",
+                                "baseSalary", "460000.00",
                                 "changeReason", "MERIT"),
                             EXEC))),
             Outcome.ok(Map.of("[1].endDate", "2030-01-01", "[1].active", "false"))),
@@ -78,7 +78,7 @@ final class SalaryScenarios {
                 "/api/employees/1/salary",
                 Map.of(
                     "effectiveDate", "2030-01-01",
-                    "baseSalary", 0,
+                    "baseSalary", "0.00",
                     "changeReason", "MERIT"),
                 EXEC),
             Outcome.error("-20101")),
@@ -96,7 +96,7 @@ final class SalaryScenarios {
                 "/api/employees/1/salary",
                 Map.of(
                     "effectiveDate", "2032-01-01",
-                    "baseSalary", "480000",
+                    "baseSalary", "480000.00",
                     "changeReason", "MERIT"),
                 EXEC),
             Outcome.ok(Map.of("baseSalary", "480000.00", "active", "true"))));
