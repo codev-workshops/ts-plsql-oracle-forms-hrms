@@ -70,9 +70,18 @@ test.describe('P5 reporting + admin golden path (mock stack)', () => {
     await expect(row).toBeHidden();
 
     await page.getByRole('tab', { name: 'Audit log' }).click();
-    await page.getByLabel(/^Table/).fill('DEPARTMENTS');
+    const auditTable = page.getByRole('table', { name: 'Audit log' });
+    await expect(auditTable.getByRole('row')).toHaveCount(4);
+    await page.getByLabel(/^Table/).fill('employees');
+    const audit = page.waitForResponse((r) => r.url().includes('/api/admin/audit-log') && r.url().includes('tableName=employees') && r.request().method() === 'GET');
     await page.getByRole('button', { name: 'Search' }).click();
-    await expect(page.getByRole('table', { name: 'Audit log' })).toBeVisible();
+    expect((await audit).status()).toBe(200);
+    await expect(auditTable.getByRole('row')).toHaveCount(2);
+    const entry = auditTable.getByRole('row', { name: /^9003\b/ });
+    await expect(entry).toContainText('employees');
+    await expect(entry).toContainText('UPDATE');
+    await expect(entry).toContainText('jennifer.park@company.com');
+    await expect(auditTable).not.toContainText('salary_records');
   });
 
   test('executive maintains holidays, pay elements and tax brackets (reserved rows, ladder gaps, overlap -20608)', async ({ page }) => {
