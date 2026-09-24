@@ -52,7 +52,7 @@ export function ReferenceDataTab<Row extends { activeFlag: boolean }, Request ex
   const [confirm, setConfirm] = useState<Row | null>(null);
 
   const params = includeInactive ? {} : { active: true };
-  const result = useQuery({ queryKey: adminListKey(config.id, params), queryFn: () => config.list(params), placeholderData: (prev) => prev });
+  const result = useQuery({ queryKey: adminListKey(config.id, params), queryFn: () => config.list(params) });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['admin', config.id] });

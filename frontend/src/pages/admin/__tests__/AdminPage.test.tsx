@@ -133,6 +133,30 @@ describe('Reference data – departments', () => {
 });
 
 describe('Reference data – other tables', () => {
+  it('switches reference grids without retaining rows from the previous tab', async () => {
+    const user = userEvent.setup();
+    renderAdminAs(manager, '/admin/departments');
+    const departments = await screen.findByRole('table', { name: 'Departments' });
+    expect(within(departments).getAllByRole('row')).toHaveLength(5);
+
+    await user.click(screen.getByRole('tab', { name: 'Pay elements' }));
+    await waitFor(() => {
+      const table = screen.getByRole('table', { name: 'Pay elements' });
+      const rows = within(table).getAllByRole('row');
+      expect(rows).toHaveLength(8);
+      expect(rows.every((row) => row.querySelectorAll('td, th').length === 11)).toBe(true);
+    });
+
+    await user.click(screen.getByRole('tab', { name: 'Holidays' }));
+    await waitFor(() => {
+      const table = screen.getByRole('table', { name: 'Holidays' });
+      const rows = within(table).getAllByRole('row');
+      expect(rows).toHaveLength(4);
+      expect(rows.every((row) => row.querySelectorAll('td, th').length === 6)).toBe(true);
+      expect(table).toHaveTextContent('Juneteenth');
+    });
+  });
+
   it.each([
     ['job-grades', 'Job grades', 'G1 – Grade 1'],
     ['job-titles', 'Job titles', 'CEO – Chief Executive Officer'],
