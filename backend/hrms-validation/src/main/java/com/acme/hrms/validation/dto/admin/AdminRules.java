@@ -17,6 +17,12 @@ public final class AdminRules {
   public static final String PARAM_MESSAGE =
       "Must start with a letter and contain only A-Z, 0-9 or '_'";
 
+  /** PAY_ELEMENTS.GL_ACCOUNT_CODE. */
+  public static final String GL_ACCOUNT_PATTERN = "^[A-Z0-9.-]+$";
+
+  public static final String GL_ACCOUNT_MESSAGE =
+      "GL account must contain only upper-case letters, digits, '.' or '-'";
+
   /** Same rule as the P3 employee phone fields. */
   public static final String PHONE_PATTERN = "^(?:\\D*\\d){10,11}\\D*$";
 

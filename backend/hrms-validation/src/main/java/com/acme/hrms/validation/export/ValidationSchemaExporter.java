@@ -11,12 +11,18 @@ import com.acme.hrms.validation.dto.admin.AccrualRunRequest;
 import com.acme.hrms.validation.dto.admin.AuditLogSearchQuery;
 import com.acme.hrms.validation.dto.admin.CarryoverRunRequest;
 import com.acme.hrms.validation.dto.admin.DepartmentRequest;
+import com.acme.hrms.validation.dto.admin.HolidayRequest;
 import com.acme.hrms.validation.dto.admin.JobGradeRequest;
 import com.acme.hrms.validation.dto.admin.JobTitleRequest;
 import com.acme.hrms.validation.dto.admin.LeaveTypeRequest;
 import com.acme.hrms.validation.dto.admin.LocationRequest;
+import com.acme.hrms.validation.dto.admin.PayElementRequest;
 import com.acme.hrms.validation.dto.admin.SystemParameterRequest;
 import com.acme.hrms.validation.dto.admin.SystemParameterUpdateRequest;
+import com.acme.hrms.validation.dto.admin.TaxBracketRequest;
+import com.acme.hrms.validation.dto.auth.RoleRequest;
+import com.acme.hrms.validation.dto.auth.UserRolesRequest;
+import com.acme.hrms.validation.dto.auth.UserStatusRequest;
 import com.acme.hrms.validation.dto.employee.DependentRequest;
 import com.acme.hrms.validation.dto.employee.EmergencyContactRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeCreateRequest;
@@ -78,6 +84,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -158,6 +165,12 @@ public final class ValidationSchemaExporter {
     register(MODULE_P5, "BenefitsFeedRequest", BenefitsFeedRequest.class);
     register(MODULE_P5, "TimeAttendanceLine", TimeAttendanceLine.class);
     register(MODULE_P5, "IntegrationFileListQuery", IntegrationFileListQuery.class);
+    register(MODULE_P5, "HolidayRequest", HolidayRequest.class);
+    register(MODULE_P5, "PayElementRequest", PayElementRequest.class);
+    register(MODULE_P5, "TaxBracketRequest", TaxBracketRequest.class);
+    register(MODULE_P5, "RoleRequest", RoleRequest.class);
+    register(MODULE_P5, "UserRolesRequest", UserRolesRequest.class);
+    register(MODULE_P5, "UserStatusRequest", UserStatusRequest.class);
   }
 
   private static void register(String module, String name, Class<?> dto) {
@@ -218,6 +231,9 @@ public final class ValidationSchemaExporter {
       }
       if (f.getAnnotations().length == 0) {
         continue; // e.g. excludeSelf: a plain flag, nothing for the client to pre-check
+      }
+      if (Collection.class.isAssignableFrom(f.getType())) {
+        continue; // v1 field vocabulary has no array type: array bodies are server-validated
       }
       fields.set(f.getName(), describeField(dto, f, passwordMinLength));
     }

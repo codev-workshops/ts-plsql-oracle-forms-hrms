@@ -146,13 +146,22 @@ restricted to authorities actually referenced by `@PreAuthorize` in the backend.
 
 **Validation schema.** New request DTOs (`HolidayRequest`, `PayElementRequest`,
 `TaxBracketRequest`, `RoleRequest`, `UserRolesRequest`, `UserStatusRequest`) are frozen here
-in `openapi.yaml`; their `hrms-validation` classes (`dto/admin/*` for the first three,
-`dto/auth/*` for the last three, all registered under exporter module
-`p5-reporting-decommission`) are produced by the backend child, which then regenerates
-`frontend/src/generated/validation-schema.json` **via the exporter only** and pins the new hash
-in `ValidationSchemaExporterTest`. The generated file is therefore unchanged by this contract PR
-(hash `359d743ae9bef835dad6a4852767fa667820539fa6785223600d2c7f7b3659e6` remains the
-pre-expansion baseline).
+in `openapi.yaml` **and** as annotated `hrms-validation` classes in this contract branch
+(`dto/admin/{Holiday,PayElement,TaxBracket}Request`, `dto/auth/{Role,UserRoles,UserStatus}Request`,
+all registered in `ValidationSchemaExporter` under module `p5-reporting-decommission`), so both
+children build against the same frozen Bean Validation rules. `frontend/src/generated/
+validation-schema.json` was regenerated **via the exporter only** (sha256
+`073cf4a8101de439118835fa64d712079a076ea6010088ddad78e3b5fa687d01`), and the snapshot pins live
+in `ValidationSchemaExporterTest.p5AdminExpansionDtosPinContractRules` and
+`frontend/src/generated/__tests__/validation-schema.test.ts`. One deliberate interface decision:
+the v1 field vocabulary (`string|integer|decimal|boolean|date|enum`) has no array type, so the
+exporter now skips `Collection`-typed fields – `RoleRequest.permissions` and
+`UserRolesRequest.roleIds` are validated server-side only (`@NotEmpty`, element `@Pattern`/`@Min`,
+`@AssertTrue` distinctness) and the React forms treat them as multi-selects with no schema-driven
+pre-check; `schemaVersion` stays 1 (additive change). `HolidayRequest.holidayDate` exports a
+`custom` rule `holiday.dateWindow` (value `3650` days) that the frontend `evaluateCustomRule`
+leaves to the server until the frontend child adds the case. Backend services must reuse these
+DTOs as their `@RequestBody` types – no parallel DTOs in `admin`/`auth`.
 
 **Tests (frozen expectations).** Backend: `OpenApiContractTest` covers every new route
 (status matrix incl. `401`/`403` per authority) – its pinned counts move from 55 P5 / 122 total

@@ -243,6 +243,60 @@ class ValidationSchemaExporterTest {
   }
 
   @Test
+  void p5AdminExpansionDtosPinContractRules() {
+    JsonNode dtos = new ValidationSchemaExporter().export("x", 8).get("dtos");
+    for (String dto :
+        new String[] {
+          "HolidayRequest",
+          "PayElementRequest",
+          "TaxBracketRequest",
+          "RoleRequest",
+          "UserRolesRequest",
+          "UserStatusRequest"
+        }) {
+      assertThat(dtos.get(dto).get("module").asText()).isEqualTo("p5-reporting-decommission");
+    }
+    JsonNode holidayDate = dtos.get("HolidayRequest").get("fields").get("holidayDate");
+    assertThat(holidayDate.get("type").asText()).isEqualTo("date");
+    assertThat(holidayDate.get("required").asBoolean()).isTrue();
+    assertThat(holidayDate.get("rules").get(0).get("id").asText()).isEqualTo("holiday.dateWindow");
+    assertThat(holidayDate.get("rules").get(0).get("value").asText()).isEqualTo("3650");
+    assertThat(
+            dtos.get("HolidayRequest").get("fields").get("locationCode").get("maxLength").asInt())
+        .isEqualTo(10);
+    JsonNode element = dtos.get("PayElementRequest").get("fields");
+    assertThat(element.get("elementType").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("EARNING", "DEDUCTION", "TAX", "BENEFIT", "REIMBURSEMENT");
+    assertThat(element.get("calculationType").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("FLAT", "PERCENTAGE", "HOURS", "FORMULA");
+    assertThat(element.get("defaultPercentage").get("max").doubleValue()).isEqualTo(100.0);
+    assertThat(element.get("priorityOrder").get("max").asInt()).isEqualTo(9999);
+    JsonNode bracket = dtos.get("TaxBracketRequest").get("fields");
+    assertThat(bracket.get("filingStatus").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("SINGLE", "MARRIED_JOINT", "MARRIED_SEPARATE", "HEAD_OF_HOUSEHOLD", "ALL");
+    assertThat(bracket.get("stateCode").get("pattern").asText()).isEqualTo("^[A-Z]{2}$");
+    JsonNode rate = bracket.get("taxRate");
+    assertThat(rate.get("min").doubleValue()).isEqualTo(0.0);
+    assertThat(rate.get("max").doubleValue()).isEqualTo(1.0);
+    assertThat(rate.get("scale").asInt()).isEqualTo(4);
+    assertThat(rate.get("rules").get(0).get("errorCode").asText()).isEqualTo("-20603");
+    assertThat(bracket.get("taxYear").get("min").asInt()).isEqualTo(2000);
+    JsonNode role = dtos.get("RoleRequest").get("fields");
+    assertThat(role.get("roleCode").get("pattern").asText()).isEqualTo("^[A-Z][A-Z0-9_]*$");
+    assertThat(role.get("maxGrade").get("max").asInt()).isEqualTo(999);
+    assertThat(role.has("permissions")).isFalse();
+    assertThat(dtos.get("UserRolesRequest").get("fields").has("roleIds")).isFalse();
+    assertThat(dtos.get("UserStatusRequest").get("fields").get("status").get("values"))
+        .extracting(JsonNode::asText)
+        .containsExactly("ACTIVE", "DISABLED");
+    assertThat(dtos.get("UserStatusRequest").get("fields").get("reason").get("maxLength").asInt())
+        .isEqualTo(200);
+  }
+
+  @Test
   void hashIsStable() {
     ValidationSchemaExporter e = new ValidationSchemaExporter();
     assertThat(e.export("a", 8).get("sourceHash")).isEqualTo(e.export("b", 8).get("sourceHash"));
