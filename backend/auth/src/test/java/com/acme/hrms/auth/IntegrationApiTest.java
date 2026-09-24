@@ -293,7 +293,6 @@ class IntegrationApiTest extends AuthApiTestBase {
                     + " and http_status = 415",
                 Long.class))
         .isEqualTo(2);
-    // the same bytes as a proper multipart upload are still accepted
     mvc.perform(upload(csv.getBytes(StandardCharsets.UTF_8), "text/csv", exec))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.file.status").value("STAGED"))
