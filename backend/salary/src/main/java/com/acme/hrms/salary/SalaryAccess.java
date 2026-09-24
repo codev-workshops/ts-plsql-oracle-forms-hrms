@@ -49,6 +49,7 @@ public class SalaryAccess {
           "baseSalary");
     }
     body.requireNoUnknownProperties();
+    body.requireNoMalformedProperties();
     Set<ConstraintViolation<SalaryChangeRequest>> violations = validator.validate(body);
     if (!violations.isEmpty()) {
       throw new ConstraintViolationException(violations);

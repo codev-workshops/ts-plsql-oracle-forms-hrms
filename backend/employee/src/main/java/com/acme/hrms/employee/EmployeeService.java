@@ -113,7 +113,7 @@ public class EmployeeService {
     long jobId = r.getJobId();
     Long managerId = toLong(r.getManagerEmpId());
     requireDepartment(deptId);
-    requireJob(jobId);
+    requireJob(jobId, "jobId");
     if (managerId != null) {
       requireManager(managerId, null, "managerEmpId");
     }
@@ -216,7 +216,7 @@ public class EmployeeService {
     EmployeeAccess.requireNames(r.getFirstName(), r.getLastName());
     long jobId = r.getJobId();
     Long managerId = toLong(r.getManagerEmpId());
-    requireJob(jobId);
+    requireJob(jobId, "jobId");
     if (managerId != null) {
       requireManager(managerId, empId, "managerEmpId");
     }
@@ -366,7 +366,7 @@ public class EmployeeService {
     requireDepartment(deptId);
     long jobId = r.getNewJobId() == null ? before.jobId() : r.getNewJobId();
     if (r.getNewJobId() != null) {
-      requireJob(jobId);
+      requireJob(jobId, "newJobId");
     }
     Long managerId =
         r.getNewManagerEmpId() == null ? before.managerEmpId() : toLong(r.getNewManagerEmpId());
@@ -578,10 +578,10 @@ public class EmployeeService {
     }
   }
 
-  /** {@code validate_job}: {@code -20011}. */
-  void requireJob(long jobId) {
+  /** {@code validate_job}: {@code -20011}, reported on the caller's request property. */
+  void requireJob(long jobId, String field) {
     if (!employees.jobActive(jobId)) {
-      throw new HrmsException(ErrorCode.INVALID_JOB, "Invalid or inactive job: " + jobId, "jobId");
+      throw new HrmsException(ErrorCode.INVALID_JOB, "Invalid or inactive job: " + jobId, field);
     }
   }
 

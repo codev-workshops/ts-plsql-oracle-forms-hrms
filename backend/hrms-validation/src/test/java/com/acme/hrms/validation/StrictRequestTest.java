@@ -53,6 +53,44 @@ class StrictRequestTest {
   }
 
   @Test
+  void moneyBindsOnlyTwoDecimalStringsAndDefersEverythingElse() throws Exception {
+    SalaryChangeRequest ok =
+        lenient.readValue("{\"baseSalary\":\"-1.00\"}", SalaryChangeRequest.class);
+    assertThat(ok.getBaseSalary()).isEqualByComparingTo("-1.00");
+    assertThat(ok.malformedProperties()).isEmpty();
+    assertThatCode(ok::requireNoMalformedProperties).doesNotThrowAnyException();
+
+    SalaryChangeRequest absent =
+        lenient.readValue("{\"baseSalary\":null}", SalaryChangeRequest.class);
+    assertThat(absent.getBaseSalary()).isNull();
+    assertThat(absent.malformedProperties()).isEmpty();
+
+    for (String wire :
+        new String[] {
+          "110000", "110000.5", "\"110000\"", "\"110000.0\"", "\"1.000\"", "{}", "[]"
+        }) {
+      EmployeeCreateRequest body =
+          lenient.readValue(
+              "{\"firstName\":\"A\",\"initialSalary\":" + wire + ",\"lastName\":\"B\"}",
+              EmployeeCreateRequest.class);
+      assertThat(body.getInitialSalary()).as(wire).isNull();
+      assertThat(body.getLastName()).as(wire).isEqualTo("B");
+      assertThat(body.unknownProperties()).as(wire).isEmpty();
+      assertThat(body.malformedProperties()).as(wire).containsExactly("initialSalary");
+      assertThatThrownBy(body::requireNoMalformedProperties)
+          .isInstanceOfSatisfying(
+              HrmsException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+                assertThat(e.field()).isEqualTo("initialSalary");
+                assertThat(e.details())
+                    .extracting(d -> d.field() + ":" + d.code())
+                    .containsExactly("initialSalary:InvalidFormat");
+              });
+    }
+  }
+
+  @Test
   void everyP3RequestBodyIsStrict() {
     assertThat(EmployeeCreateRequest.class).isAssignableTo(StrictRequest.class);
     assertThat(EmployeeUpdateRequest.class).isAssignableTo(StrictRequest.class);
