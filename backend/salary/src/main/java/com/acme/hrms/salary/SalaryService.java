@@ -191,9 +191,8 @@ public class SalaryService {
     }
     return newSalary
         .subtract(oldSalary)
-        .divide(oldSalary, 10, RoundingMode.HALF_UP)
         .multiply(BigDecimal.valueOf(100))
-        .setScale(2, RoundingMode.HALF_UP);
+        .divide(oldSalary, 2, RoundingMode.HALF_UP);
   }
 
   private EmployeeRef requireEmployee(long empId) {

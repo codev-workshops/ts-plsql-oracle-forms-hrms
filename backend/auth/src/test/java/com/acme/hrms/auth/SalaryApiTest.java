@@ -1,8 +1,10 @@
 package com.acme.hrms.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.acme.hrms.salary.SalaryRecordRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -128,6 +131,113 @@ class SalaryApiTest extends AuthApiTestBase {
                     "changeReason", "PROMOTION")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.outOfGradeBand").value(true));
+  }
+
+  /** openapi.yaml: changePct is the exact formula for every Money pair, stored as NUMERIC(16,2). */
+  @Test
+  void changePctAbove999StoresExactValueWithOneActiveRowHistoryAndAudit() throws Exception {
+    jdbc.update("update salary_records set base_salary = 66000.00 where emp_id = 1");
+    jdbc.update("delete from employee_history where emp_id = 1");
+
+    mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("999999.00")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.baseSalary").value("999999.00"))
+        .andExpect(jsonPath("$.changePct").value("1415.15"))
+        .andExpect(jsonPath("$.active").value(true));
+    mvc.perform(get("/api/employees/1/salary").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.changePct").value("1415.15"));
+    mvc.perform(get("/api/employees/1/salary/history").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].changePct").value("1415.15"))
+        .andExpect(jsonPath("$[1].active").value(false))
+        .andExpect(jsonPath("$[1].endDate").value("2025-01-01"));
+
+    assertThat(
+            jdbc.queryForObject(
+                "select change_pct from salary_records where emp_id = 1 and active_flag = 'Y'",
+                BigDecimal.class))
+        .isEqualTo(new BigDecimal("1415.15"));
+    assertSalaryState(2, 1, 2);
+    assertThat(
+            jdbc.queryForMap(
+                "select old_salary, new_salary from employee_history where emp_id = 1 and"
+                    + " change_type = 'SALARY_CHANGE'"))
+        .satisfies(
+            row -> {
+              assertThat((BigDecimal) row.get("old_salary")).isEqualByComparingTo("66000.00");
+              assertThat((BigDecimal) row.get("new_salary")).isEqualByComparingTo("999999.00");
+            });
+  }
+
+  @Test
+  void changePctAtTheMoneyBoundsIsStoredExactly() throws Exception {
+    jdbc.update("update salary_records set base_salary = 0.01 where emp_id = 1");
+    jdbc.update("delete from employee_history where emp_id = 1");
+
+    mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("9999999999.99")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.baseSalary").value("9999999999.99"))
+        .andExpect(jsonPath("$.changePct").value("99999999999800.00"));
+    mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("0.01")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.changePct").value("-100.00"));
+
+    assertThat(
+            jdbc.queryForList(
+                "select change_pct from salary_records where emp_id = 1 order by salary_id",
+                BigDecimal.class))
+        .containsExactly(null, new BigDecimal("99999999999800.00"), new BigDecimal("-100.00"));
+    assertSalaryState(3, 2, 4);
+  }
+
+  @Test
+  void failedInsertRollsBackCloseHistoryAndAudit() throws Exception {
+    jdbc.update("update salary_records set base_salary = 66000.00 where emp_id = 1");
+    jdbc.update("delete from employee_history where emp_id = 1");
+    long active =
+        jdbc.queryForObject(
+            "select salary_id from salary_records where emp_id = 1 and active_flag = 'Y'",
+            Long.class);
+    doThrow(new IllegalStateException("insert failed")).when(records).insert(any());
+    try {
+      mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("999999.00")))
+          .andExpect(status().isInternalServerError());
+    } finally {
+      reset(records);
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "select salary_id from salary_records where emp_id = 1 and active_flag = 'Y'"
+                    + " and end_date is null",
+                Long.class))
+        .isEqualTo(active);
+    assertSalaryState(1, 0, 0);
+  }
+
+  private void assertSalaryState(int rows, int salaryChanges, int audits) {
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1", Integer.class))
+        .isEqualTo(rows);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from salary_records where emp_id = 1 and active_flag = 'Y'",
+                Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from employee_history where emp_id = 1 and change_type ="
+                    + " 'SALARY_CHANGE'",
+                Integer.class))
+        .isEqualTo(salaryChanges);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from audit_log where table_name = 'SALARY_RECORDS' and action_type in"
+                    + " ('UPDATE', 'INSERT')",
+                Integer.class))
+        .isEqualTo(audits);
   }
 
   /** x-history [SALARY_CHANGE]: one employee_history row per accepted change, none on rejection. */
