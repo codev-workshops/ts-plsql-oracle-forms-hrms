@@ -14,6 +14,8 @@ import com.acme.hrms.validation.dto.employee.EmployeeTransferRequest;
 import com.acme.hrms.validation.dto.employee.EmployeeUpdateRequest;
 import com.acme.hrms.validation.dto.employee.SalaryChangeRequest;
 import com.acme.hrms.validation.dto.employee.StrictRequest;
+import com.acme.hrms.validation.dto.payroll.PayrollRunCreateRequest;
+import com.acme.hrms.validation.dto.payroll.PayrollRunReverseRequest;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -99,5 +101,37 @@ class StrictRequestTest {
     assertThat(SalaryChangeRequest.class).isAssignableTo(StrictRequest.class);
     assertThat(DependentRequest.class).isAssignableTo(StrictRequest.class);
     assertThat(EmergencyContactRequest.class).isAssignableTo(StrictRequest.class);
+  }
+
+  @Test
+  void everyP4PayrollRequestBodyIsStrictAndCapturesNullValuedUnknowns() throws Exception {
+    PayrollRunCreateRequest create =
+        lenient.readValue(
+            "{\"runType\":\"REGULAR\",\"bogus\":1,\"engine\":null}", PayrollRunCreateRequest.class);
+    assertThat(create.getRunType()).isEqualTo("REGULAR");
+    assertThat(create.unknownProperties()).containsExactly("bogus", "engine");
+    assertThatThrownBy(create::requireNoUnknownProperties)
+        .isInstanceOfSatisfying(
+            HrmsException.class,
+            e -> {
+              assertThat(e.code()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+              assertThat(e.field()).isEqualTo("bogus");
+              assertThat(e.details())
+                  .extracting(d -> d.field() + ":" + d.code())
+                  .containsExactly("bogus:UnknownProperty", "engine:UnknownProperty");
+            });
+
+    PayrollRunReverseRequest reverse =
+        lenient.readValue("{\"reason\":\" why \",\"status\":null}", PayrollRunReverseRequest.class);
+    assertThat(reverse.getReason()).isEqualTo("why");
+    assertThat(reverse.unknownProperties()).containsExactly("status");
+    assertThatThrownBy(reverse::requireNoUnknownProperties)
+        .isInstanceOfSatisfying(
+            HrmsException.class, e -> assertThat(e.field()).isEqualTo("status"));
+
+    PayrollRunReverseRequest clean =
+        lenient.readValue("{\"reason\":\"ok\"}", PayrollRunReverseRequest.class);
+    assertThat(clean.unknownProperties()).isEmpty();
+    assertThatCode(clean::requireNoUnknownProperties).doesNotThrowAnyException();
   }
 }

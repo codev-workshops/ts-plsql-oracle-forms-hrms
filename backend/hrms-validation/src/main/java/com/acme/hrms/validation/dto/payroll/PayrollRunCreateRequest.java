@@ -1,5 +1,6 @@
 package com.acme.hrms.validation.dto.payroll;
 
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
 import jakarta.validation.constraints.NotNull;
@@ -7,8 +8,9 @@ import jakarta.validation.constraints.NotNull;
 /**
  * Body of POST /api/payroll/periods/{periodId}/runs. PKG_PAYROLL.create_payroll_run defaulted
  * p_run_type to REGULAR; the REST body makes the choice explicit (PAYROLL_RUNS.CHK_RUN_TYPE).
+ * {@code additionalProperties: false}.
  */
-public class PayrollRunCreateRequest {
+public class PayrollRunCreateRequest extends StrictRequest {
 
   @NotNull
   @AllowedValues({"REGULAR", "SUPPLEMENTAL", "BONUS", "FINAL"})

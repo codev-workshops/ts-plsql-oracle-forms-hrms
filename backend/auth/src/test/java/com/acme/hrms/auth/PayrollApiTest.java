@@ -88,6 +88,80 @@ class PayrollApiTest extends AuthApiTestBase {
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
   }
 
+  /**
+   * additionalProperties:false on PayrollRunCreateRequest / PayrollRunReverseRequest: unknown
+   * properties (null-valued included) are 400 VALIDATION_FAILED after authority and before Bean
+   * Validation and business state, with no write side effect.
+   */
+  @Test
+  void unknownBodyPropertiesAreRejectedWithoutSideEffects() throws Exception {
+    int runsBefore =
+        jdbc.queryForObject(
+            "select count(*) from payroll_runs where period_id = 202406", Integer.class);
+
+    Map<String, Object> bogus = new HashMap<>();
+    bogus.put("runType", "REGULAR");
+    bogus.put("bogus", 1);
+    mvc.perform(json(post("/api/payroll/periods/202406/runs"), exec, bogus))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("bogus"))
+        .andExpect(jsonPath("$.details.length()").value(1))
+        .andExpect(jsonPath("$.details[0].field").value("bogus"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"))
+        .andExpect(jsonPath("$.traceId").isString());
+
+    Map<String, Object> nullValued = new HashMap<>();
+    nullValued.put("runType", "REGULAR");
+    nullValued.put("engine", null);
+    mvc.perform(json(post("/api/payroll/periods/202406/runs"), exec, nullValued))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("engine"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"));
+
+    // unknown property wins over the known-field violation (missing runType)
+    mvc.perform(json(post("/api/payroll/periods/202406/runs"), exec, Map.of("bogus", 1)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field").value("bogus"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"));
+
+    // authority still precedes body validation; closed-period business state does not
+    mvc.perform(json(post("/api/payroll/periods/202406/runs"), manager, bogus))
+        .andExpect(status().isForbidden());
+    mvc.perform(json(post("/api/payroll/periods/202405/runs"), exec, bogus))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from payroll_runs where period_id = 202406", Integer.class))
+        .isEqualTo(runsBefore);
+    assertThat(
+            jdbc.queryForObject(
+                "select status from pay_periods where period_id = 202406", String.class))
+        .isEqualTo("OPEN");
+
+    // reverse: unknown property is 400 before RUN_NOT_REVERSIBLE on the PENDING run
+    long runId = createRun();
+    Map<String, Object> reverse = new HashMap<>();
+    reverse.put("reason", "why");
+    reverse.put("force", null);
+    mvc.perform(json(post("/api/payroll/runs/" + runId + "/reverse"), exec, reverse))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("force"))
+        .andExpect(jsonPath("$.details[0].code").value("UnknownProperty"));
+    assertThat(
+            jdbc.queryForObject(
+                "select status from payroll_runs where run_id = ?", String.class, runId))
+        .isEqualTo("PENDING");
+    mvc.perform(
+            json(post("/api/payroll/runs/" + runId + "/reverse"), exec, Map.of("reason", "why")))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("RUN_NOT_REVERSIBLE"));
+  }
+
   @Test
   void approveRequiresCalculatedAndReverseRequiresCalculatedOrApproved() throws Exception {
     long runId = createRun();

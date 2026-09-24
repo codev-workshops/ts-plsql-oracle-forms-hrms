@@ -10,11 +10,11 @@ import java.util.List;
 import org.springframework.lang.Nullable;
 
 /**
- * Base of every {@code contracts/p3-employee} request body ({@code additionalProperties: false}).
- * Unknown properties are captured during deserialization (whatever their value, {@code null}
- * included) and rejected by {@link #requireNoUnknownProperties()} at the module's body-validation
- * step, so authority, module flag and required headers keep their frozen precedence (error-codes.md
- * §3).
+ * Base of every {@code contracts/p3-employee} and {@code contracts/p4-payroll} request body ({@code
+ * additionalProperties: false}). Unknown properties are captured during deserialization (whatever
+ * their value, {@code null} included) and rejected by {@link #requireNoUnknownProperties()} at the
+ * module's body-validation step, so authority, module flag and required headers keep their frozen
+ * precedence (error-codes.md §3).
  */
 public abstract class StrictRequest {
 
