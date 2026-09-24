@@ -20,6 +20,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -147,6 +148,16 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiError> handleNotAcceptable(
       HttpMediaTypeNotAcceptableException e, HttpServletRequest request) {
     return render(ErrorCode.NOT_ACCEPTABLE, null, null, null, request, e, false);
+  }
+
+  @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+  public ResponseEntity<ApiError> handleMediaTypeNotSupported(
+      HttpMediaTypeNotSupportedException e, HttpServletRequest request) {
+    String message =
+        e.getSupportedMediaTypes().isEmpty()
+            ? null
+            : "Expected " + MediaType.toString(e.getSupportedMediaTypes());
+    return render(ErrorCode.UNSUPPORTED_MEDIA_TYPE, message, null, null, request, e, false);
   }
 
   @ExceptionHandler(NoResourceFoundException.class)
