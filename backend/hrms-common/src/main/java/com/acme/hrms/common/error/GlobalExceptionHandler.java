@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -112,6 +113,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler({
     MissingServletRequestParameterException.class,
+    MissingServletRequestPartException.class,
     MethodArgumentTypeMismatchException.class,
     HttpMessageNotReadableException.class
   })
@@ -120,6 +122,9 @@ public class GlobalExceptionHandler {
     String code = "Invalid";
     if (e instanceof MissingServletRequestParameterException m) {
       field = m.getParameterName();
+      code = "Required";
+    } else if (e instanceof MissingServletRequestPartException m) {
+      field = m.getRequestPartName();
       code = "Required";
     } else if (e instanceof MethodArgumentTypeMismatchException m) {
       field = m.getName();
