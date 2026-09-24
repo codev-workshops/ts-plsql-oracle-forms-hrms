@@ -23,6 +23,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 class GlobalExceptionHandlerTest {
 
@@ -111,6 +112,28 @@ class GlobalExceptionHandlerTest {
             eq(415),
             eq("Expected multipart/form-data"),
             eq("HttpMediaTypeNotSupportedException"),
+            eq("/api/x"),
+            isNull());
+  }
+
+  @Test
+  void missingMultipartPartIs400ValidationFailedOnField() {
+    ResponseEntity<ApiError> r =
+        handler.handleBadRequest(new MissingServletRequestPartException("file"), request);
+    assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(r.getBody().code()).isEqualTo("VALIDATION_FAILED");
+    assertThat(r.getBody().field()).isEqualTo("file");
+    assertThat(r.getBody().traceId()).isEqualTo("0af7651916cd43dd8448eb211c80319c");
+    assertThat(r.getBody().details()).hasSize(1);
+    assertThat(r.getBody().details().get(0).field()).isEqualTo("file");
+    assertThat(r.getBody().details().get(0).code()).isEqualTo("Required");
+    verify(sink)
+        .record(
+            eq("0af7651916cd43dd8448eb211c80319c"),
+            eq(ErrorCode.VALIDATION_FAILED),
+            eq(400),
+            anyString(),
+            eq("MissingServletRequestPartException"),
             eq("/api/x"),
             isNull());
   }

@@ -300,6 +300,42 @@ class IntegrationApiTest extends AuthApiTestBase {
   }
 
   @Test
+  void timeAttendanceImportRejectsMissingOrMisnamedFilePartWith400() throws Exception {
+    String csv = "emp_number,date,hours_regular,hours_overtime\nEMP-000002,2024-06-03,8,0\n";
+    byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+    mvc.perform(
+            multipart("/api/integration/time-attendance/import")
+                .header("Authorization", "Bearer " + exec))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("file"))
+        .andExpect(jsonPath("$.details[0].field").value("file"))
+        .andExpect(jsonPath("$.details[0].code").value("Required"))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+    mvc.perform(
+            multipart("/api/integration/time-attendance/import")
+                .file(new MockMultipartFile("upload", "attendance.csv", "text/csv", bytes))
+                .header("Authorization", "Bearer " + exec))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("file"));
+    assertThat(jdbc.queryForObject("select count(*) from integration_files", Long.class)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from error_log where error_key = 'VALIDATION_FAILED'"
+                    + " and http_status = 400",
+                Long.class))
+        .isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "select count(*) from error_log where error_key = 'INTERNAL_ERROR'", Long.class))
+        .isZero();
+    mvc.perform(upload(bytes, "text/csv", exec))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.file.status").value("STAGED"));
+  }
+
+  @Test
   void filesStatusAndPerFeedDownloadAuthorization() throws Exception {
     mvc.perform(get("/api/integration/status").header("Authorization", "Bearer " + manager))
         .andExpect(status().isOk())
