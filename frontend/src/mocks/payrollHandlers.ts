@@ -13,6 +13,7 @@ import {
   getRun,
   insertRun,
   listPeriods,
+  NOW,
   pollStatus,
   reverseRun,
   runsForPeriod,
@@ -79,8 +80,9 @@ function page<T>(items: T[], url: URL, maxSize: number): { content: T[]; page: n
   return { content: items.slice(p * size, (p + 1) * size), page: p, size, totalElements: items.length, totalPages: Math.max(1, Math.ceil(items.length / size)) };
 }
 
-function csvFilename(runId: number, periodName: string) {
-  return `PAY_REGISTER_${runId}_${periodName.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
+function csvFilename(runId: number) {
+  const stamp = NOW.replace(/[-:]/g, '').replace('T', '_').slice(0, 15);
+  return `PAY_REGISTER_${runId}_${stamp}.csv`;
 }
 
 export function createPayrollHandlers(authenticate: Authenticate) {
@@ -182,7 +184,7 @@ export function createPayrollHandlers(authenticate: Authenticate) {
       const payload = await body<Record<string, unknown>>(request);
       const invalid = validateDto('PayrollRunReverseRequest', payload);
       if (invalid) return invalid;
-      if (!['CALCULATED', 'APPROVED'].includes(run.status)) return error(422, { code: 'RUN_NOT_REVERSIBLE', message: `Cannot reverse run in status ${run.status}` });
+      if (!['CALCULATED', 'APPROVED', 'PAID', 'ERROR'].includes(run.status)) return error(422, { code: 'RUN_NOT_REVERSIBLE', message: `Cannot reverse run in status: ${run.status}` });
       reverseRun(run);
       return HttpResponse.json(clone(run));
     }),
@@ -224,10 +226,9 @@ export function createPayrollHandlers(authenticate: Authenticate) {
       if (!run) return runNotFound();
       const includeBank = new URL(request.url).searchParams.get('includeBank') === 'true';
       if (includeBank && !canApprove(user)) return forbidden();
-      const p = getPeriod(run.periodId)!;
       return new HttpResponse(buildRegister(run, includeBank), {
         status: 200,
-        headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${csvFilename(run.runId, p.periodName)}"` },
+        headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${csvFilename(run.runId)}"` },
       });
     }),
 
