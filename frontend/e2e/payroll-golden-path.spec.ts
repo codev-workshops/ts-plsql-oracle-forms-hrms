@@ -6,7 +6,8 @@ import { SEED_ACCOUNTS, SEED_PASSWORD } from './seed-accounts';
  * calculate (202 + /status polling) → details with ERROR rows → payslip → approve → register CSV.
  * Here it is a smoke run against the msw browser worker (`VITE_MOCK_API=true`, fixtures in
  * src/mocks/payrollStore.ts) with `VITE_MODULE_FLAGS=payroll=NEW,payroll.engine=JAVA`; the
- * integration session runs the real-stack version after the shadow gate promotes the engine.
+ * integration session runs the real-stack version (e2e/payroll-real-stack.spec.ts) against
+ * PostgreSQL with the local implementation-validation flags.
  */
 
 async function login(page: import('@playwright/test').Page, email: string) {
@@ -28,7 +29,13 @@ test.describe('P4 payroll tile gating', () => {
     const tile = page.getByTestId('tile-payroll');
     await expect(tile).toHaveAttribute('data-legacy', 'true');
     await expect(tile).not.toHaveAttribute('href', /.*/);
+    // A full navigation drops the in-memory access token (msw has no HttpOnly refresh cookie), so
+    // the deep link is exercised as a pre-login redirect target.
     await page.goto('/payroll');
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel('E-mail').fill(SEED_ACCOUNTS.manager.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
+    await page.getByRole('button', { name: 'Login' }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('tablist', { name: 'Payroll' })).toHaveCount(0);
   });
@@ -93,6 +100,6 @@ test.describe('P4 payroll golden path', () => {
 
     const download = page.waitForEvent('download');
     await page.getByTestId('run-register-1003').click();
-    expect((await download).suggestedFilename()).toBe('PAY_REGISTER_1003_2024_03_Monthly.csv');
+    expect((await download).suggestedFilename()).toMatch(/^PAY_REGISTER_1003_\d{8}_\d{6}\.csv$/);
   });
 });

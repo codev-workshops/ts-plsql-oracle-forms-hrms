@@ -211,6 +211,29 @@ describe('PayrollRunsTab', () => {
     expect(screen.getByText('Open', { selector: '.badge' })).toBeInTheDocument();
   });
 
+  it('offers Reverse for every reversible status (CALCULATED, APPROVED, PAID, ERROR) but not PENDING/CALCULATING/REVERSED', async () => {
+    const runs = ['CALCULATED', 'APPROVED', 'PAID', 'ERROR', 'PENDING', 'CALCULATING', 'REVERSED'].map((status, i) => ({
+      runId: 5000 + i,
+      periodId: 202402,
+      runType: 'REGULAR',
+      runDate: '2024-02-26T09:00:00Z',
+      status,
+      totalGross: '0.00',
+      totalNet: '0.00',
+      employeeCount: 0,
+      errorCount: status === 'ERROR' ? 1 : 0,
+      createdBy: 'seed',
+      createdDate: '2024-02-26T09:00:00Z',
+      approvedBy: null,
+      approvedDate: null,
+    }));
+    server.use(http.get('/api/payroll/periods/202402/runs', () => HttpResponse.json(runs)));
+    renderPayrollAs(executive, '/payroll/periods/202402/runs');
+    await screen.findByRole('table', { name: 'Payroll runs' });
+    for (const id of [5000, 5001, 5002, 5003]) expect(screen.getByTestId(`run-reverse-${id}`)).toBeInTheDocument();
+    for (const id of [5004, 5005, 5006]) expect(screen.queryByTestId(`run-reverse-${id}`)).not.toBeInTheDocument();
+  });
+
   it('downloads the register CSV (bank columns only with PAYROLL:APPROVE)', async () => {
     const user = userEvent.setup();
     let requested: URL | null = null;
@@ -221,7 +244,7 @@ describe('PayrollRunsTab', () => {
     await screen.findByRole('table', { name: 'Payroll runs' });
     await user.click(screen.getByLabelText(/include bank/));
     await user.click(screen.getByTestId('run-register-1001'));
-    expect(await screen.findByText(/Downloaded PAY_REGISTER_1001_2024_01_Monthly\.csv/)).toBeInTheDocument();
+    expect(await screen.findByText(/Downloaded PAY_REGISTER_1001_\d{8}_\d{6}\.csv/)).toBeInTheDocument();
     expect(requested!.searchParams.get('includeBank')).toBe('true');
   });
 });

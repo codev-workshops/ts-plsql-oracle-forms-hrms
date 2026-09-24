@@ -13,7 +13,7 @@ import { CALCULATION_POLL_MS, errorLabel, humanize, payPeriodsKey, payrollRunSta
 
 const STATUSES = getDto('PayrollRunListQuery').fields.status.values as RunStatus[];
 const CALCULABLE: RunStatus[] = ['PENDING', 'CALCULATED', 'ERROR'];
-const REVERSIBLE: RunStatus[] = ['CALCULATED', 'APPROVED'];
+const REVERSIBLE: RunStatus[] = ['CALCULATED', 'APPROVED', 'PAID', 'ERROR'];
 
 /** `PAYROLL_RUNS` block (HRMS_PAYROLL.xml) → `GET /api/payroll/periods/{periodId}/runs` + the four run buttons. */
 export function PayrollRunsTab() {
