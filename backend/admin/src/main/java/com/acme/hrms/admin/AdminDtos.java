@@ -1,6 +1,7 @@
 package com.acme.hrms.admin;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -142,7 +143,68 @@ public final class AdminDtos {
 
   public record AuditLogPage(List<AuditLogRow> content, PageMeta page) {}
 
+  /** HOLIDAYS has no modified columns: {@code modifiedBy/modifiedDate} are always null. */
+  public record Holiday(
+      int holidayId,
+      LocalDate holidayDate,
+      LocalDate observedDate,
+      String holidayName,
+      @Nullable String locationCode,
+      boolean floatingFlag,
+      boolean activeFlag,
+      String createdBy,
+      LocalDateTime createdDate,
+      @Nullable String modifiedBy,
+      @Nullable LocalDateTime modifiedDate) {}
+
+  public record PayElement(
+      long elementId,
+      String elementCode,
+      String elementName,
+      String elementType,
+      String calculationType,
+      @Nullable String defaultAmount,
+      @Nullable String defaultPercentage,
+      boolean taxableFlag,
+      boolean pretaxFlag,
+      boolean employerPaid,
+      @Nullable String glAccountCode,
+      int priorityOrder,
+      boolean activeFlag,
+      boolean reserved,
+      int activeEmployeeElements,
+      String createdBy,
+      LocalDateTime createdDate,
+      @Nullable String modifiedBy,
+      @Nullable LocalDateTime modifiedDate) {}
+
+  /** TAX_BRACKETS has no modified columns: {@code modifiedBy/modifiedDate} are always null. */
+  public record TaxBracket(
+      long bracketId,
+      int taxYear,
+      String filingStatus,
+      @Nullable String stateCode,
+      String bracketMin,
+      @Nullable String bracketMax,
+      String taxRate,
+      String baseTax,
+      boolean activeFlag,
+      boolean locked,
+      String createdBy,
+      LocalDateTime createdDate,
+      @Nullable String modifiedBy,
+      @Nullable LocalDateTime modifiedDate) {}
+
+  public record TaxLadderGap(int taxYear, String filingStatus, List<MoneyRange> gaps) {}
+
+  /** Half-open {@code [from, to)}; {@code to == null} is +∞. */
+  public record MoneyRange(String from, @Nullable String to) {}
+
   static String money(@Nullable BigDecimal v) {
     return v == null ? null : v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+  }
+
+  static String rate(BigDecimal v) {
+    return v.setScale(4, java.math.RoundingMode.HALF_UP).toPlainString();
   }
 }

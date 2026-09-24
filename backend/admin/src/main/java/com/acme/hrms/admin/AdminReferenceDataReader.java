@@ -1,5 +1,6 @@
-package com.acme.hrms.reference;
+package com.acme.hrms.admin;
 
+import com.acme.hrms.reference.ReferenceDataReader;
 import com.acme.hrms.reference.ReferenceDtos.DepartmentRef;
 import com.acme.hrms.reference.ReferenceDtos.JobTitleRef;
 import com.acme.hrms.reference.ReferenceDtos.LeaveTypeRef;
@@ -14,18 +15,21 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
 
 /**
- * Owning module for reads of departments / job_titles / job_grades / locations / leave_types
- * (ARCH-02: reference-service). Replaces the RG_* record groups of HRMS_EMPLOYEE / HRMS_LEAVE.
+ * Admin-module implementation of the {@code /api/reference/*} read facade: the owner of departments
+ * / job_titles / job_grades / locations / leave_types serves both the writes and the reads
+ * (ARCH-02). Replaces the RG_* record groups of HRMS_EMPLOYEE / HRMS_LEAVE. Uncached: every call
+ * hits PostgreSQL so admin writes are visible on the next read.
  */
 @Repository
-public class ReferenceRepository {
+public class AdminReferenceDataReader implements ReferenceDataReader {
 
   private final JdbcTemplate jdbc;
 
-  public ReferenceRepository(JdbcTemplate jdbc) {
+  public AdminReferenceDataReader(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
 
+  @Override
   public List<DepartmentRef> departments(boolean activeOnly) {
     return jdbc.query(
         "select dept_id, dept_code, dept_name, parent_dept_id, location_code, active_flag"
@@ -42,6 +46,7 @@ public class ReferenceRepository {
                 flag(rs.getString("active_flag"))));
   }
 
+  @Override
   public List<JobTitleRef> jobTitles(boolean activeOnly) {
     return jdbc.query(
         "select j.job_id, j.job_code, j.job_title, j.job_family, g.grade_id, g.grade_code,"
@@ -63,6 +68,7 @@ public class ReferenceRepository {
                 flag(rs.getString("active_flag"))));
   }
 
+  @Override
   public List<LocationRef> locations(boolean activeOnly) {
     return jdbc.query(
         "select location_code, location_name, city, state_province, country_code, timezone,"
@@ -80,6 +86,7 @@ public class ReferenceRepository {
                 flag(rs.getString("active_flag"))));
   }
 
+  @Override
   public List<LeaveTypeRef> leaveTypes(boolean activeOnly) {
     return jdbc.query(
         "select leave_type_id, leave_type_code, leave_type_name, paid_flag, accrual_flag,"

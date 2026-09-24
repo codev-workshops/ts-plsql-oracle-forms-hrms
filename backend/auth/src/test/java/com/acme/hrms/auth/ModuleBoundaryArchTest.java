@@ -82,4 +82,39 @@ class ModuleBoundaryArchTest {
           .dependOnClassesThat()
           .resideInAPackage("com.acme.hrms.payroll..")
           .because("payroll is downstream of salary-module and employee-module");
+
+  @ArchTest
+  static final ArchRule admin_never_depends_on_auth =
+      noClasses()
+          .that()
+          .resideInAPackage("com.acme.hrms.admin..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("com.acme.hrms.auth..")
+          .because(
+              "auth depends on admin (P5 role management lives in auth); admin -> auth is a cycle");
+
+  @ArchTest
+  static final ArchRule reference_facade_reads_admin_tables_only_through_the_reader_interface =
+      noClasses()
+          .that()
+          .resideInAPackage("com.acme.hrms.reference..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("com.acme.hrms.admin..")
+          .because(
+              "admin owns reads and writes of the reference tables and implements"
+                  + " ReferenceDataReader; reference must not reach into admin");
+
+  @ArchTest
+  static final ArchRule reference_module_has_no_jdbc_of_its_own_for_admin_tables =
+      noClasses()
+          .that()
+          .resideInAPackage("com.acme.hrms.reference..")
+          .and()
+          .haveSimpleNameNotContaining("EmployeeLookup")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("org.springframework.jdbc..")
+          .because("only the employee picker keeps its own query; reference data comes via admin");
 }
