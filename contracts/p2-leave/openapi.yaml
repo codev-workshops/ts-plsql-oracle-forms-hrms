@@ -1,0 +1,1137 @@
+openapi: 3.1.0
+info:
+  title: HRMS Modernization - Phase 2 Leave contract
+  version: 0.1.0
+  description: |
+    Frozen API surface for Phase 2 (`leave-service` + React `leave/*` pages).
+    Governed by MODERNIZATION_BLUEPRINT.md §5, §9, COMPONENT_MAPPING.md §5, §11,
+    CUTOVER_PLAN.md §6 and TEST_STRATEGY.md §4, §5 row 2. Behavioural source of truth:
+    `plsql/packages/PKG_LEAVE.pkb` (read-only reference, golden-oracle mode OFF),
+    `schema/tables/03_leave_tables.sql` and `schema/views/hrms_views.sql`
+    (`VW_LEAVE_SUMMARY`, `VW_PENDING_APPROVALS`).
+
+    Contract rules that apply to every operation in this file (in addition to the rules
+    inherited from `contracts/p0-foundation/openapi.yaml`):
+
+    * The target is Spring Boot on PostgreSQL + React. No endpoint calls `PKG_LEAVE`; no
+      trigger, PL/SQL or PL/pgSQL exists on the target (`TRG_LEAVE_REQUEST_AUDIT` is replaced
+      by the explicit `audit_log` writes listed in `x-audit`). `leave-service` is the **only**
+      module that reads or writes `leave_requests`, `leave_balances`, `leave_accrual_log`
+      (ARCH-01/02). `leave_types` and `holidays` are read-only reference data owned by
+      `reference` (P0) and read through `hrms-common.BusinessCalendar`.
+    * Identity is always `jwt.empId`. `PKG_LEAVE.submit_leave_request(p_emp_id)`,
+      `cancel_leave_request(p_emp_id)`, `approve/reject(p_approver_emp_id)`,
+      `get_leave_balance(p_emp_id)`, `get_pending_approvals(p_approver_emp_id)` and
+      `get_team_calendar(p_manager_id)` all take the caller from the token. The only operation
+      that accepts a client-supplied `empId` is the administrative `GET /api/leave/requests`,
+      gated by `LEAVE:VIEW_ALL`. The Forms `DEFAULT_WHERE 'EMP_ID = ' || :GLOBAL.current_emp_id`
+      is **not** reproduced.
+    * Every documented failure is an `ApiError {code, message, field?, traceId}` built by the
+      single `GlobalExceptionHandler`. `code` is the legacy `-20xxx` number where one exists
+      (`-20001`, `-20201`, `-20202`, `-20203`, `-20204`, `-20210`, `-20211`, `-20212`;
+      COMPONENT_MAPPING.md §11), otherwise a framework code listed in `error-codes.md`.
+    * Authorization is the `x-preauthorize` expression exactly as it must appear in
+      `@PreAuthorize(...)`. Row-level scoping (owner / designated approver / direct reports)
+      is a service rule described per operation, enforced **after** the authority check; a
+      caller outside the scope receives `403 FORBIDDEN` (never `404`, so that existence is not
+      leaked).
+    * Dates are ISO-8601 `date` (legacy `DATE` columns hold midnight). Day counts
+      (`totalDays`, balance columns) travel as JSON numbers with at most two decimals
+      (`NUMBER(5,2)`); half days are `0.5`.
+    * **Balance semantics (VAL-05):** `available = openingBalance + accrued - used + adjustment
+      - pending` - the `LEAVE_BALANCES.AVAILABLE` table column, **not** `VW_LEAVE_SUMMARY.AVAILABLE`
+      (which omits `- pending`). The API and the UI use the table formula; the view is left
+      unchanged until Phase 5 and reconciled with the documented `pending` offset.
+    * Blank strings are normalised to `null` at the API boundary before validation.
+    * Every state-changing operation writes `audit_log` rows (`hrms-audit`) and, where
+      `PKG_LEAVE` did, a `notification_queue` row (`hrms-notification`) with the frozen
+      subject/body strings in `x-notification`, so Level 2 diffs on `AUDIT_LOG` /
+      `NOTIFICATION_QUEUE` are empty. Numbers inside those strings are rendered the way Oracle
+      renders `NUMBER || VARCHAR2` (`0.5` -> `.5`, `3` -> `3`, `2.5` -> `2.5`); dates as
+      `MM/DD/YYYY`.
+    * **Declared, intentional differences vs legacy** (the *only* rows the Level 2 diff may
+      whitelist for this phase; every other diff is a defect):
+      - `BUG-04` `expire_carryover` deducts `GREATEST(0, carryoverFromPrev - usedFromCarryover)`
+        and is idempotent through `leave_accrual_log` (P5 batch endpoint; declared here).
+      - `BUG-05` `businessDays()` treats a holiday falling on Saturday as observed on the
+        preceding Friday and one falling on Sunday as observed on the following Monday.
+      - `BUG-06` two half-day requests (`AM` + `PM`) on the same date are **not** an overlap.
+    * **Contract rules outside the legacy scenario set** (not whitelist rows; the scenario
+      registry records the target expectation, see `error-codes.md` §5):
+      `LEGACY-DEFECT-AUTOAPPROVE` (found while reading `PKG_LEAVE.pkb`; not in
+      TECH_DEBT_REGISTRY.md): for a leave type with `REQUIRES_APPROVAL='N'` (seed: `JURY`)
+      legacy inserts the row as `APPROVED` and then calls `approve_leave_request`, which
+      raises `-20204 Cannot approve request in status: APPROVED` - every such submission
+      fails. The target creates the request directly as `APPROVED` (see `submitLeaveRequest`).
+      Input-shape tightenings (`TIGHTEN-01..03`) turn legacy *accepted* nonsense input into
+      `400 VALIDATION_FAILED` / `422 -20212`; `SCOPE-01/02` add the row-level authorization
+      the package never had.
+    * Preserved legacy quirks (deliberately **not** fixed in P2, so the diff stays empty):
+      the balance check on submit reads the balance row of the **current** calendar year while
+      `pending` is added to the row of `startDate`'s year (`QUIRK-01`); a missing balance row
+      makes the `pending`/`used` updates no-ops (`QUIRK-02`); `approve` overwrites
+      `approverEmpId` with the actual approver (`QUIRK-03`); `TAKEN` is never produced
+      (DATA-05).
+
+servers:
+  - url: /
+    description: Same origin as the P0 shell; routed by the P0 proxy (`leave=NEW`).
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: leave-requests
+    description: Own requests + submit / cancel (Forms `HRMS_LEAVE` tabs My Requests, Submit Request)
+  - name: leave-approvals
+    description: Approve / reject / pending list (package procedures with no form source)
+  - name: leave-balances
+    description: Balance tab (`LEAVE_BALANCE` block) + business-day helper
+  - name: leave-team
+    description: Team calendar (`PKG_LEAVE.get_team_calendar`)
+  - name: leave-admin
+    description: Batch / adjustment operations reserved for Phase 5 (declared, deferred)
+  - name: reference
+    description: Confirmation of the P0 leave-type reference endpoint used by this phase
+
+paths:
+  # ---------------------------------------------------------------------------
+  # leave requests
+  # ---------------------------------------------------------------------------
+  /api/leave/requests/mine:
+    get:
+      tags: [leave-requests]
+      operationId: listMyLeaveRequests
+      summary: Caller's own leave requests, newest first
+      description: |
+        Replaces the `LEAVE_REQUEST` base-table block with
+        `DEFAULT_WHERE 'EMP_ID = ' || :GLOBAL.current_emp_id || ' ORDER BY CREATED_DATE DESC'`
+        (`HRMS_LEAVE.xml:36`). Server-side `WHERE emp_id = :jwt.empId ORDER BY created_date DESC,
+        request_id DESC`. Optional `status` / `year` filters are client conveniences; without
+        them every status is returned (the form showed all).
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/YearFilter'
+      responses:
+        '200':
+          description: Requests owned by `jwt.empId` (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  /api/leave/requests:
+    get:
+      tags: [leave-requests]
+      operationId: listLeaveRequestsForEmployee
+      summary: Manager / HR query of another employee's requests (paged)
+      description: |
+        The only leave operation that accepts a client-supplied `empId`; it exists so HR can
+        answer "show me X's requests" without impersonation. Not a Forms feature. Sorted
+        `createdDate DESC, requestId DESC`. `empId` must reference an existing employee
+        (any status - terminated employees' history is visible to HR); unknown → `404 -20001`.
+      x-preauthorize: hasAuthority('LEAVE:VIEW_ALL')
+      parameters:
+        - in: query
+          name: empId
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/YearFilter'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageOfLeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+    post:
+      tags: [leave-requests]
+      operationId: submitLeaveRequest
+      summary: Submit a leave request (`PKG_LEAVE.submit_leave_request`)
+      description: |
+        Replaces the Submit Request tab (`NR_*` items, `BTN_SUBMIT`). `empId := jwt.empId`;
+        `approverEmpId := employees.manager_id` of the caller (may be `null`).
+
+        Service rules, evaluated in this order after Bean Validation (`400 VALIDATION_FAILED`,
+        including `endDate < startDate` → `-20210` and `halfDay = true` with
+        `startDate <> endDate` → `VALIDATION_FAILED` on `endDate`):
+
+        1. Caller must exist with `employment_status='ACTIVE' AND active_flag='Y'` → else `404 -20001`.
+        2. `leaveTypeId` must exist with `active_flag='Y'` → else `422 -20203`
+           (`Invalid leave type: {leaveTypeId}`).
+        3. Tenure: `today - hireDate` (whole days) `< minTenureDays` → `422 -20203`
+           (`Minimum tenure of {minTenureDays} days not met for leave type: {leaveTypeName}`).
+        4. `startDate > endDate` → `400 -20210` (defensive; normally caught by validation).
+        5. `today - startDate > 5` (calendar days) → `400 -20211`.
+        6. `totalDays`: `0.5` when `halfDay`, else `BusinessCalendar.businessDays(startDate,
+           endDate, callerLocation)` (weekends and active `holidays` for the caller's
+           `location_code` or `location_code IS NULL` excluded; **BUG-05 observed dates**).
+           `totalDays <= 0` → `422 -20212`. A half day on a non-business day is also
+           `422 -20212` (legacy skipped the check for half days - declared tightening).
+        7. Overlap with any `PENDING`/`APPROVED` request of the caller whose date range
+           intersects `[startDate, endDate]` → `409 -20202`, **except** (BUG-06) when both
+           requests are half days on the same single date with different `halfDayPeriod`.
+        8. If the leave type has `accrual = true`: `available` of the caller's balance row for
+           `(leaveTypeId, currentYear)` (`0` when no row; **QUIRK-01**: current year, not the
+           year of `startDate`) `< totalDays` → `422 -20201`
+           (`Insufficient leave balance. Available: {available}, Requested: {totalDays}`).
+
+        Effects (one transaction):
+        * insert `leave_requests` with `status = 'PENDING'` (or `'APPROVED'` when
+          `requiresApproval = false` - see LEGACY-DEFECT-AUTOAPPROVE in the file description),
+          `total_days`, `half_day_flag`, `half_day_period`, `reason`, `approver_emp_id`,
+          `created_by = jwt.username`.
+        * `leave_balances(empId, leaveTypeId, year(startDate))`: `pending += totalDays` when
+          `PENDING`; `used += totalDays` when auto-approved. No row → no-op (QUIRK-02).
+        * `x-audit`: `INSERT LEAVE_REQUESTS {requestId}` (`PKG_AUDIT.log_change` semantics).
+        * `x-notification`: `PENDING` and `approverEmpId` not null → to the approver:
+          subject `Leave Request Pending Approval`, body
+          `{firstName} {lastName} has requested {totalDays} day(s) of {leaveTypeName} from
+          {MM/DD/YYYY} to {MM/DD/YYYY}.` Auto-approved → to the employee: subject
+          `Leave Request Approved`, body `Your leave request from {MM/DD/YYYY} to {MM/DD/YYYY}
+          has been approved.`
+      x-preauthorize: hasAuthority('LEAVE:CREATE')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestCreateRequest'
+      responses:
+        '201':
+          description: Created request (status `PENDING` or `APPROVED`)
+          headers:
+            Location:
+              schema: { type: string }
+              description: "`/api/leave/requests/{id}`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          description: Bean Validation failure, `-20210` or `-20211`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                validation:
+                  value: { code: VALIDATION_FAILED, message: Start date is required, field: startDate, traceId: 4f3c… }
+                dateOrder:
+                  value: { code: '-20210', message: Start date must be before or equal to end date, field: endDate, traceId: 4f3c… }
+                tooFarInPast:
+                  value: { code: '-20211', message: Cannot submit leave requests more than 5 days in the past, field: startDate, traceId: 4f3c… }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/LeaveOverlap'
+        '422':
+          description: "`-20203` (type / tenure), `-20212` (no business days) or `-20201` (balance)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                invalidType:
+                  value: { code: '-20203', message: 'Invalid leave type: 9', field: leaveTypeId, traceId: 4f3c… }
+                tenure:
+                  value: { code: '-20203', message: 'Minimum tenure of 90 days not met for leave type: Compensatory Time', field: leaveTypeId, traceId: 4f3c… }
+                noBusinessDays:
+                  value: { code: '-20212', message: Leave request must include at least one business day, field: startDate, traceId: 4f3c… }
+                balance:
+                  value: { code: '-20201', message: 'Insufficient leave balance. Available: 2.5, Requested: 3', field: leaveTypeId, traceId: 4f3c… }
+
+  /api/leave/requests/{id}:
+    get:
+      tags: [leave-requests]
+      operationId: getLeaveRequest
+      summary: Single request (owner, designated approver, or `LEAVE:VIEW_ALL`)
+      description: |
+        Read model behind the My Requests / Approvals detail panes and the `Location` header
+        of `submitLeaveRequest`. Scope: `empId = jwt.empId` **or** `approverEmpId = jwt.empId`
+        **or** `LEAVE:VIEW_ALL`; otherwise `403 FORBIDDEN`. Unknown id → `404 LEAVE_REQUEST_NOT_FOUND`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/LeaveRequestNotFound'
+
+  /api/leave/requests/{id}/cancel:
+    post:
+      tags: [leave-requests]
+      operationId: cancelLeaveRequest
+      summary: Cancel own request (`PKG_LEAVE.cancel_leave_request`)
+      description: |
+        Replaces `BTN_CANCEL` (`HRMS_LEAVE.xml`). Scope: `leave_requests.emp_id = jwt.empId`
+        (legacy `AND EMP_ID = p_emp_id` → `NO_DATA_FOUND`); a caller who is not the owner
+        receives `403 FORBIDDEN`, even with `LEAVE:APPROVE` (approvers reject, they do not cancel).
+
+        Rules: status must be `PENDING` or `APPROVED` → else `422 -20204`
+        (`Cannot cancel request in status: {status}`).
+
+        Effects: `status = 'CANCELLED'`, `reason = reason ?? 'Cancelled by employee'`
+        (legacy default; the original reason is **overwritten**, as in the package),
+        `modified_by`, `modified_date`. Balance row `(empId, leaveTypeId, year(startDate))`:
+        was `PENDING` → `pending -= totalDays`; was `APPROVED` → `used -= totalDays`
+        (QUIRK-02: no row → no-op). `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS {old}->CANCELLED`.
+        **No notification** is enqueued (legacy did not; COMPONENT_MAPPING.md §5 "notification
+        to approver" is therefore *not* part of this contract).
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveCancelRequest'
+      responses:
+        '200':
+          description: Cancelled request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/LeaveRequestNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidStatusTransition'
+
+  /api/leave/requests/{id}/approve:
+    post:
+      tags: [leave-approvals]
+      operationId: approveLeaveRequest
+      summary: Approve a pending request (`PKG_LEAVE.approve_leave_request`)
+      description: |
+        No form source (package procedure only). Scope: `leave_requests.approver_emp_id =
+        jwt.empId` **or** `LEAVE:APPROVE`; otherwise `403 FORBIDDEN`. A caller may never
+        approve their own request (`empId = jwt.empId` → `403 FORBIDDEN`, even with
+        `LEAVE:APPROVE`; legacy had no such check but no UI path either).
+
+        Rules: status must be `PENDING` → else `422 -20204`
+        (`Cannot approve request in status: {status}`).
+
+        Effects: `status = 'APPROVED'`, `approver_emp_id = jwt.empId` (QUIRK-03), `approval_date
+        = now`, `approval_comments = comments`, `modified_by`, `modified_date`. Balance row
+        `(empId, leaveTypeId, year(startDate))`: `pending -= totalDays`, `used += totalDays`.
+        `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS PENDING->APPROVED`.
+        `x-notification`: to the employee, subject `Leave Request Approved`, body
+        `Your leave request from {MM/DD/YYYY} to {MM/DD/YYYY} has been approved.`
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveApproveRequest'
+      responses:
+        '200':
+          description: Approved request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/LeaveRequestNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidStatusTransition'
+
+  /api/leave/requests/{id}/reject:
+    post:
+      tags: [leave-approvals]
+      operationId: rejectLeaveRequest
+      summary: Reject a pending request (`PKG_LEAVE.reject_leave_request`)
+      description: |
+        Same scope as `approveLeaveRequest`. `comments` is **required** (legacy `p_comments`
+        has no default).
+
+        Rules: status must be `PENDING` → else `422 -20204`
+        (`Cannot reject request in status: {status}`).
+
+        Effects: `status = 'REJECTED'`, `approver_emp_id = jwt.empId`, `approval_date = now`,
+        `approval_comments = comments`, `modified_by`, `modified_date`. Balance row:
+        `pending -= totalDays`. `x-audit`: `UPDATE LEAVE_REQUESTS {id} STATUS PENDING->REJECTED`.
+        `x-notification`: to the employee, subject `Leave Request Rejected`, body
+        `Your leave request from {MM/DD/YYYY} to {MM/DD/YYYY} has been rejected. Reason: {comments}`
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRejectRequest'
+      responses:
+        '200':
+          description: Rejected request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/LeaveRequestNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidStatusTransition'
+
+  # ---------------------------------------------------------------------------
+  # balances + calendar helpers
+  # ---------------------------------------------------------------------------
+  /api/leave/balances/mine:
+    get:
+      tags: [leave-balances]
+      operationId: getMyLeaveBalances
+      summary: Caller's balance rows for a calendar year (Balances tab)
+      description: |
+        Replaces the `LEAVE_BALANCE` block (`WHERE EMP_ID = :GLOBAL.current_emp_id AND
+        CALENDAR_YEAR = EXTRACT(YEAR FROM SYSDATE)`). One row per existing
+        `leave_balances(empId, year)` row - leave types without a row are **absent** (the UI
+        treats them as `0`; no rows are synthesised so the result stays reconcilable with
+        `VW_LEAVE_SUMMARY`). Sorted by `leaveTypeName`.
+        `available` is the table formula (`- pending`), see the VAL-05 rule in the file
+        description. `year` defaults to the server's current calendar year.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - in: query
+          name: year
+          required: false
+          schema: { type: integer, minimum: 2000, maximum: 2099 }
+      responses:
+        '200':
+          description: Balance rows (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveBalance'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  /api/leave/business-days:
+    get:
+      tags: [leave-balances]
+      operationId: getBusinessDays
+      summary: Business-day count for a range (`PKG_LEAVE.calculate_business_days`)
+      description: |
+        Backs the live `NR_TOTAL_DAYS` preview on the Submit tab. Holiday location is the
+        caller's `employees.location_code` (holidays with `location_code IS NULL` apply to
+        everyone). Weekends excluded; **BUG-05**: a holiday on Saturday is observed on the
+        preceding Friday, on Sunday on the following Monday, and the observed date is the one
+        excluded (the original weekend date already is). `start > end` → `400 -20210`. Range
+        longer than 366 days → `400 VALIDATION_FAILED`.
+        Pure read; no audit.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - in: query
+          name: start
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: end
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Count and the holidays that were excluded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessDays'
+        '400':
+          description: Validation failure or `-20210`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                dateOrder:
+                  value: { code: '-20210', message: Start date must be before or equal to end date, field: end, traceId: 4f3c… }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  # ---------------------------------------------------------------------------
+  # approvals + team
+  # ---------------------------------------------------------------------------
+  /api/leave/approvals/pending:
+    get:
+      tags: [leave-approvals]
+      operationId: listPendingLeaveApprovals
+      summary: Requests waiting for the caller's approval (`PKG_LEAVE.get_pending_approvals`)
+      description: |
+        `WHERE approver_emp_id = jwt.empId AND status = 'PENDING' ORDER BY created_date,
+        request_id`. Same row set as `VW_PENDING_APPROVALS WHERE APPROVAL_TYPE='LEAVE' AND
+        APPROVER_EMP_ID = :jwt.empId` (Level 3 reconciliation). Holders of `LEAVE:APPROVE` who
+        are not the designated approver do **not** see other approvers' queues here (they may
+        still act through `approveLeaveRequest` / `rejectLeaveRequest` given the id).
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Pending requests (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PendingLeaveApproval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  /api/leave/team-calendar:
+    get:
+      tags: [leave-team]
+      operationId: getTeamLeaveCalendar
+      summary: Approved leave of the caller's direct reports (`PKG_LEAVE.get_team_calendar`)
+      description: |
+        `WHERE emp.manager_id = jwt.empId AND status IN ('APPROVED','TAKEN') AND start_date <=
+        :to AND end_date >= :from ORDER BY start_date, last_name, first_name`. Direct reports
+        only (no recursion - legacy did not). `from > to` → `400 -20210`; range longer than 366
+        days → `400 VALIDATION_FAILED`. An employee with no reports gets `[]`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Calendar rows (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamCalendarEntry'
+        '400':
+          description: Validation failure or `-20210`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  # ---------------------------------------------------------------------------
+  # reference (P0) - confirmed, not redefined
+  # ---------------------------------------------------------------------------
+  /api/reference/leave-types:
+    get:
+      tags: [reference]
+      operationId: listLeaveTypes
+      summary: "Confirmed P0 endpoint (`contracts/p0-foundation/openapi.yaml`); owned by `reference`"
+      description: |
+        **Not redefined here.** Phase 2 relies on the P0 `LeaveTypeRef` response containing the
+        four policy flags COMPONENT_MAPPING.md §5 requires for the Submit tab pre-warnings,
+        under their P0 camelCase names:
+
+        | Legacy column | P0 field | P2 use |
+        |---|---|---|
+        | `ACCRUAL_FLAG` | `accrual` | balance pre-check / `-20201` warning |
+        | `MIN_TENURE_DAYS` | `minTenureDays` | tenure pre-warning / `-20203` |
+        | `REQUIRES_APPROVAL` | `requiresApproval` | "will be auto-approved" hint |
+        | `REQUIRES_DOCUMENT` | `requiresDocument` | document-required hint (upload is out of contract) |
+
+        `active=true` (default) is the only value the leave pages use. Any change to that
+        schema is a P0 contract change, not a P2 one.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - in: query
+          name: active
+          required: false
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: See `contracts/p0-foundation/openapi.yaml#/components/schemas/LeaveTypeRef`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveTypeRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # admin batch operations - DECLARED, DEFERRED TO PHASE 5
+  # ---------------------------------------------------------------------------
+  /api/leave/admin/accrual/run:
+    post:
+      tags: [leave-admin]
+      operationId: runMonthlyAccrual
+      summary: "DEFERRED (P5): trigger `run_monthly_accrual` / `process_monthly_accrual`"
+      x-phase: P5
+      x-deferred: true
+      description: |
+        Declared so the route, authority and DTO are frozen; **not mounted in Phase 2** (no
+        controller is registered, the request falls through to the framework 404). Phase 5
+        implements it behind `LeaveAccrualJob` with `leave_accrual_log` idempotency
+        (`(empId, leaveTypeId, accrualDate, 'ACCRUAL')` unique).
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccrualRunRequest'
+      responses:
+        '202':
+          description: Accepted (P5)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchRunResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/leave/admin/carryover/run:
+    post:
+      tags: [leave-admin]
+      operationId: runCarryover
+      summary: "DEFERRED (P5): trigger `process_carryover(p_year)`"
+      x-phase: P5
+      x-deferred: true
+      description: |
+        Declared, not mounted in Phase 2. Creates the `year + 1` balance rows with
+        `carryoverFromPrev = LEAST(available, carryoverMax)`; idempotent through
+        `leave_accrual_log` (`'CARRYOVER'`).
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarryoverRunRequest'
+      responses:
+        '202':
+          description: Accepted (P5)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchRunResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/leave/admin/carryover/expire:
+    post:
+      tags: [leave-admin]
+      operationId: expireCarryover
+      summary: "DEFERRED (P5): trigger `expire_carryover` (BUG-04 corrected)"
+      x-phase: P5
+      x-deferred: true
+      description: |
+        Declared, not mounted in Phase 2. **BUG-04 fix is part of this contract**: deducts
+        `GREATEST(0, carryoverFromPrev - usedFromCarryover)` instead of the whole
+        `carryoverFromPrev`, and is idempotent (`leave_accrual_log` `'EXPIRY'` row per
+        `(empId, leaveTypeId, year)`).
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarryoverExpireRequest'
+      responses:
+        '202':
+          description: Accepted (P5)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchRunResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/leave/admin/balances/adjust:
+    post:
+      tags: [leave-admin]
+      operationId: adjustLeaveBalance
+      summary: "DEFERRED (P5): `PKG_LEAVE.adjust_leave_balance`"
+      x-phase: P5
+      x-deferred: true
+      description: |
+        Declared, not mounted in Phase 2. Administrative correction of another employee's
+        `adjustment` column; the only write that legitimately names an `empId` (it is the
+        *subject*, the actor is still `jwt.empId`).
+      x-preauthorize: hasAuthority('LEAVE:ADMIN')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveBalanceAdjustRequest'
+      responses:
+        '200':
+          description: Updated balance (P5)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveBalance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+
+  parameters:
+    RequestId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer, minimum: 1 }
+    StatusFilter:
+      in: query
+      name: status
+      required: false
+      description: Comma-separated subset of `LeaveRequestStatus`; unknown value → `400 VALIDATION_FAILED`.
+      schema:
+        type: string
+        pattern: '^(PENDING|APPROVED|REJECTED|CANCELLED|TAKEN)(,(PENDING|APPROVED|REJECTED|CANCELLED|TAKEN))*$'
+    YearFilter:
+      in: query
+      name: year
+      required: false
+      description: "`EXTRACT(YEAR FROM start_date) = :year`"
+      schema: { type: integer, minimum: 2000, maximum: 2099 }
+    Page:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationFailed:
+      description: Bean Validation / unsupported query value (`hrms-validation` rules, see `validation-schema.json`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: VALIDATION_FAILED, message: Leave type is required, field: leaveTypeId, traceId: 4f3c… }
+    Unauthorized:
+      description: Missing / invalid / revoked token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: TOKEN_INVALID, message: Access token is missing or invalid, traceId: 4f3c… }
+    Forbidden:
+      description: "`@PreAuthorize` denied or caller outside the row-level scope"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: FORBIDDEN, message: Access denied, traceId: 4f3c… }
+    EmployeeNotFound:
+      description: "`-20001`: employee (JWT `empId`, or `empId` query) does not exist or is not active"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20001', message: Employee not found or not active, traceId: 4f3c… }
+    LeaveRequestNotFound:
+      description: Leave request id does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: LEAVE_REQUEST_NOT_FOUND, message: Leave request not found, traceId: 4f3c… }
+    LeaveOverlap:
+      description: "`-20202`: overlapping `PENDING`/`APPROVED` request (BUG-06 excepted)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20202', message: Leave request overlaps with existing request, field: startDate, traceId: 4f3c… }
+    InvalidStatusTransition:
+      description: "`-20204`: operation not allowed in the request's current status"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20204', message: 'Cannot approve request in status: CANCELLED', traceId: 4f3c… }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Legacy `-20xxx` as a string, or a framework code (`error-codes.md`).
+        message: { type: string }
+        field:
+          type: [string, 'null']
+          description: Offending request field (body property or query parameter name) when attributable.
+        traceId:
+          type: string
+          description: Correlates with `error_log.trace_id` / `X-Trace-Id`.
+        details:
+          type: array
+          description: All violations for `VALIDATION_FAILED`.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    Authority:
+      type: string
+      description: |
+        P0 vocabulary plus the Phase 2 additions `LEAVE:VIEW_ALL` (HR view of any employee's
+        requests) and `LEAVE:ADMIN` (P5 batch / adjustment). Role seeding for the additions
+        (Flyway `V4__p2_leave.sql`, owned by the backend node): `EXECUTIVE` (grade >= 8) gets
+        both; `MANAGER` / `STAFF` get neither - managers act through the designated-approver
+        rule and the team calendar, exactly as `PKG_SECURITY.has_permission` grants no
+        extra leave right below grade 8. `LEAVE:APPROVE` keeps its P0 seeding (grade >= 8).
+      pattern: '^(PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS|PERFORMANCE):(VIEW|EDIT|APPROVE|CREATE|ADMIN|VIEW_ALL)$'
+      examples: [LEAVE:VIEW, LEAVE:CREATE, LEAVE:APPROVE, LEAVE:VIEW_ALL, LEAVE:ADMIN]
+
+    LeaveRequestStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, CANCELLED, TAKEN]
+      description: "`LEAVE_REQUESTS.CHK_LEAVE_STATUS`. `TAKEN` is never produced by any operation (DATA-05) but is accepted in filters."
+
+    HalfDayPeriod:
+      type: string
+      enum: [AM, PM]
+      description: "`LEAVE_REQUESTS.HALF_DAY_PERIOD`; required when `halfDay = true`, must be absent otherwise."
+
+    LeaveRequestCreateRequest:
+      type: object
+      description: |
+        Constraints are defined once in `hrms-validation`
+        (`com.acme.hrms.validation.dto.leave.LeaveRequestCreateRequest`) and exported to
+        `frontend/src/generated/validation-schema.json` (`p2-leave` module).
+      required: [leaveTypeId, startDate, endDate]
+      additionalProperties: false
+      properties:
+        leaveTypeId: { type: integer, minimum: 1 }
+        startDate: { type: string, format: date }
+        endDate:
+          type: string
+          format: date
+          description: "`>= startDate` (else `-20210`); `= startDate` when `halfDay`."
+        halfDay: { type: boolean, default: false }
+        halfDayPeriod:
+          oneOf:
+            - $ref: '#/components/schemas/HalfDayPeriod'
+            - type: 'null'
+        reason: { type: [string, 'null'], maxLength: 4000 }
+      example:
+        leaveTypeId: 1
+        startDate: '2024-07-08'
+        endDate: '2024-07-10'
+        halfDay: false
+        reason: Family holiday
+
+    LeaveCancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: [string, 'null']
+          maxLength: 4000
+          description: Replaces `leave_requests.reason`; `null` → `Cancelled by employee`.
+
+    LeaveApproveRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        comments: { type: [string, 'null'], maxLength: 4000 }
+
+    LeaveRejectRequest:
+      type: object
+      required: [comments]
+      additionalProperties: false
+      properties:
+        comments: { type: string, minLength: 1, maxLength: 4000 }
+
+    LeaveRequest:
+      type: object
+      description: Row of `leave_requests` joined with `leave_types` and the employee names the Forms grid displayed.
+      required: [requestId, empId, empName, leaveTypeId, leaveTypeCode, leaveTypeName, startDate, endDate, totalDays, halfDay, halfDayPeriod, status, reason, approverEmpId, approverName, approvalDate, approvalComments, createdDate, modifiedDate]
+      additionalProperties: false
+      properties:
+        requestId: { type: integer }
+        empId: { type: integer }
+        empName: { type: string, description: "`firstName || ' ' || lastName`" }
+        leaveTypeId: { type: integer }
+        leaveTypeCode: { type: string, maxLength: 20 }
+        leaveTypeName: { type: string, maxLength: 50 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number, multipleOf: 0.5, description: "`NUMBER(5,2)`; `0.5` for half days" }
+        halfDay: { type: boolean }
+        halfDayPeriod:
+          oneOf:
+            - $ref: '#/components/schemas/HalfDayPeriod'
+            - type: 'null'
+        status:
+          $ref: '#/components/schemas/LeaveRequestStatus'
+        reason: { type: [string, 'null'] }
+        approverEmpId: { type: [integer, 'null'] }
+        approverName: { type: [string, 'null'] }
+        approvalDate: { type: [string, 'null'], format: date-time }
+        approvalComments: { type: [string, 'null'] }
+        createdDate: { type: string, format: date-time }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    PageOfLeaveRequest:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveRequest'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    LeaveBalance:
+      type: object
+      description: |
+        One `leave_balances` row. `available = openingBalance + accrued - used + adjustment -
+        pending` (table column; VAL-05). All day values `NUMBER(5,2)` as JSON numbers.
+      required: [balanceId, leaveTypeId, leaveTypeCode, leaveTypeName, calendarYear, openingBalance, accrued, used, adjustment, pending, carryoverFromPrev, available]
+      additionalProperties: false
+      properties:
+        balanceId: { type: integer }
+        leaveTypeId: { type: integer }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        calendarYear: { type: integer }
+        openingBalance: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        adjustment: { type: number }
+        pending: { type: number }
+        carryoverFromPrev: { type: number }
+        available: { type: number }
+      example:
+        balanceId: 3
+        leaveTypeId: 1
+        leaveTypeCode: PTO
+        leaveTypeName: Paid Time Off
+        calendarYear: 2024
+        openingBalance: 5
+        accrued: 7.5
+        used: 3
+        adjustment: 0
+        pending: 2
+        carryoverFromPrev: 5
+        available: 7.5
+
+    BusinessDays:
+      type: object
+      required: [start, end, businessDays, holidays]
+      additionalProperties: false
+      properties:
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        businessDays: { type: integer, minimum: 0 }
+        holidays:
+          type: array
+          description: Active holidays excluded from the count, with the BUG-05 observed date actually excluded.
+          items:
+            type: object
+            required: [holidayName, holidayDate, observedDate]
+            additionalProperties: false
+            properties:
+              holidayName: { type: string }
+              holidayDate: { type: string, format: date }
+              observedDate: { type: string, format: date }
+
+    PendingLeaveApproval:
+      type: object
+      description: "`PKG_LEAVE.get_pending_approvals` projection (also `VW_PENDING_APPROVALS` `APPROVAL_TYPE='LEAVE'`)."
+      required: [requestId, empId, empNumber, empName, leaveTypeName, startDate, endDate, totalDays, halfDay, halfDayPeriod, reason, createdDate]
+      additionalProperties: false
+      properties:
+        requestId: { type: integer }
+        empId: { type: integer }
+        empNumber: { type: string }
+        empName: { type: string }
+        leaveTypeName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number }
+        halfDay: { type: boolean }
+        halfDayPeriod:
+          oneOf:
+            - $ref: '#/components/schemas/HalfDayPeriod'
+            - type: 'null'
+        reason: { type: [string, 'null'] }
+        createdDate: { type: string, format: date-time }
+
+    TeamCalendarEntry:
+      type: object
+      description: "`PKG_LEAVE.get_team_calendar` projection."
+      required: [requestId, empId, empName, leaveTypeName, startDate, endDate, totalDays, halfDay, halfDayPeriod, status]
+      additionalProperties: false
+      properties:
+        requestId: { type: integer }
+        empId: { type: integer }
+        empName: { type: string }
+        leaveTypeName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number }
+        halfDay: { type: boolean }
+        halfDayPeriod:
+          oneOf:
+            - $ref: '#/components/schemas/HalfDayPeriod'
+            - type: 'null'
+        status:
+          type: string
+          enum: [APPROVED, TAKEN]
+
+    LeaveTypeRef:
+      type: object
+      description: "**Owned by P0** - copied verbatim from `contracts/p0-foundation/openapi.yaml` for reference only."
+      required: [leaveTypeId, leaveTypeCode, leaveTypeName, paid, accrual, minTenureDays, requiresApproval, requiresDocument, active]
+      additionalProperties: false
+      properties:
+        leaveTypeId: { type: integer }
+        leaveTypeCode: { type: string, maxLength: 20 }
+        leaveTypeName: { type: string, maxLength: 50 }
+        paid: { type: boolean }
+        accrual: { type: boolean, description: "`ACCRUAL_FLAG`" }
+        accrualRate: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        maxBalance: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        carryoverMax: { type: [string, 'null'], pattern: '^[0-9]+\.[0-9]{2}$' }
+        minTenureDays: { type: integer, minimum: 0, description: "`MIN_TENURE_DAYS`" }
+        requiresApproval: { type: boolean, description: "`REQUIRES_APPROVAL`" }
+        requiresDocument: { type: boolean, description: "`REQUIRES_DOCUMENT`" }
+        active: { type: boolean }
+
+    # ------------------------------------------------------------ P5 (deferred)
+    AccrualRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        accrualDate: { type: string, format: date, description: "Defaults to today (`p_accrual_date DEFAULT SYSDATE`)." }
+
+    CarryoverRunRequest:
+      type: object
+      required: [year]
+      additionalProperties: false
+      properties:
+        year: { type: integer, minimum: 2000, maximum: 2099, description: "Source year; rows are created for `year + 1`." }
+
+    CarryoverExpireRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        asOf: { type: string, format: date, description: Defaults to today. }
+
+    LeaveBalanceAdjustRequest:
+      type: object
+      required: [empId, leaveTypeId, adjustment, reason]
+      additionalProperties: false
+      properties:
+        empId: { type: integer, minimum: 1 }
+        leaveTypeId: { type: integer, minimum: 1 }
+        calendarYear: { type: integer, minimum: 2000, maximum: 2099, description: Defaults to the current year. }
+        adjustment: { type: number, description: Signed delta applied to `adjustment`. }
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+
+    BatchRunResult:
+      type: object
+      required: [runId, processed, skipped, startedAt]
+      additionalProperties: false
+      properties:
+        runId: { type: string }
+        processed: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0, description: Rows already present in `leave_accrual_log` (idempotency). }
+        startedAt: { type: string, format: date-time }

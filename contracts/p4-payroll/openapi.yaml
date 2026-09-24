@@ -1,0 +1,1085 @@
+openapi: 3.1.0
+info:
+  title: HRMS Phase 4 – Payroll (pure-Java TaxEngine / PayrollRunService)
+  version: 4.0.0-contract
+  description: |
+    Frozen API surface for Phase 4 (CUTOVER_PLAN.md §8, COMPONENT_MAPPING.md §4,
+    MODERNIZATION_BLUEPRINT.md §4.3). Written BEFORE any implementation exists; the
+    backend node implements exactly this file, the frontend node codes against it.
+
+    Target architecture (non-negotiable, MODERNIZATION_BLUEPRINT.md §9 decisions A/B):
+    * Spring Boot (Java 21) on PostgreSQL + React. **No PL/SQL, PL/pgSQL, triggers or
+      .pll in the target.** `PKG_PAYROLL`, `VW_PAYROLL_LATEST` and `HRMS_PAYROLL.fmb`
+      are read-only characterization references (GOLDEN-ORACLE MODE = OFF: no Oracle
+      runtime exists; expectations are recorded fixtures, `legacy_source=recorded`).
+    * Payroll is a **pure rewrite**: `TaxEngine` (stateless, `BigDecimal`, table-driven
+      via `TAX_BRACKETS`) + `PayrollRunService` (Spring Batch job per run). There is no
+      façade over `PKG_PAYROLL`.
+    * `payroll-module` owns `PAY_PERIODS`, `PAYROLL_RUNS`, `PAYROLL_DETAILS`,
+      `PAY_ELEMENTS`, `EMPLOYEE_PAY_ELEMENTS`, `TAX_BRACKETS`, `EMPLOYEE_TAX_INFO`,
+      `payroll_details_shadow` (ARCH-01/02). `SALARY_RECORDS` stays owned by
+      `salary-module` (P3) and is read through its Java service interface only;
+      `EMPLOYEE_BANK_ACCOUNTS` stays owned by `employee-module` and is read through a
+      masked projection only.
+    * Identity comes from the JWT (`empId`, `authorities[]`); no route takes an actor
+      `empId`. Route `{empId}` always denotes the **subject** employee of a payslip.
+    * Every failure body is `ApiError {code, message, field?, traceId}`; `code` is the
+      legacy `-20xxx` number as a string (see `error-codes.md`) or a framework code.
+    * Validation lives once in `hrms-validation` (`dto/payroll/*`) and is exported to
+      `frontend/src/generated/validation-schema.json`, module `p4-payroll`.
+    * Money is `Money` (string, exactly two decimals, `NUMBER(12,2)`). **Sign
+      convention (frozen):** earnings are positive, taxes and deductions are negative
+      as stored in `PAYROLL_DETAILS.AMOUNT`; aggregates (`grossPay`, `totalTaxes`,
+      `totalDeductions`) are reported as positive magnitudes and `netPay = SUM(amount)`,
+      exactly as `VW_PAYROLL_LATEST` computes them.
+    * `PAYROLL_DETAILS.STATUS='ERROR'` rows are the per-employee failure contract: one
+      row per failed employee, `elementId=0`, `elementType='ERROR'`, `amount=0.00`,
+      `errorMessage` set, and `errorCode` (target addition) carrying the `ApiError.code`
+      that would have been raised. Reports, payslips and `VW_PAYROLL_LATEST` exclude them.
+
+    Proxy flags (contracts/p0-foundation/README.md, `proxy/flags.env`):
+    * `payroll=LEGACY|NEW` – routes `/payroll/**` and `/api/payroll/**` (UI + API).
+      Every route in this file except the shadow route is reachable only when
+      `payroll=NEW`; the React payroll pages render only when the runtime flag
+      endpoint reports `payroll=NEW` (otherwise the Home tile is disabled, P0-D1).
+    * `payroll.engine=LEGACY|JAVA` – which engine's result is the run of record.
+      The proxy refuses `payroll=NEW` unless `payroll.engine=JAVA`. In this
+      environment the legacy engine cannot run, so `payroll.engine=LEGACY` means
+      "no run of record is produced; Java writes shadow rows only".
+    * Shadow route `/api/payroll/shadow/**` is mounted regardless of `payroll`
+      (internal/admin) and is never forwarded to legacy.
+
+    Status codes used by this module: 200, 201, 202, 400, 401, 403, 404, 409, 422.
+    Documented `-20xxx` failures are 4xx bodies; framework codes are listed in
+    `error-codes.md` §2.
+servers:
+  - url: /
+    description: Behind the P0 reverse proxy (flag `payroll`).
+security:
+  - bearerAuth: []
+tags:
+  - name: pay-periods
+  - name: payroll-runs
+  - name: payroll-reports
+  - name: payroll-shadow
+
+paths:
+  # ---------------------------------------------------------------------------
+  # pay periods
+  # ---------------------------------------------------------------------------
+  /api/payroll/periods:
+    get:
+      tags: [pay-periods]
+      operationId: listPayPeriods
+      summary: Paged list of pay periods (HRMS_PAYROLL period block replacement)
+      description: |
+        Replaces the `PAY_PERIODS` query block of `HRMS_PAYROLL.fmb`. Default sort is
+        `periodStartDate,desc`; `sort` accepts `periodStartDate|periodEndDate|payDate|periodName`
+        with `asc|desc` (`validation-schema.json#PayPeriodListQuery`). `status` filters on
+        `PAY_PERIODS.STATUS` (`CHK_PERIOD_STATUS`).
+      x-preauthorize: hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/PeriodStatus'
+        - in: query
+          name: sort
+          schema:
+            type: string
+            pattern: '^(periodStartDate|periodEndDate|payDate|periodName),(asc|desc)$'
+            default: periodStartDate,desc
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of pay periods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageOfPayPeriod'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/payroll/periods/{periodId}/close:
+    parameters:
+      - $ref: '#/components/parameters/PeriodId'
+    post:
+      tags: [pay-periods]
+      operationId: closePayPeriod
+      summary: Close a pay period (PKG_PAYROLL.close_pay_period)
+      description: |
+        `PAY_PERIODS.STATUS := 'CLOSED'`, `CLOSED_BY := jwt.username`, `CLOSED_DATE := now()`.
+        Preserved legacy rule: only `STATUS='CLOSED'` is rejected (`-20102`); closing an
+        `OPEN`, `PROCESSING` or `REVERSED` period is allowed (parity with `close_pay_period`,
+        which does not check for pending runs). No request body. Audited (`hrms-audit`,
+        action `PERIOD_CLOSE`).
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      responses:
+        '200':
+          description: Period closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PeriodNotFound'
+        '422':
+          $ref: '#/components/responses/PeriodAlreadyClosed'
+
+  # ---------------------------------------------------------------------------
+  # payroll runs
+  # ---------------------------------------------------------------------------
+  /api/payroll/periods/{periodId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/PeriodId'
+    get:
+      tags: [payroll-runs]
+      operationId: listPayrollRuns
+      summary: Runs of a period (PAYROLL_RUNS detail block)
+      description: Sorted `runId,desc`. `status` filters `PAYROLL_RUNS.STATUS` (`CHK_RUN_STATUS`). Not paged (a period has a handful of runs).
+      x-preauthorize: hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/RunStatus'
+      responses:
+        '200':
+          description: Runs of the period
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayrollRun'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PeriodNotFound'
+    post:
+      tags: [payroll-runs]
+      operationId: createPayrollRun
+      summary: Create a run (PKG_PAYROLL.create_payroll_run)
+      description: |
+        Inserts `PAYROLL_RUNS` with `STATUS='PENDING'`, `RUN_DATE=now()`, `CREATED_BY=jwt.username`
+        and sets the period to `PROCESSING` (legacy behaviour preserved). `runType` is
+        required in the body (legacy defaulted to `REGULAR`; the client must be explicit).
+        `-20102` when the period is `CLOSED`. Several `PENDING`/`CALCULATED` runs per period
+        are allowed (legacy had no uniqueness rule; preserved).
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollRunCreateRequest'
+      responses:
+        '201':
+          description: "Run created (`Location: /api/payroll/runs/{runId}`)"
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRun'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PeriodNotFound'
+        '422':
+          $ref: '#/components/responses/PeriodAlreadyClosed'
+
+  /api/payroll/runs/{runId}/calculate:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [payroll-runs]
+      operationId: calculatePayrollRun
+      summary: Start the asynchronous calculation (PKG_PAYROLL.calculate_payroll → Spring Batch)
+      description: |
+        Accepted only for runs in `PENDING`, `CALCULATED` or `ERROR` (re-calculation
+        replaces the previous detail rows of the run). Transitions the run to
+        `CALCULATING` synchronously and launches the `payrollCalculation` Spring Batch
+        job; the response is `202` with `Location: /api/payroll/runs/{runId}/status`.
+
+        Calculation contract (`PayrollRunService` + `TaxEngine`, frozen):
+        * Population: `EMPLOYEES.EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` with an
+          active `SALARY_RECORDS` row on `PAY_PERIODS.PERIOD_END_DATE` (through the
+          salary-module interface); processed in `empId` order in chunks (`chunk=50`).
+        * Per employee, in one transaction: base pay (`elementId=1`, `+`), recurring
+          `EMPLOYEE_PAY_ELEMENTS` (`+` for `EARNING`, `−` for `DEDUCTION`/`BENEFIT`),
+          then `TaxEngine`: `FED_TAX(100)`, `STATE_TAX(101)`, `FICA(102)`, `MEDICARE(103)`,
+          all `−`. Every detail row `STATUS='CALCULATED'`.
+        * A failing employee (no active salary `-20104`, non-positive salary `-20101`,
+          no `TAX_BRACKETS` rate for `(taxYear, stateCode)` `MISSING_TAX_RATE`, any other
+          exception `INTERNAL_ERROR`) gets exactly one `STATUS='ERROR'` row; the run
+          continues (legacy `WHEN OTHERS` per employee preserved). Partial per-employee
+          commits are NOT preserved: the chunk is the unit of commit, and the run
+          summary is written once at the end.
+        * End of job: `TOTAL_GROSS/TOTAL_DEDUCTIONS/TOTAL_NET/EMPLOYEE_COUNT/ERROR_COUNT`
+          recomputed from the detail rows; `STATUS='CALCULATED'` (or `'ERROR'` when
+          `errorCount = employeeCount`, i.e. nobody was calculated).
+        * Shadow (CUTOVER_PLAN.md §8.2): the same detail rows are additionally written
+          to `payroll_details_shadow` tagged `engine='JAVA'`, always, regardless of
+          `payroll.engine`.
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      responses:
+        '202':
+          description: Calculation started; poll `Location`
+          headers:
+            Location:
+              schema: { type: string }
+              description: "`/api/payroll/runs/{runId}/status`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+        '409':
+          $ref: '#/components/responses/RunAlreadyCalculating'
+        '422':
+          $ref: '#/components/responses/RunNotCalculable'
+
+  /api/payroll/runs/{runId}/status:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [payroll-runs]
+      operationId: getPayrollRunStatus
+      summary: Poll the calculation progress
+      description: |
+        `PAYROLL_RUNS.STATUS` plus Spring Batch job progress. `processed/total` are
+        employee counts; `total` is `null` until the population is resolved. Clients
+        poll every 2 s while `status=CALCULATING`.
+      x-preauthorize: hasAuthority('PAYROLL:VIEW')
+      responses:
+        '200':
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+
+  /api/payroll/runs/{runId}/approve:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [payroll-runs]
+      operationId: approvePayrollRun
+      summary: Approve a calculated run (PKG_PAYROLL.approve_payroll)
+      description: |
+        `-20103` unless `STATUS='CALCULATED'` (an `ERROR` run must be re-calculated first).
+        Sets `STATUS='APPROVED'`, `APPROVED_BY=jwt.username`, `APPROVED_DATE=now()`,
+        `SUBMITTED_BY/SUBMITTED_DATE` likewise. Approving makes the run's `CALCULATED`
+        detail rows count towards YTD (`getPayslip`). Legacy divergence (declared):
+        approving a run with `errorCount > 0` is allowed but the response carries
+        `warnings[]` listing the failed employees; the frontend must show them. No body.
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      responses:
+        '200':
+          description: Run approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunApproval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+        '422':
+          $ref: '#/components/responses/RunNotApprovable'
+
+  /api/payroll/runs/{runId}/reverse:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [payroll-runs]
+      operationId: reversePayrollRun
+      summary: Reverse a run (PKG_PAYROLL.reverse_payroll)
+      description: |
+        Sets `PAYROLL_RUNS.STATUS='REVERSED'`, marks every detail row of the run
+        `STATUS='REVERSED'`, re-opens the period (`PAY_PERIODS.STATUS='OPEN'`) and writes an
+        audit row (`hrms-audit`, action `PAYROLL_REVERSE`, `newValue.reason`). Legacy
+        divergence (declared): `reverse_payroll` had no status guard; the target accepts only
+        `CALCULATED`, `APPROVED`, `PAID` and `ERROR` runs (`422 RUN_NOT_REVERSIBLE` otherwise).
+        `reason` is required (`p_reason` had no default).
+      x-preauthorize: hasAuthority('PAYROLL:APPROVE')
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollRunReverseRequest'
+      responses:
+        '200':
+          description: Run reversed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRun'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+        '422':
+          $ref: '#/components/responses/RunNotReversible'
+
+  # ---------------------------------------------------------------------------
+  # reports
+  # ---------------------------------------------------------------------------
+  /api/payroll/runs/{runId}/details:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [payroll-reports]
+      operationId: listPayrollDetails
+      summary: Detail rows of a run (PAYROLL_DETAILS, including ERROR rows)
+      description: |
+        Sorted `empId, elementId, detailId`. `ERROR` rows are returned (this is how the UI
+        shows per-employee failures); `REVERSED` rows are returned only when
+        `status=REVERSED` is requested. `amount` keeps the stored sign. Page size max 500.
+      x-preauthorize: hasAuthority('PAYROLL:VIEW')
+      parameters:
+        - in: query
+          name: empId
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/DetailStatus'
+        - $ref: '#/components/parameters/Page'
+        - in: query
+          name: size
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Page of detail rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageOfPayrollDetail'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+
+  /api/payroll/runs/{runId}/payslips/{empId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/EmpId'
+    get:
+      tags: [payroll-reports]
+      operationId: getPayslip
+      summary: Payslip of one employee for a run (PKG_PAYROLL.get_payslip, YTD fixed)
+      description: |
+        Row-level scope: `jwt.empId == {empId}` (own payslip) OR `PAYROLL:VIEW`.
+        `-20001` when `{empId}` matches no `EMPLOYEES` row (terminated employees keep
+        access to their historical payslips – declared divergence from `EmployeeLookup`,
+        see `error-codes.md`). `422` with the row's `errorCode` when the employee's only
+        row in the run is the `ERROR` row; `404 PAYSLIP_NOT_FOUND` when the employee has
+        no row at all in the run.
+
+        **YTD (BUG-06 fixed):** legacy returned hard-coded `0`. Target:
+        `ytdGross/ytdTaxes/ytdDeductions/ytdNet` = sums over `PAYROLL_DETAILS` rows with
+        `STATUS='CALCULATED'` of runs with `STATUS IN ('APPROVED','PAID')` whose period
+        `PERIOD_START_DATE` falls in the same calendar year as this run's period and whose
+        `PERIOD_END_DATE <= this period's PERIOD_END_DATE`; this run is included only
+        once it is itself `APPROVED`/`PAID`. (This is the *reporting* YTD. The YTD the
+        `TaxEngine` uses for the wage-base test is a different, legacy-compatible
+        quantity – see README "TAX-YTD-01".)
+      x-preauthorize: "hasAuthority('PAYROLL:VIEW') or #empId == authentication.principal.empId"
+      responses:
+        '200':
+          description: Payslip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payslip'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: "`RUN_NOT_FOUND`, `-20001` (employee) or `PAYSLIP_NOT_FOUND`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                employee:
+                  value: { code: '-20001', message: Employee not found or not active, traceId: 4f3c… }
+                payslip:
+                  value: { code: PAYSLIP_NOT_FOUND, message: 'Employee 42 has no payslip in run 1001', traceId: 4f3c… }
+        '422':
+          $ref: '#/components/responses/PayslipCalculationFailed'
+
+  /api/payroll/runs/{runId}/register.csv:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [payroll-reports]
+      operationId: downloadPayrollRegister
+      summary: Streamed payroll register (PKG_PAYROLL.generate_payroll_register → HTTP CSV)
+      description: |
+        Replaces the `UTL_FILE` write to the undefined `PAYROLL_DIR` (never worked in
+        legacy) with a streamed `text/csv` response,
+        `Content-Disposition: attachment; filename="PAY_REGISTER_{runId}_{yyyyMMdd_HHmmss}.csv"`.
+        UTF-8, RFC 4180, CRLF, header row first. The first ten columns are the legacy
+        layout verbatim:
+
+            EMP_NUMBER,EMPLOYEE_NAME,DEPARTMENT,GROSS_PAY,FED_TAX,STATE_TAX,SS_TAX,MEDICARE,DEDUCTIONS,NET_PAY
+
+        Amounts are positive magnitudes except `NET_PAY` (signed sum), formatted
+        `0.00`. Rows: employees with at least one `CALCULATED` row in the run, sorted
+        `LAST_NAME, FIRST_NAME, EMP_NUMBER` (legacy ordered by `LAST_NAME` only; the tie-
+        break is a declared addition). `ERROR`-only employees are excluded.
+
+        `includeBank=true` (requires `PAYROLL:APPROVE`) appends three masked columns
+        `BANK_NAME,ROUTING_LAST4,ACCOUNT_LAST4` from the employee's `PRIMARY_FLAG='Y'`
+        `EMPLOYEE_BANK_ACCOUNTS` row via the employee-module masked projection
+        (`****1234`). Full account or routing numbers are never emitted. Every download
+        is audited (`hrms-audit`, action `REGISTER_DOWNLOAD`, `includeBank`).
+      x-preauthorize: "hasAuthority('PAYROLL:VIEW') and (#includeBank != true or hasAuthority('PAYROLL:APPROVE'))"
+      parameters:
+        - in: query
+          name: includeBank
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: CSV stream (chunked)
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            text/csv:
+              schema:
+                type: string
+              example: |
+                EMP_NUMBER,EMPLOYEE_NAME,DEPARTMENT,GROSS_PAY,FED_TAX,STATE_TAX,SS_TAX,MEDICARE,DEDUCTIONS,NET_PAY
+                E00042,Jane Doe,Engineering,7500.00,1027.42,375.00,465.00,108.75,250.00,5273.83
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RunNotFound'
+
+  # ---------------------------------------------------------------------------
+  # shadow mode (internal / admin)
+  # ---------------------------------------------------------------------------
+  /api/payroll/shadow/runs/{runId}/diff:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [payroll-shadow]
+      operationId: getShadowDiff
+      summary: PayrollShadowRunner report for one run (CUTOVER_PLAN.md §8.2–§8.4)
+      description: |
+        Compares the Java engine's `payroll_details_shadow` rows for the run with the
+        legacy rows for the same period. Legacy rows come from `PAYROLL_DETAILS` rows
+        tagged `engine='LEGACY'` when a legacy run of record exists, otherwise from the
+        recorded fixture pack (`tests/golden/payroll/<periodId>.json`,
+        `legacySource=recorded`) – GOLDEN-ORACLE MODE = OFF means the recorded source is
+        the only one exercised in this environment (`untested-live` for CDC).
+        Comparison is per `(empId, elementId)` on cents; `deltaCents == 0` is `MATCH`.
+        `DIFF_EXPLAINED` requires an `explanation` from the frozen list (README
+        "declared divergences"); anything else is `DIFF_UNEXPLAINED` and fails the
+        §8.4 gate (`summary.unexplained == 0` required for two consecutive periods).
+        Not routed through the `payroll` flag; never proxied to legacy.
+      x-preauthorize: hasAuthority('ADMIN:VIEW')
+      responses:
+        '200':
+          description: Shadow diff report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShadowDiffReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: "`RUN_NOT_FOUND` or `SHADOW_REPORT_NOT_FOUND` (run never calculated by the Java engine)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: SHADOW_REPORT_NOT_FOUND, message: 'No shadow rows for run 1001', traceId: 4f3c… }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+
+  parameters:
+    PeriodId:
+      in: path
+      name: periodId
+      required: true
+      description: "`PAY_PERIODS.PERIOD_ID`"
+      schema: { type: integer, format: int64, minimum: 1 }
+    RunId:
+      in: path
+      name: runId
+      required: true
+      description: "`PAYROLL_RUNS.RUN_ID`"
+      schema: { type: integer, format: int64, minimum: 1 }
+    EmpId:
+      in: path
+      name: empId
+      required: true
+      description: "`EMPLOYEES.EMP_ID` of the payslip subject (never the acting user)."
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationFailed:
+      description: Bean Validation / unsupported query value (`validation-schema.json` module `p4-payroll`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: VALIDATION_FAILED, message: runType is required, field: runType, traceId: 4f3c… }
+    Unauthorized:
+      description: Missing / invalid / revoked token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: TOKEN_INVALID, message: Access token is missing or invalid, traceId: 4f3c… }
+    Forbidden:
+      description: "`@PreAuthorize` denied (`PAYROLL:VIEW` / `PAYROLL:APPROVE` / `ADMIN:VIEW` / payslip self-scope)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: FORBIDDEN, message: Access denied, traceId: 4f3c… }
+    PeriodNotFound:
+      description: "`PERIOD_NOT_FOUND`: `{periodId}` matches no `PAY_PERIODS` row (legacy surfaced an unhandled `NO_DATA_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: PERIOD_NOT_FOUND, message: 'Pay period not found: 202407', traceId: 4f3c… }
+    RunNotFound:
+      description: "`RUN_NOT_FOUND`: `{runId}` matches no `PAYROLL_RUNS` row"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: RUN_NOT_FOUND, message: 'Payroll run not found: 1001', traceId: 4f3c… }
+    PeriodAlreadyClosed:
+      description: "`-20102`: the period is `CLOSED` (close again, or create a run)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20102', message: 'Period already closed: 202405', traceId: 4f3c… }
+    RunNotApprovable:
+      description: "`-20103`: run status is not `CALCULATED`"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20103', message: 'Cannot approve run in status: PENDING', traceId: 4f3c… }
+    RunNotCalculable:
+      description: "`RUN_NOT_CALCULABLE`: run status is `APPROVED`, `PAID` or `REVERSED`"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: RUN_NOT_CALCULABLE, message: 'Cannot calculate run in status: APPROVED', traceId: 4f3c… }
+    RunAlreadyCalculating:
+      description: "`RUN_ALREADY_CALCULATING`: a batch job for this run is still running"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: RUN_ALREADY_CALCULATING, message: 'Run 1001 is already being calculated', traceId: 4f3c… }
+    RunNotReversible:
+      description: "`RUN_NOT_REVERSIBLE`: run status is `PENDING`, `CALCULATING` or `REVERSED`"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: RUN_NOT_REVERSIBLE, message: 'Cannot reverse run in status: PENDING', traceId: 4f3c… }
+    PayslipCalculationFailed:
+      description: "The employee's calculation failed in this run; `code` is the `ERROR` row's `errorCode` (`-20104`, `-20101`, `MISSING_TAX_RATE`, `INTERNAL_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20104', message: 'No active salary record for employee 42', traceId: 4f3c… }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Legacy `-20xxx` as a string, or a framework code (`error-codes.md`).
+        message: { type: string }
+        field:
+          type: [string, 'null']
+          description: Offending request field (body property or query parameter name) when attributable.
+        traceId:
+          type: string
+          description: Correlates with `error_log.trace_id` / `X-Trace-Id`.
+        details:
+          type: array
+          description: All violations for `VALIDATION_FAILED`.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    Money:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]{2}$'
+      description: Decimal string with exactly two decimals (`NUMBER(12,2)`); never a float. Sign per the module convention.
+    Rate:
+      type: string
+      pattern: '^[0-9]+\.[0-9]{4}$'
+      description: Decimal rate with four decimals (`NUMBER(5,4)`), e.g. `0.0620`.
+
+    PeriodStatus:
+      type: string
+      enum: [OPEN, PROCESSING, CLOSED, REVERSED]
+      description: "`PAY_PERIODS.CHK_PERIOD_STATUS`"
+    PayFrequency:
+      type: string
+      enum: [WEEKLY, BIWEEKLY, SEMIMONTHLY, MONTHLY]
+      description: "`PAY_PERIODS.CHK_PAY_FREQ`; pay-period divisor 52 / 26 / 24 / 12."
+    RunType:
+      type: string
+      enum: [REGULAR, SUPPLEMENTAL, BONUS, FINAL]
+      description: "`PAYROLL_RUNS.CHK_RUN_TYPE`. Only the label is stored; every type runs the same calculation (legacy parity)."
+    RunStatus:
+      type: string
+      enum: [PENDING, CALCULATING, CALCULATED, APPROVED, PAID, REVERSED, ERROR]
+      description: "`PAYROLL_RUNS.CHK_RUN_STATUS`. `PAID` is never produced by a P4 route (set by the Phase 5 bank-file process)."
+    DetailStatus:
+      type: string
+      enum: [CALCULATED, ERROR, REVERSED]
+      description: "`PAYROLL_DETAILS.STATUS`. `ERROR` = per-employee failure row; `REVERSED` = row of a reversed run."
+    ElementType:
+      type: string
+      enum: [EARNING, DEDUCTION, TAX, BENEFIT, ERROR]
+      description: "`PAY_ELEMENTS.CHK_ELEM_TYPE` plus the `ERROR` marker used on failure rows (`elementId=0`)."
+    FilingStatus:
+      type: string
+      enum: [SINGLE, MARRIED_JOINT, MARRIED_SEPARATE, HEAD_OF_HOUSEHOLD]
+      description: "`EMPLOYEE_TAX_INFO.CHK_FILING_STATUS`"
+
+    PayrollRunCreateRequest:
+      type: object
+      required: [runType]
+      additionalProperties: false
+      properties:
+        runType:
+          $ref: '#/components/schemas/RunType'
+    PayrollRunReverseRequest:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Trimmed; stored in the audit row (`PAYROLL_RUNS` has no reason column).
+
+    PayPeriod:
+      type: object
+      required: [periodId, periodName, payFrequency, periodStartDate, periodEndDate, payDate, status, runCount]
+      additionalProperties: false
+      properties:
+        periodId: { type: integer, format: int64 }
+        periodName: { type: string, maxLength: 50 }
+        payFrequency:
+          $ref: '#/components/schemas/PayFrequency'
+        periodStartDate: { type: string, format: date }
+        periodEndDate: { type: string, format: date }
+        payDate: { type: string, format: date }
+        status:
+          $ref: '#/components/schemas/PeriodStatus'
+        closedBy: { type: [string, 'null'] }
+        closedDate: { type: [string, 'null'], format: date-time }
+        runCount: { type: integer, minimum: 0 }
+        latestRunId: { type: [integer, 'null'], format: int64 }
+        latestRunStatus:
+          oneOf:
+            - $ref: '#/components/schemas/RunStatus'
+            - type: 'null'
+    PageOfPayPeriod:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayPeriod'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    PayrollRun:
+      type: object
+      required: [runId, periodId, runType, runDate, status, totalGross, totalDeductions, totalNet, employeeCount, errorCount, engine]
+      additionalProperties: false
+      properties:
+        runId: { type: integer, format: int64 }
+        periodId: { type: integer, format: int64 }
+        runType:
+          $ref: '#/components/schemas/RunType'
+        runDate: { type: string, format: date-time }
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        totalGross:
+          $ref: '#/components/schemas/Money'
+        totalDeductions:
+          description: Positive magnitude of taxes + deductions + benefits (`ABS`), as `PAYROLL_RUNS.TOTAL_DEDUCTIONS`.
+          $ref: '#/components/schemas/Money'
+        totalNet:
+          $ref: '#/components/schemas/Money'
+        totalEmployerCost:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Not computed by P4 (legacy never populated it); always `null`.
+        employeeCount: { type: integer, minimum: 0 }
+        errorCount: { type: integer, minimum: 0 }
+        engine:
+          type: string
+          enum: [JAVA]
+          description: Engine of record for the rows of this run. Always `JAVA` in the target; kept explicit for shadow reports.
+        submittedBy: { type: [string, 'null'] }
+        submittedDate: { type: [string, 'null'], format: date-time }
+        approvedBy: { type: [string, 'null'] }
+        approvedDate: { type: [string, 'null'], format: date-time }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+
+    PayrollRunStatus:
+      type: object
+      required: [runId, status, processed, total, errorCount]
+      additionalProperties: false
+      properties:
+        runId: { type: integer, format: int64 }
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        jobExecutionId: { type: [integer, 'null'], format: int64 }
+        processed: { type: integer, minimum: 0, description: Employees written so far (both statuses). }
+        total: { type: [integer, 'null'], minimum: 0, description: Population size; `null` until resolved. }
+        errorCount: { type: integer, minimum: 0 }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        failureMessage:
+          type: [string, 'null']
+          description: Set only when the job itself (not an employee) failed and the run is `ERROR`.
+
+    PayrollRunApproval:
+      type: object
+      required: [run, warnings]
+      additionalProperties: false
+      properties:
+        run:
+          $ref: '#/components/schemas/PayrollRun'
+        warnings:
+          type: array
+          description: One entry per `ERROR` detail row in the approved run (empty when `errorCount = 0`).
+          items:
+            type: object
+            required: [empId, empNumber, errorCode, errorMessage]
+            properties:
+              empId: { type: integer, format: int64 }
+              empNumber: { type: string }
+              errorCode: { type: string }
+              errorMessage: { type: string }
+
+    PayrollDetail:
+      type: object
+      required: [detailId, runId, empId, empNumber, elementId, elementCode, elementType, amount, status]
+      additionalProperties: false
+      properties:
+        detailId: { type: integer, format: int64 }
+        runId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        elementId:
+          type: integer
+          format: int64
+          description: "`PAY_ELEMENTS.ELEMENT_ID`; `1` base pay, `100` FED_TAX, `101` STATE_TAX, `102` FICA, `103` MEDICARE, `0` error sentinel."
+        elementCode: { type: string, description: "`PAY_ELEMENTS.ELEMENT_CODE` (`ERROR` for the sentinel)." }
+        elementType:
+          $ref: '#/components/schemas/ElementType'
+        hoursWorked:
+          type: [string, 'null']
+          pattern: '^[0-9]+\.[0-9]{2}$'
+        rate:
+          type: [string, 'null']
+          pattern: '^[0-9]+\.[0-9]{4}$'
+          description: Effective rate for TAX rows (marginal federal rate, flat state rate, `0.0620`, `0.0145`/`0.0235`); `null` otherwise.
+        amount:
+          description: Stored sign – `+` earnings, `−` taxes / deductions / benefits, `0.00` on `ERROR` rows.
+          $ref: '#/components/schemas/Money'
+        ytdAmount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: "`PAYROLL_DETAILS.YTD_AMOUNT` as written by the engine (legacy left it `NULL`; target writes the reporting YTD for `elementId=1` only in P4)."
+        status:
+          $ref: '#/components/schemas/DetailStatus'
+        errorCode:
+          type: [string, 'null']
+          description: "`ERROR` rows only: `-20104`, `-20101`, `MISSING_TAX_RATE`, `INTERNAL_ERROR`."
+        errorMessage:
+          type: [string, 'null']
+          maxLength: 4000
+    PageOfPayrollDetail:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayrollDetail'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    Payslip:
+      type: object
+      description: "`get_payslip` cursor shape, one employee, plus the line items and a real YTD."
+      required: [runId, empId, empNumber, empName, periodName, periodStartDate, periodEndDate, payDate, runStatus, grossPay, federalTax, stateTax, socialSecurity, medicare, otherDeductions, totalDeductions, netPay, ytdGross, ytdTaxes, ytdDeductions, ytdNet, lines]
+      additionalProperties: false
+      properties:
+        runId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string, description: "`FIRST_NAME || ' ' || LAST_NAME`" }
+        departmentName: { type: [string, 'null'] }
+        jobTitle: { type: [string, 'null'] }
+        periodName: { type: string }
+        periodStartDate: { type: string, format: date }
+        periodEndDate: { type: string, format: date }
+        payDate: { type: string, format: date }
+        runStatus:
+          $ref: '#/components/schemas/RunStatus'
+        grossPay:
+          $ref: '#/components/schemas/Money'
+        federalTax:
+          description: Positive magnitude of `elementId=100`.
+          $ref: '#/components/schemas/Money'
+        stateTax:
+          description: Positive magnitude of `elementId=101`.
+          $ref: '#/components/schemas/Money'
+        socialSecurity:
+          description: Positive magnitude of `elementId=102`.
+          $ref: '#/components/schemas/Money'
+        medicare:
+          description: Positive magnitude of `elementId=103`.
+          $ref: '#/components/schemas/Money'
+        otherDeductions:
+          description: Positive magnitude of `DEDUCTION`/`BENEFIT` rows.
+          $ref: '#/components/schemas/Money'
+        totalDeductions:
+          description: "`federalTax + stateTax + socialSecurity + medicare + otherDeductions`."
+          $ref: '#/components/schemas/Money'
+        netPay:
+          description: "`SUM(amount)` over the employee's `CALCULATED` rows (signed)."
+          $ref: '#/components/schemas/Money'
+        ytdGross:
+          $ref: '#/components/schemas/Money'
+        ytdTaxes:
+          $ref: '#/components/schemas/Money'
+        ytdDeductions:
+          $ref: '#/components/schemas/Money'
+        ytdNet:
+          $ref: '#/components/schemas/Money'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayrollDetail'
+
+    ShadowDiffReport:
+      type: object
+      required: [runId, periodId, taxYear, engineFlag, legacySource, comparedAt, summary, lines]
+      additionalProperties: false
+      properties:
+        runId: { type: integer, format: int64 }
+        periodId: { type: integer, format: int64 }
+        taxYear: { type: integer }
+        engineFlag:
+          type: string
+          enum: [LEGACY, JAVA]
+          description: Value of `payroll.engine` at comparison time.
+        legacySource:
+          type: string
+          enum: [oracle-cdc, recorded]
+          description: "`recorded` = fixture pack under `tests/golden/payroll/` (the only source in GOLDEN-ORACLE MODE = OFF)."
+        comparedAt: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [employees, matched, explained, unexplained, legacyOnly, javaOnly, errorRowsLegacy, errorRowsJava, netDeltaCents]
+          additionalProperties: false
+          properties:
+            employees: { type: integer, minimum: 0 }
+            matched: { type: integer, minimum: 0 }
+            explained: { type: integer, minimum: 0 }
+            unexplained: { type: integer, minimum: 0, description: Must be 0 for the §8.4 gate. }
+            legacyOnly: { type: integer, minimum: 0 }
+            javaOnly: { type: integer, minimum: 0 }
+            errorRowsLegacy: { type: integer, minimum: 0 }
+            errorRowsJava: { type: integer, minimum: 0 }
+            netDeltaCents: { type: integer, description: "`SUM(java) − SUM(legacy)` in cents over all compared rows." }
+        lines:
+          type: array
+          description: Only non-`MATCH` lines are listed (the report stays small when the gate passes).
+          items:
+            type: object
+            required: [empId, elementId, classification, legacyAmount, javaAmount, deltaCents]
+            additionalProperties: false
+            properties:
+              empId: { type: integer, format: int64 }
+              empNumber: { type: string }
+              elementId: { type: integer, format: int64 }
+              elementCode: { type: string }
+              classification:
+                type: string
+                enum: [MATCH, DIFF_EXPLAINED, DIFF_UNEXPLAINED, LEGACY_ONLY, JAVA_ONLY]
+              explanation:
+                type: [string, 'null']
+                enum: [UNLISTED_STATE_FALLBACK, HEAD_OF_HOUSEHOLD_ZERO_FED, NON_2024_YEAR, LEGACY_PARTIAL_COMMIT, LEGACY_ERROR_ROW, null]
+                description: Required for `DIFF_EXPLAINED`; frozen list = README "declared divergences".
+              legacyAmount:
+                oneOf:
+                  - $ref: '#/components/schemas/Money'
+                  - type: 'null'
+              javaAmount:
+                oneOf:
+                  - $ref: '#/components/schemas/Money'
+                  - type: 'null'
+              deltaCents: { type: integer }
+
+    # ---------------------------------------------------------------------------
+    # Table contracts (informative – no route exposes them in P4; documented here so
+    # the backend node's Flyway migration and the TaxEngine tests share one definition)
+    # ---------------------------------------------------------------------------
+    TaxBracketRow:
+      type: object
+      description: |
+        `tax_brackets` row contract (BUG-02: replaces the hard-coded 2024 brackets in
+        `PKG_PAYROLL.calculate_federal_tax` / `calculate_state_tax`). Federal rows have
+        `stateCode = null` and one progressive ladder per `(taxYear, filingStatus)`;
+        state rows have `stateCode` set, `filingStatus = 'ALL'`, `bracketMin = 0`,
+        `bracketMax = null`, `baseTax = 0` (flat rate, as legacy). `TaxEngine` fails an
+        employee with `MISSING_TAX_RATE` when no active row matches – the legacy 5 %
+        unknown-state fallback is NOT reproduced (declared divergence).
+      required: [taxYear, filingStatus, bracketMin, bracketMax, taxRate, baseTax, stateCode, activeFlag]
+      properties:
+        taxYear: { type: integer }
+        filingStatus:
+          type: string
+          enum: [SINGLE, MARRIED_JOINT, MARRIED_SEPARATE, HEAD_OF_HOUSEHOLD, ALL]
+        bracketMin:
+          $ref: '#/components/schemas/Money'
+        bracketMax:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        taxRate:
+          $ref: '#/components/schemas/Rate'
+        baseTax:
+          $ref: '#/components/schemas/Money'
+        stateCode: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+        activeFlag: { type: boolean }
+    TaxYearParameters:
+      type: object
+      description: |
+        Per-year scalar parameters of the `TaxEngine`, stored as `SYSTEM_PARAMETERS`
+        rows `PARAM_CATEGORY='TAX'`, `PARAM_NAME='<year>.<NAME>'` (COMPONENT_MAPPING.md
+        §4: "allowance amount and standard deductions become rows in
+        TAX_BRACKETS/SYSTEM_PARAMETERS"). The 2024 seed reproduces `PKG_PAYROLL` to the
+        cent: `STD_DEDUCTION.SINGLE=14600`, `.MARRIED_JOINT=29200`, `.MARRIED_SEPARATE=14600`,
+        `.HEAD_OF_HOUSEHOLD=14600`, `ALLOWANCE=4300`, `SS_WAGE_BASE=168600`,
+        `SS_RATE=0.0620`, `MEDICARE_RATE=0.0145`, `MEDICARE_ADDL_RATE=0.0090`,
+        `MEDICARE_ADDL_THRESHOLD=200000`.
+      properties:
+        standardDeduction:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Money'
+        allowanceAmount:
+          $ref: '#/components/schemas/Money'
+        ssWageBase:
+          $ref: '#/components/schemas/Money'
+        ssRate:
+          $ref: '#/components/schemas/Rate'
+        medicareRate:
+          $ref: '#/components/schemas/Rate'
+        medicareAdditionalRate:
+          $ref: '#/components/schemas/Rate'
+        medicareAdditionalThreshold:
+          $ref: '#/components/schemas/Money'

@@ -1,0 +1,1552 @@
+openapi: 3.1.0
+info:
+  title: HRMS Modernization - Phase 3 Employee contract
+  version: 0.1.0
+  description: |
+    Frozen API surface for Phase 3 (`salary-module` first, then `employee-service`; React
+    `employees/*` pages). Governed by MODERNIZATION_BLUEPRINT.md §8, §9 (decisions A/B), §10,
+    COMPONENT_MAPPING.md §3, §8, §11, CUTOVER_PLAN.md §7 (esp. §7.1 ARCH-01 pre-condition) and
+    TEST_STRATEGY.md §2, §4, §5 row 3. Behavioural source of truth (read-only reference,
+    golden-oracle mode OFF): `plsql/packages/PKG_EMPLOYEE.pkb`, `PKG_PAYROLL.pkb`
+    (`create_salary_record`), `PKG_COMMON.pkb` (`is_valid_email/phone/ssn`),
+    `plsql/triggers/trg_employees.sql`, `forms/xml-exports/HRMS_EMPLOYEE.xml`,
+    `schema/tables/01_core_tables.sql`, `schema/views/hrms_views.sql` (`VW_EMPLOYEE_DETAILS`,
+    `VW_ORG_HIERARCHY`).
+
+    Contract rules that apply to every operation in this file (in addition to the rules
+    inherited from `contracts/p0-foundation/openapi.yaml`):
+
+    * The target is Spring Boot on PostgreSQL + React. No endpoint calls `PKG_EMPLOYEE` or
+      `PKG_PAYROLL`; no trigger, PL/SQL or PL/pgSQL exists on the target. `TRG_EMP_BEFORE_INSERT`,
+      `TRG_EMP_BEFORE_UPDATE`, `TRG_EMP_INSTEAD_OF_DELETE` and `TRG_SALARY_AUDIT` are replaced by
+      the service rules listed per operation (`-20501 … -20504`, `EMPLOYEE_HISTORY` rows,
+      `audit_log` rows via `hrms-audit`).
+    * **Table ownership (ARCH-01/02, CUTOVER_PLAN.md §7.1):** `employee-service` is the only
+      module that reads or writes `employees`, `employee_history`, `employee_dependents`,
+      `emergency_contacts`. `salary-module` is the only module that reads or writes
+      `salary_records` - every `/api/employees/{id}/salary/**` route in this file is served by
+      `salary-module`, and `employee-service` obtains salary data only through the
+      `SalaryService` Java interface (never by JPA association or SQL join). `departments`,
+      `job_titles`, `job_grades`, `locations` are read-only reference data owned by `reference`
+      (P0).
+    * **Identity is always `jwt.empId`.** No request body or query parameter of a write operation
+      carries the acting employee's identity; `createdBy` / `modifiedBy` / `changedBy` come from
+      the `SecurityContext` (JPA auditing). `{id}` path variables identify the *subject*
+      employee and are authorised by the `x-preauthorize` authority plus the row-level "self"
+      rule stated per operation; a caller outside the scope receives `403 FORBIDDEN`, never
+      `404`.
+    * **Employee number** (`empNumber`, `EMP-000001`) is server-assigned from `SEQ_EMP_NUMBER`
+      (`'EMP-' || LPAD(nextval, 6, '0')`, BUG-01/PERF-04/DATA-03 - not `MAX()+1`) and is
+      read-only in the API: it is not a property of `EmployeeCreateRequest` /
+      `EmployeeUpdateRequest`; a body containing `empNumber` is rejected with
+      `400 VALIDATION_FAILED` (`additionalProperties: false`). `-20002` is therefore documented
+      as **unreachable** and kept only for Level 2 parity.
+    * **Lifecycle:** there is no `DELETE /api/employees/{id}` and no other route physically
+      deletes an `employees` row (`-20504`: a proxy-level `DELETE` reaches the framework
+      `405 METHOD_NOT_ALLOWED` handler which renders `ApiError.code = "-20504"`). Termination is
+      the only way to leave `ACTIVE` (`POST …/terminate`); `PUT` never changes
+      `employmentStatus`, `hireDate`, `deptId`, `terminationDate` or `terminationReason`, and a
+      `PUT`/`transfer` against a `TERMINATED` employee is `422 -20503` / `422 -20012`. Re-hire
+      (`PKG_EMPLOYEE.rehire_employee`) is **not** in this contract (P5 candidate); no operation
+      in this file can move an employee from `TERMINATED` back to `ACTIVE`.
+    * Every documented failure is an `ApiError {code, message, field?, traceId}` built by the
+      single `GlobalExceptionHandler`. `code` is the legacy `-20xxx` string where one exists
+      (`error-codes.md` §1 - exactly the 14 codes listed there), otherwise a P0 framework code
+      or one of the framework codes in `error-codes.md` §2.
+    * Authorization is the `x-preauthorize` expression exactly as it must appear in
+      `@PreAuthorize(...)`. Vocabulary: P0 `EMPLOYEE:VIEW` (granted to everyone),
+      `EMPLOYEE:EDIT` (HR), `PAYROLL:VIEW`; Phase 3 adds `PAYROLL:EDIT` (salary changes) whose
+      role seeding is a P3 backend migration, not this contract.
+    * **Validation** is exactly the `p3-employee` module of
+      `frontend/src/generated/validation-schema.json` (exported from
+      `backend/hrms-validation/.../dto/employee/`). Server rules win over the retired
+      `HRMS_VALIDATION_LIB.pll` rules (COMPONENT_MAPPING.md §8): e-mail is Bean Validation
+      `@Email` (sub-domains accepted, VAL-02); phone is `PKG_COMMON.is_valid_phone` (10 or 11
+      digits after stripping non-digits, VAL-03); SSN is `@Ssn` (9 digits, optional dashes, no
+      all-zero group); hire date is `@HireDateWithinLimit` (single limit
+      `HR.MAX_FUTURE_HIRE_DAYS = 90`, VAL-01 resolved per TEST_STRATEGY.md §4 - the trigger's
+      180 is **not** reproduced). Blank strings are normalised to `null` before validation.
+    * **SSN handling:** the plain SSN is accepted only in `EmployeeCreateRequest`,
+      `EmployeeUpdateRequest` and `DependentRequest` (`sensitive: true` in the exported schema -
+      masked input), is encrypted at the service boundary (`HRMS_FIELD_KEY_BASE64`, AES-GCM) and
+      is **never echoed**: responses carry `ssnLast4` only, and only to callers holding
+      `EMPLOYEE:EDIT` or reading their own record; every other caller receives `null`. `ssn`
+      absent or `null` on `PUT` means "unchanged" (an SSN cannot be cleared through the API).
+    * **Money** (`baseSalary`, `gradeMinSalary`, …) travels as a decimal string with two
+      decimals (P0 convention, never a float). Dates are ISO-8601 `date`; timestamps
+      `date-time` (UTC).
+    * **Proxy flag:** all `GET` routes of this file are mounted at `employee=NEW_READONLY`
+      (CUTOVER_PLAN.md §7 step 3, "React read/search/detail routes"); the write routes
+      (`POST`, `PUT`) are mounted only at `employee=NEW`. The frontend gates every write control
+      (create, edit, terminate, transfer, salary change, dependent/contact edit) on
+      `isModulePromoted('employee')` (`frontend/src/app/modules.ts`); at `NEW_READONLY` a write
+      that reaches the backend anyway is `409 MODULE_READ_ONLY`. `/api/reference/**` is always
+      served by Spring Boot (P0).
+    * **Optimistic locking:** `EmployeeDetail.version` (JPA `@Version`) must be sent back in the
+      `If-Match` header of `PUT /api/employees/{id}`; a stale version is `409 CONFLICT` with the
+      frozen message `Record was changed by another user` (Forms `FRM-40501` mapping,
+      COMPONENT_MAPPING.md §3.2).
+    * Every state-changing operation writes an `audit_log` row (`hrms-audit`) and, where listed
+      in `x-history`, an `employee_history` row against the **real** DDL columns (BUG-03), so the
+      Level 2/3 diffs on `AUDIT_LOG` / `EMPLOYEE_HISTORY` are empty.
+    * **Declared, intentional differences vs legacy** (the only Level 2 whitelist rows for this
+      phase, see `error-codes.md` §4): BUG-01 (`MAX()+1` employee numbers), BUG-03 (trigger's
+      phantom history columns), BUG-07 (termination now revokes sessions / disables login),
+      VAL-01 (single 90-day hire-date limit), VAL-02/VAL-03 (server e-mail / phone rules), the
+      SSN "no echo" rule (legacy `VW_EMPLOYEE_DETAILS` exposed `SSN_ENCRYPTED`), and the
+      `Cascading` delete of `EMP_SALARY_REL` (dead code once `-20504` holds).
+
+servers:
+  - url: /
+    description: Same origin as the P0 shell; routed by the P0 proxy (`employee=NEW_READONLY|NEW`).
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: employees
+    description: Employee master (`EMPLOYEE` block, `PKG_EMPLOYEE`) - owned by `employee-service`
+  - name: employee-lifecycle
+    description: Terminate / transfer (`PKG_EMPLOYEE.terminate_employee`, `transfer_employee`)
+  - name: salary
+    description: Salary records (`SALARY` block, `PKG_PAYROLL.create_salary_record`) - owned by `salary-module`
+  - name: employee-related
+    description: History, dependents, emergency contacts (tables without form source)
+  - name: reference
+    description: P0 reference endpoints re-confirmed for this phase (unchanged)
+
+paths:
+  # ---------------------------------------------------------------------------
+  # employees
+  # ---------------------------------------------------------------------------
+  /api/employees:
+    get:
+      tags: [employees]
+      operationId: listEmployees
+      summary: Paged, filtered employee search (Enter-Query replacement) and manager LOV
+      description: |
+        Replaces `EXECUTE_QUERY` in Enter-Query mode on the `EMPLOYEE` block and
+        `PKG_EMPLOYEE.search_employees` (dynamic SQL, SEC-03) with a JPA `Specification`.
+        Supersedes the Phase 0 slice of this route: the P0 parameters (`status`, `fields`,
+        `q`, `excludeSelf`, `page`, `size`) keep their names and semantics; `fields` is now
+        optional (`id,name,jobTitle` → `PageOfEmployeeSummary`, absent → `PageOfEmployeeListItem`)
+        and `status` accepts every `EmploymentStatus` (default: no status filter - the form
+        showed all rows; `active=true` filters `ACTIVE_FLAG='Y'`).
+
+        Rules:
+        * `lastName` / `firstName` are case-insensitive prefix matches (`UPPER(col) LIKE
+          UPPER(:v) || '%'`, as `search_employees`); `q` is the P0 token search over
+          `firstName`, `lastName`, `firstName || ' ' || lastName`, `empNumber`.
+        * `hireDateFrom` / `hireDateTo` are inclusive; `hireDateFrom > hireDateTo` is
+          `400 VALIDATION_FAILED` (`field = hireDateTo`).
+        * Sorted `lastName, firstName, empId`; page size default 20, max 100.
+        * Manager LOV (`RG_MANAGERS`): `status=ACTIVE&fields=id,name,jobTitle&q=&excludeSelf=true`.
+        * No sensitive column (`ssnLast4`, `dateOfBirth`, address) is part of the list projection.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      parameters:
+        - in: query
+          name: lastName
+          schema: { type: string, maxLength: 50 }
+        - in: query
+          name: firstName
+          schema: { type: string, maxLength: 50 }
+        - in: query
+          name: q
+          description: Free-text search over name / employee number (P0 semantics).
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: deptId
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: jobId
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: managerEmpId
+          description: Direct reports of this manager.
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/EmploymentStatus'
+        - in: query
+          name: active
+          description: "`true` → `ACTIVE_FLAG='Y'` only; absent → all rows."
+          schema: { type: boolean }
+        - in: query
+          name: locationCode
+          schema: { type: string, pattern: '^[A-Z0-9]{1,10}$' }
+        - in: query
+          name: hireDateFrom
+          schema: { type: string, format: date }
+        - in: query
+          name: hireDateTo
+          schema: { type: string, format: date }
+        - in: query
+          name: fields
+          description: Projection. Only `id,name,jobTitle` (manager LOV) is accepted; absent → full list item.
+          schema:
+            type: string
+            enum: ["id,name,jobTitle"]
+        - in: query
+          name: excludeSelf
+          description: Removes `jwt.empId` from the result (manager LOV).
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of employees (`PageOfEmployeeSummary` when `fields=id,name,jobTitle`)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PageOfEmployeeListItem'
+                  - $ref: '#/components/schemas/PageOfEmployeeSummary'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [employees]
+      operationId: createEmployee
+      summary: Hire a new employee
+      description: |
+        Replaces Forms `PRE-INSERT` + `TRG_EMP_BEFORE_INSERT` + `PKG_EMPLOYEE.create_employee`
+        as the **only** insert path into `employees`.
+
+        Server steps (single transaction, frozen order - `error-codes.md` §3):
+        1. Bean Validation (`EmployeeCreateRequest`, exported schema) → `400 VALIDATION_FAILED`
+           (`-20010` when `firstName`/`lastName` is blank; `-20501` when `hireDate > today +
+           HR.MAX_FUTURE_HIRE_DAYS`; `-20101` when `initialSalary <= 0`).
+        2. `deptId` must exist with `active_flag='Y'` → `400 -20003`; `jobId` likewise →
+           `400 -20011`; `managerEmpId` (if given) must be an `ACTIVE`/`active_flag='Y'` employee
+           → `400 -20004`; `locationCode` (if given) must be an active location →
+           `400 VALIDATION_FAILED` (`field = locationCode`).
+        3. Active e-mail uniqueness, case-insensitive (`TRG_EMP_BEFORE_INSERT`) → `409 -20502`.
+        4. `empNumber := 'EMP-' || LPAD(SEQ_EMP_NUMBER.nextval, 6, '0')`;
+           `employmentStatus = ACTIVE`, `activeFlag = 'Y'`, `employmentType` default `FULL_TIME`,
+           `ssn` encrypted; `createdBy = jwt.username`.
+        5. When `initialSalary` is present, `salary-module.SalaryService.create(empId,
+           baseSalary = initialSalary, effectiveDate = hireDate, changeReason = 'INITIAL',
+           payFrequency = MONTHLY, salaryBasis = ANNUAL)` runs in the same transaction
+           (`PKG_EMPLOYEE.create_employee` did this inline; ownership now sits with salary-module).
+        6. `employee_history` row `HIRE` (`new_dept_id`, `new_job_id`, `new_manager_id`,
+           `new_salary`, `new_location`, `effective_date = hireDate`); `audit_log` `INSERT`.
+        Response `201` with `Location: /api/employees/{id}` and the full `EmployeeDetail`
+        (`ssnLast4` populated - the caller holds `EMPLOYEE:EDIT`).
+      x-preauthorize: hasAuthority('EMPLOYEE:EDIT')
+      x-module-flag: employee=NEW
+      x-history: [HIRE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeCreateRequest'
+      responses:
+        '201':
+          description: Employee created
+          headers:
+            Location: { schema: { type: string }, description: "`/api/employees/{id}`" }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '400':
+          description: "`VALIDATION_FAILED`, `-20010`, `-20501`, `-20101` (body) or `-20003`, `-20011`, `-20004` (references)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                nameRequired:
+                  value: { code: "-20010", message: "First name and last name are required", field: lastName, traceId: 4f3c… }
+                hireDateTooFar:
+                  value: { code: "-20501", message: "Hire date cannot be more than 90 days in the future", field: hireDate, traceId: 4f3c… }
+                inactiveDepartment:
+                  value: { code: "-20003", message: "Invalid or inactive department: 42", field: deptId, traceId: 4f3c… }
+                circularManager:
+                  value: { code: "-20004", message: "Circular reporting chain detected: Employee 42 cannot report to 7", field: managerEmpId, traceId: 4f3c… }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`-20502` e-mail already used by an active employee; `-20002` duplicate employee number (unreachable with `SEQ_EMP_NUMBER`, kept for parity); `MODULE_READ_ONLY` at `employee=NEW_READONLY`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: "-20502", message: "Email address already in use: jane.doe@acme.com", field: email, traceId: 4f3c… }
+
+  /api/employees/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [employees]
+      operationId: getEmployee
+      summary: Employee detail (Personal + Job & Compensation tabs)
+      description: |
+        Replaces the `EMPLOYEE` block query with its three `POST-QUERY` lookups
+        (`DEPT_NAME_DISP`, `JOB_TITLE_DISP`, `MANAGER_NAME_DISP`) by one `@EntityGraph` join
+        (`VW_EMPLOYEE_DETAILS` semantics without the view). Returns `TERMINATED` employees too
+        (the form did). Salary is **not** embedded - the Job & Compensation tab calls
+        `GET …/salary` (salary-module) separately.
+
+        Field scoping: `ssnLast4` is `null` unless the caller holds `EMPLOYEE:EDIT` or
+        `jwt.empId == id`. `dateOfBirth`, address and `notes` are returned to any
+        `EMPLOYEE:VIEW` holder (as the legacy form did; tightening is a P5 SEC item, not this
+        contract).
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      responses:
+        '200':
+          description: Employee
+          headers:
+            ETag: { schema: { type: string }, description: "`\"{version}\"` - send back as `If-Match` on `PUT`" }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+    put:
+      tags: [employees]
+      operationId: updateEmployee
+      summary: Update personal / job attributes (full replacement of the editable set)
+      description: |
+        Replaces Forms `PRE-UPDATE` DML + `TRG_EMP_BEFORE_UPDATE` + `PKG_EMPLOYEE.update_employee`.
+        Editable set = the properties of `EmployeeUpdateRequest`; every omitted nullable
+        property is set to `null` (PUT semantics) **except** `ssn` (absent/`null` = unchanged).
+
+        Not editable here (frozen): `empNumber`, `hireDate`, `deptId` (use `transfer`),
+        `employmentStatus`, `terminationDate`, `terminationReason`, `activeFlag`. A body
+        carrying any of them is `400 VALIDATION_FAILED` (`additionalProperties: false`).
+
+        Server steps (frozen order): `If-Match` present → else `428 PRECONDITION_REQUIRED`;
+        Bean Validation (`-20010`) → subject exists (`404 -20001`) → subject is not
+        `TERMINATED` (`422 -20503`, the trigger's "use rehire process" rule generalised to every
+        write) → `jobId` active (`400 -20011`) → `managerEmpId` active, not self, not in the
+        subject's reporting chain (`400 -20004`, `assertAcyclicManagerChain`) → e-mail unique
+        among active employees excluding self (`409 -20502`, closes the SEC-10 update gap) →
+        version matches (`409 CONFLICT`) → update; `employee_history` `PROMOTION` when
+        `jobId` changed (`old_job_id`/`new_job_id`, `reason_code = 'JOB_CHANGE'`) and
+        `STATUS_CHANGE` is **never** written by this operation; `audit_log` `UPDATE` with the
+        changed columns (SSN recorded as `***`).
+      x-preauthorize: hasAuthority('EMPLOYEE:EDIT')
+      x-module-flag: employee=NEW
+      x-history: [PROMOTION]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeUpdateRequest'
+      responses:
+        '200':
+          description: Updated employee
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '400':
+          description: "`VALIDATION_FAILED`, `-20010`, `-20011`, `-20004`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          description: "`-20502` e-mail in use; `CONFLICT` stale `If-Match`; `MODULE_READ_ONLY`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                emailInUse:
+                  value: { code: "-20502", message: "Email address already in use: jane.doe@acme.com", field: email, traceId: 4f3c… }
+                stale:
+                  value: { code: CONFLICT, message: "Record was changed by another user", traceId: 4f3c… }
+        '422':
+          $ref: '#/components/responses/DirectReactivationForbidden'
+        '428':
+          description: "`PRECONDITION_REQUIRED`: `If-Match` header missing"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  # ---------------------------------------------------------------------------
+  # lifecycle
+  # ---------------------------------------------------------------------------
+  /api/employees/{id}/terminate:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    post:
+      tags: [employee-lifecycle]
+      operationId: terminateEmployee
+      summary: Terminate an employee (the only "delete")
+      description: |
+        Replaces `PKG_EMPLOYEE.terminate_employee` and the Forms "delete → `ACTIVE_FLAG='N'`"
+        workaround (`TRG_EMP_INSTEAD_OF_DELETE`, `-20504`).
+
+        Server steps (frozen order): Bean Validation → subject exists (`404 -20001`) →
+        `employmentStatus <> TERMINATED` (`422 -20005`) → `effectiveDate >= hireDate`
+        (`400 VALIDATION_FAILED`, `field = effectiveDate`) → set `employmentStatus = TERMINATED`,
+        `activeFlag = 'N'`, `terminationDate = effectiveDate`, `terminationReason = reason` →
+        `salary-module.SalaryService.closeActive(empId, effectiveDate)` (the active
+        `salary_records` row gets `end_date = effectiveDate`, `active_flag = 'N'`; no row →
+        no-op, as the legacy `UPDATE … WHERE ACTIVE_FLAG='Y'`) → `employee_history`
+        `TERMINATION` (`reason_code = reason`, `comments`) → `audit_log` → BUG-07:
+        `AuthService.revokeSessions(empId)` and `EmployeeTerminatedEvent` published (consumed by
+        leave/payroll in later phases). Idempotency: a second call is `422 -20005`.
+      x-preauthorize: hasAuthority('EMPLOYEE:EDIT')
+      x-module-flag: employee=NEW
+      x-history: [TERMINATION]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeTerminateRequest'
+      responses:
+        '200':
+          description: Terminated employee (`employmentStatus = TERMINATED`, `active = false`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          description: "`-20005`: employee is already terminated"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: "-20005", message: "Employee 42 is already terminated", traceId: 4f3c… }
+
+  /api/employees/{id}/transfer:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    post:
+      tags: [employee-lifecycle]
+      operationId: transferEmployee
+      summary: Transfer to another department (optionally job / manager / location)
+      description: |
+        Replaces `PKG_EMPLOYEE.transfer_employee`. The only operation that changes `deptId`.
+
+        Server steps (frozen order): Bean Validation → subject exists (`404 -20001`) →
+        `employmentStatus = ACTIVE` (`422 -20012`, "Cannot transfer non-active employee") →
+        `deptId` active (`400 -20003`) → `newJobId` active if given (`400 -20011`) →
+        `newManagerEmpId` active, not self, acyclic if given (`400 -20004`) → `newLocationCode`
+        active if given (`400 VALIDATION_FAILED`) → update `deptId` (+ `jobId`, `managerEmpId`,
+        `locationCode` when given) → `employee_history` `TRANSFER` with `old_/new_dept_id`,
+        `old_/new_job_id`, `old_/new_manager_id`, `old_/new_location`, `reason_code`,
+        `comments`, `effective_date` → `audit_log`. A transfer to the current department with no
+        other change is accepted and still recorded (legacy did the same).
+      x-preauthorize: hasAuthority('EMPLOYEE:EDIT')
+      x-module-flag: employee=NEW
+      x-history: [TRANSFER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeTransferRequest'
+      responses:
+        '200':
+          description: Employee after transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '400':
+          description: "`VALIDATION_FAILED`, `-20003`, `-20011`, `-20004`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          description: "`-20012`: employee is not `ACTIVE`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: "-20012", message: "Cannot transfer non-active employee. Status: TERMINATED", traceId: 4f3c… }
+
+  # ---------------------------------------------------------------------------
+  # salary (salary-module)
+  # ---------------------------------------------------------------------------
+  /api/employees/{id}/salary:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [salary]
+      operationId: getCurrentSalary
+      summary: Current (active) salary record
+      description: |
+        `salary-module`. `SELECT … FROM salary_records WHERE emp_id = :id AND active_flag = 'Y'`
+        (exactly one row by invariant). Row-level scope: `PAYROLL:VIEW` holders and
+        `EMPLOYEE:EDIT` holders see any employee; every other caller only `jwt.empId == id`
+        (`403 FORBIDDEN` otherwise). `400 -20104` when the employee has no active salary record
+        (`PKG_PAYROLL` "No active salary record", §11 status 400); `404 -20001` when the employee does not exist.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Active salary record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalaryRecord'
+        '400':
+          description: "`-20104`: the employee has no active salary record"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: "-20104", message: "No active salary record for employee 42", traceId: 4f3c… }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+    post:
+      tags: [salary]
+      operationId: changeSalary
+      summary: Record a salary change ("Adjust salary" dialog)
+      description: |
+        `salary-module`. Replaces `PKG_PAYROLL.create_salary_record` (API-only in legacy; the
+        Forms `SALARY` block was read-only). Invariant preserved: exactly one `active_flag='Y'`
+        row per employee.
+
+        Server steps (frozen order): Bean Validation (`-20101` when `baseSalary <= 0`) →
+        subject exists and is `ACTIVE` (`404 -20001`) → `effectiveDate >= hireDate` and, when
+        an active row exists, `effectiveDate >= current.effectiveDate` (`400 VALIDATION_FAILED`,
+        `field = effectiveDate`) → close the current active row (`end_date = effectiveDate`,
+        `active_flag = 'N'`) → insert the new row with `change_pct = ROUND((new - old) / old *
+        100, 2)` (`null` when there was no previous row or `old = 0`) → `employee_history`
+        `SALARY_CHANGE` (`old_salary`, `new_salary`, `reason_code = changeReason`) → `audit_log`
+        (`TRG_SALARY_AUDIT` replacement). Out of grade band (`JobTitleRef.gradeMinSalary /
+        gradeMaxSalary`) is **not** an error: the UI pre-warns, the server records
+        `outOfGradeBand = true` on the response (COMPONENT_MAPPING.md §8 `validate_salary_range`
+        is advisory).
+      x-preauthorize: hasAuthority('PAYROLL:EDIT')
+      x-module-flag: employee=NEW
+      x-history: [SALARY_CHANGE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalaryChangeRequest'
+      responses:
+        '201':
+          description: New active salary record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalaryRecord'
+        '400':
+          description: "`VALIDATION_FAILED`; `-20101` salary must be positive"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { code: "-20101", message: "Salary must be positive: 0", field: baseSalary, traceId: 4f3c… }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+
+  /api/employees/{id}/salary/history:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [salary]
+      operationId: listSalaryHistory
+      summary: Salary history grid (all records, newest first)
+      description: |
+        `salary-module`. Replaces the `SALARY` detail block (`EMP_SALARY_REL` auto-query,
+        `RecordsDisplayed=5`): `ORDER BY effective_date DESC, salary_id DESC`, no paging (the
+        grid scrolled). Same row-level scope as `GET …/salary`. Empty array when the employee
+        has no salary records; `404 -20001` when the employee does not exist.
+      x-preauthorize: isAuthenticated()
+      responses:
+        '200':
+          description: Salary records, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SalaryRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  # ---------------------------------------------------------------------------
+  # history / dependents / contacts (employee-service)
+  # ---------------------------------------------------------------------------
+  /api/employees/{id}/history:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [employee-related]
+      operationId: listEmployeeHistory
+      summary: Employment history (tab `TP_HISTORY`, read-only)
+      description: |
+        `employee_history` rows for the employee, `ORDER BY effective_date DESC, hist_id DESC`,
+        joined to the department / job / manager names for display. Read-only: rows are written
+        only by the operations marked `x-history` in this file (never by a client). `oldSalary` /
+        `newSalary` are returned only to callers in the salary read scope (`PAYROLL:VIEW`,
+        `EMPLOYEE:EDIT`, self), otherwise `null`.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+
+  /api/employees/{id}/dependents:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [employee-related]
+      operationId: listDependents
+      summary: Dependents (tab `TP_DEPENDENTS`)
+      description: |
+        Active dependents (`active_flag='Y'`) ordered `lastName, firstName`. Row-level scope:
+        `EMPLOYEE:EDIT` holders see any employee's dependents; other callers only their own
+        (`jwt.empId == id`, `403` otherwise). `ssnLast4` is never `null`-scoped further inside
+        this scope; the dependent SSN is never echoed.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      responses:
+        '200':
+          description: Dependents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dependent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+    post:
+      tags: [employee-related]
+      operationId: addDependent
+      summary: Add a dependent
+      description: |
+        Insert into `employee_dependents` (`SEQ_DEPENDENT`, `active_flag='Y'`, SSN encrypted).
+        Scope: `EMPLOYEE:EDIT` or self. Subject must exist (`404 -20001`); a `TERMINATED`
+        subject is `422 -20503`. `audit_log` `INSERT`.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      x-module-flag: employee=NEW
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependentRequest'
+      responses:
+        '201':
+          description: Dependent created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dependent'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          $ref: '#/components/responses/DirectReactivationForbidden'
+
+  /api/employees/{id}/dependents/{dependentId}:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+      - in: path
+        name: dependentId
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    put:
+      tags: [employee-related]
+      operationId: updateDependent
+      summary: Update a dependent (full replacement; `ssn` absent = unchanged)
+      description: |
+        Scope: `EMPLOYEE:EDIT` or self. `404 DEPENDENT_NOT_FOUND` when `dependentId` does not
+        belong to `{id}` or is inactive. Setting `active = false` in the body is the only way to
+        remove a dependent (soft delete; there is no `DELETE`). `audit_log` `UPDATE`.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      x-module-flag: employee=NEW
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependentRequest'
+      responses:
+        '200':
+          description: Updated dependent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dependent'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: "`-20001` employee not found; `DEPENDENT_NOT_FOUND`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          $ref: '#/components/responses/DirectReactivationForbidden'
+
+  /api/employees/{id}/contacts:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+    get:
+      tags: [employee-related]
+      operationId: listEmergencyContacts
+      summary: Emergency contacts
+      description: |
+        Active `emergency_contacts` rows ordered `priorityOrder, contactId`. Scope: `EMPLOYEE:EDIT`
+        or self (`403` otherwise). Path is `/contacts` (COMPONENT_MAPPING.md §3.1 spelled it
+        `emergency-contacts`; this contract freezes the shorter form used by the P3 assignment).
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      responses:
+        '200':
+          description: Emergency contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmergencyContact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+    post:
+      tags: [employee-related]
+      operationId: addEmergencyContact
+      summary: Add an emergency contact
+      description: |
+        Insert into `emergency_contacts` (`SEQ_EMERGENCY_CONTACT`). Scope: `EMPLOYEE:EDIT` or
+        self. `priorityOrder` default `1`; duplicates are allowed (legacy had no unique rule).
+        `TERMINATED` subject → `422 -20503`. `audit_log` `INSERT`.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      x-module-flag: employee=NEW
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactRequest'
+      responses:
+        '201':
+          description: Contact created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContact'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EmployeeNotFound'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          $ref: '#/components/responses/DirectReactivationForbidden'
+
+  /api/employees/{id}/contacts/{contactId}:
+    parameters:
+      - $ref: '#/components/parameters/EmployeeId'
+      - in: path
+        name: contactId
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    put:
+      tags: [employee-related]
+      operationId: updateEmergencyContact
+      summary: Update an emergency contact (full replacement)
+      description: |
+        Scope: `EMPLOYEE:EDIT` or self. `404 CONTACT_NOT_FOUND` when `contactId` does not belong
+        to `{id}` or is inactive. `active = false` soft-deletes (no `DELETE`). `audit_log`
+        `UPDATE`.
+      x-preauthorize: hasAuthority('EMPLOYEE:VIEW')
+      x-module-flag: employee=NEW
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactRequest'
+      responses:
+        '200':
+          description: Updated contact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContact'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: "`-20001` employee not found; `CONTACT_NOT_FOUND`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          $ref: '#/components/responses/ModuleReadOnly'
+        '422':
+          $ref: '#/components/responses/DirectReactivationForbidden'
+
+  # ---------------------------------------------------------------------------
+  # reference (P0, re-confirmed - unchanged)
+  # ---------------------------------------------------------------------------
+  /api/reference/departments:
+    get:
+      tags: [reference]
+      operationId: listDepartments
+      summary: P0 `listDepartments` - unchanged (`RG_DEPARTMENTS`)
+      description: Identical to `contracts/p0-foundation/openapi.yaml`. `active=true` for the LOV.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DepartmentRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reference/job-titles:
+    get:
+      tags: [reference]
+      operationId: listJobTitles
+      summary: P0 `listJobTitles` - unchanged; `gradeMinSalary` / `gradeMaxSalary` re-confirmed
+      description: |
+        Identical to `contracts/p0-foundation/openapi.yaml`. `JobTitleRef.gradeMinSalary` /
+        `gradeMaxSalary` (`JOB_GRADES.MIN_SALARY` / `MAX_SALARY`) are the values the salary
+        dialog uses to pre-warn; the server never rejects an out-of-band salary
+        (`SalaryRecord.outOfGradeBand`).
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Job titles with grade bounds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobTitleRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/reference/locations:
+    get:
+      tags: [reference]
+      operationId: listLocations
+      summary: P0 `listLocations` - unchanged (`RG_LOCATIONS`)
+      description: Identical to `contracts/p0-foundation/openapi.yaml`.
+      x-preauthorize: isAuthenticated()
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+
+  parameters:
+    EmployeeId:
+      in: path
+      name: id
+      required: true
+      description: "`EMPLOYEES.EMP_ID` (never the `empNumber`)."
+      schema: { type: integer, format: int64, minimum: 1 }
+    IfMatch:
+      in: header
+      name: If-Match
+      required: true
+      description: "`EmployeeDetail.version` as returned by the last `GET`/`PUT` (`\"7\"`)."
+      schema: { type: string, pattern: '^"?[0-9]+"?$' }
+    ActiveFilter:
+      in: query
+      name: active
+      required: false
+      schema: { type: boolean, default: true }
+    Page:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      in: query
+      name: size
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationFailed:
+      description: Bean Validation / unsupported query value (`hrms-validation` rules, see `validation-schema.json` module `p3-employee`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: VALIDATION_FAILED, message: Phone number must contain 10 or 11 digits, field: phoneWork, traceId: 4f3c… }
+    Unauthorized:
+      description: Missing / invalid / revoked token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: TOKEN_INVALID, message: Access token is missing or invalid, traceId: 4f3c… }
+    Forbidden:
+      description: "`@PreAuthorize` denied or caller outside the row-level scope (self / `EMPLOYEE:EDIT` / `PAYROLL:VIEW`)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: FORBIDDEN, message: Access denied, traceId: 4f3c… }
+    EmployeeNotFound:
+      description: "`-20001`: `{id}` matches no `employees` row"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20001', message: Employee not found or not active, traceId: 4f3c… }
+    DirectReactivationForbidden:
+      description: "`-20503`: write against a `TERMINATED` employee (direct reactivation / edit forbidden - use the rehire process, not in this contract)"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: '-20503', message: 'Cannot directly reactivate a terminated employee. Use the rehire process.', traceId: 4f3c… }
+    ModuleReadOnly:
+      description: "`MODULE_READ_ONLY`: write route reached while `employee=NEW_READONLY`"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { code: MODULE_READ_ONLY, message: Employee module is read-only during cutover, traceId: 4f3c… }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, traceId]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Legacy `-20xxx` as a string, or a framework code (`error-codes.md`).
+        message: { type: string }
+        field:
+          type: [string, 'null']
+          description: Offending request field (body property, header or query parameter name) when attributable.
+        traceId:
+          type: string
+          description: Correlates with `error_log.trace_id` / `X-Trace-Id`.
+        details:
+          type: array
+          description: All violations for `VALIDATION_FAILED`.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    Authority:
+      type: string
+      description: |
+        P0 vocabulary plus the Phase 3 addition `PAYROLL:EDIT` (record salary changes). Seeding
+        (Flyway migration owned by the P3 backend node): `EXECUTIVE` (grade >= 8) and the HR
+        role get `EMPLOYEE:EDIT` and `PAYROLL:EDIT`; `PAYROLL:VIEW` keeps its P0 seeding;
+        `EMPLOYEE:VIEW` stays granted to everyone (`PKG_SECURITY.has_permission`).
+      pattern: '^(PAYROLL|EMPLOYEE|LEAVE|ADMIN|REPORTS|PERFORMANCE):(VIEW|EDIT|APPROVE|CREATE|ADMIN|VIEW_ALL)$'
+      examples: [EMPLOYEE:VIEW, EMPLOYEE:EDIT, PAYROLL:VIEW, PAYROLL:EDIT]
+
+    Money:
+      type: string
+      pattern: '^-?[0-9]+\.[0-9]{2}$'
+      description: Decimal string with exactly two decimals (`NUMBER(12,2)`); never a float.
+
+    EmploymentStatus:
+      type: string
+      enum: [ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED]
+      description: "`EMPLOYEES.CHK_EMP_STATUS`. `ON_LEAVE`/`SUSPENDED` are not produced by any P3 operation (accepted in filters)."
+    EmploymentType:
+      type: string
+      enum: [FULL_TIME, PART_TIME, CONTRACT, INTERN]
+    Gender:
+      type: string
+      enum: [M, F, O]
+    Relationship:
+      type: string
+      enum: [SPOUSE, CHILD, PARENT, DOMESTIC_PARTNER, OTHER]
+      description: "`EMPLOYEE_DEPENDENTS.CHK_RELATIONSHIP`"
+    HistoryChangeType:
+      type: string
+      enum: [HIRE, TRANSFER, PROMOTION, DEMOTION, SALARY_CHANGE, TERMINATION, REHIRE, LEAVE_START, LEAVE_END, STATUS_CHANGE]
+      description: "`EMPLOYEE_HISTORY.CHK_CHANGE_TYPE`. P3 writes `HIRE`, `TRANSFER`, `PROMOTION`, `SALARY_CHANGE`, `TERMINATION`; the others are read-only legacy/seed values."
+    PayFrequency:
+      type: string
+      enum: [WEEKLY, BIWEEKLY, SEMIMONTHLY, MONTHLY]
+    SalaryBasis:
+      type: string
+      enum: [ANNUAL, HOURLY]
+
+    # --------------------------------------------------------------- requests
+    EmployeeCreateRequest:
+      type: object
+      description: |
+        `hrms-validation` `dto/employee/EmployeeCreateRequest`. No `empNumber`, no
+        `employmentStatus`, no acting-user identity. Blank strings → `null`.
+      required: [firstName, lastName, hireDate, deptId, jobId]
+      additionalProperties: false
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 50 }
+        middleName: { type: [string, 'null'], maxLength: 50 }
+        lastName: { type: string, minLength: 1, maxLength: 50 }
+        dateOfBirth: { type: [string, 'null'], format: date, description: "Must not be in the future." }
+        gender:
+          oneOf:
+            - $ref: '#/components/schemas/Gender'
+            - type: 'null'
+        maritalStatus: { type: [string, 'null'], maxLength: 10 }
+        nationality: { type: [string, 'null'], maxLength: 50 }
+        ssn:
+          type: [string, 'null']
+          pattern: '^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$'
+          maxLength: 11
+          writeOnly: true
+          description: "`@Ssn`: 9 digits, optional dashes, no all-zero group. Encrypted at rest, never echoed (`ssnLast4` only)."
+        email:
+          type: [string, 'null']
+          format: email
+          maxLength: 100
+          description: Bean Validation `@Email` (VAL-02 - sub-domains accepted). Unique among active employees (`-20502`).
+        phoneWork:
+          type: [string, 'null']
+          maxLength: 30
+          pattern: '^(?:\D*\d){10,11}\D*$'
+          description: "`PKG_COMMON.is_valid_phone`: 10 or 11 digits after stripping non-digits (VAL-03)."
+        phoneMobile:
+          type: [string, 'null']
+          maxLength: 30
+          pattern: '^(?:\D*\d){10,11}\D*$'
+        addressLine1: { type: [string, 'null'], maxLength: 200 }
+        addressLine2: { type: [string, 'null'], maxLength: 200 }
+        city: { type: [string, 'null'], maxLength: 100 }
+        stateProvince: { type: [string, 'null'], maxLength: 100 }
+        postalCode: { type: [string, 'null'], maxLength: 20 }
+        countryCode: { type: [string, 'null'], pattern: '^[A-Z]{2,3}$' }
+        hireDate:
+          type: string
+          format: date
+          description: "`@HireDateWithinLimit`: `<= today + HR.MAX_FUTURE_HIRE_DAYS (90)` → `-20501`."
+        deptId: { type: integer, format: int64, minimum: 1, description: "Active department (`-20003`)." }
+        jobId: { type: integer, format: int64, minimum: 1, description: "Active job title (`-20011`)." }
+        managerEmpId: { type: [integer, 'null'], format: int64, minimum: 1, description: "Active employee, acyclic (`-20004`)." }
+        locationCode: { type: [string, 'null'], pattern: '^[A-Z0-9]{1,10}$' }
+        employmentType:
+          oneOf:
+            - $ref: '#/components/schemas/EmploymentType'
+            - type: 'null'
+          description: Default `FULL_TIME`.
+        initialSalary:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: "`> 0` (`-20101`). Written by `salary-module` in the hire transaction (`changeReason = INITIAL`)."
+        notes: { type: [string, 'null'], maxLength: 4000 }
+
+    EmployeeUpdateRequest:
+      type: object
+      description: |
+        `dto/employee/EmployeeUpdateRequest`. Full replacement of the editable set. Excludes
+        `empNumber`, `hireDate`, `deptId` (transfer), `employmentStatus`, termination fields.
+      required: [firstName, lastName, jobId]
+      additionalProperties: false
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 50 }
+        middleName: { type: [string, 'null'], maxLength: 50 }
+        lastName: { type: string, minLength: 1, maxLength: 50 }
+        dateOfBirth: { type: [string, 'null'], format: date }
+        gender:
+          oneOf:
+            - $ref: '#/components/schemas/Gender'
+            - type: 'null'
+        maritalStatus: { type: [string, 'null'], maxLength: 10 }
+        nationality: { type: [string, 'null'], maxLength: 50 }
+        ssn:
+          type: [string, 'null']
+          pattern: '^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$'
+          maxLength: 11
+          writeOnly: true
+          description: Absent / `null` = unchanged (an SSN cannot be cleared through the API).
+        email: { type: [string, 'null'], format: email, maxLength: 100 }
+        phoneWork: { type: [string, 'null'], maxLength: 30, pattern: '^(?:\D*\d){10,11}\D*$' }
+        phoneMobile: { type: [string, 'null'], maxLength: 30, pattern: '^(?:\D*\d){10,11}\D*$' }
+        addressLine1: { type: [string, 'null'], maxLength: 200 }
+        addressLine2: { type: [string, 'null'], maxLength: 200 }
+        city: { type: [string, 'null'], maxLength: 100 }
+        stateProvince: { type: [string, 'null'], maxLength: 100 }
+        postalCode: { type: [string, 'null'], maxLength: 20 }
+        countryCode: { type: [string, 'null'], pattern: '^[A-Z]{2,3}$' }
+        jobId: { type: integer, format: int64, minimum: 1, description: "Change → `employee_history` `PROMOTION` (`-20011` if inactive)." }
+        managerEmpId: { type: [integer, 'null'], format: int64, minimum: 1 }
+        employmentType:
+          oneOf:
+            - $ref: '#/components/schemas/EmploymentType'
+            - type: 'null'
+        notes: { type: [string, 'null'], maxLength: 4000 }
+
+    EmployeeTerminateRequest:
+      type: object
+      required: [effectiveDate, reason]
+      additionalProperties: false
+      properties:
+        effectiveDate: { type: string, format: date, description: "`TERMINATION_DATE`; `>= hireDate`." }
+        reason: { type: string, minLength: 1, maxLength: 50, description: "`TERMINATION_REASON` / history `reason_code`." }
+        comments: { type: [string, 'null'], maxLength: 4000 }
+
+    EmployeeTransferRequest:
+      type: object
+      description: "`PKG_EMPLOYEE.transfer_employee(p_new_dept_id, p_new_job_id, p_new_manager_id, p_new_location, p_effective_date, p_reason, p_comments)`."
+      required: [effectiveDate, deptId]
+      additionalProperties: false
+      properties:
+        effectiveDate: { type: string, format: date }
+        deptId: { type: integer, format: int64, minimum: 1, description: "Target department (`-20003`)." }
+        newJobId: { type: [integer, 'null'], format: int64, minimum: 1, description: "Optional new job (`-20011`)." }
+        newManagerEmpId: { type: [integer, 'null'], format: int64, minimum: 1, description: "Optional new manager (`-20004`)." }
+        newLocationCode: { type: [string, 'null'], pattern: '^[A-Z0-9]{1,10}$' }
+        reasonCode: { type: [string, 'null'], maxLength: 30 }
+        comments: { type: [string, 'null'], maxLength: 4000 }
+
+    SalaryChangeRequest:
+      type: object
+      description: "`PKG_PAYROLL.create_salary_record` input (salary-module)."
+      required: [effectiveDate, baseSalary, changeReason]
+      additionalProperties: false
+      properties:
+        effectiveDate: { type: string, format: date, description: "`>= hireDate` and `>= current.effectiveDate`." }
+        baseSalary:
+          $ref: '#/components/schemas/Money'
+          description: "`> 0` → `-20101`. `NUMBER(12,2)`."
+        currencyCode: { type: [string, 'null'], pattern: '^[A-Z]{3}$', description: "Default `USD`." }
+        payFrequency:
+          oneOf:
+            - $ref: '#/components/schemas/PayFrequency'
+            - type: 'null'
+          description: Default `MONTHLY`.
+        salaryBasis:
+          oneOf:
+            - $ref: '#/components/schemas/SalaryBasis'
+            - type: 'null'
+          description: Default `ANNUAL`.
+        changeReason: { type: string, minLength: 1, maxLength: 50, description: "Free text (`SALARY_RECORDS.CHANGE_REASON`, no CHECK constraint); e.g. `MERIT`, `PROMOTION`, `ADJUSTMENT`." }
+
+    DependentRequest:
+      type: object
+      required: [firstName, lastName, relationship]
+      additionalProperties: false
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 50 }
+        lastName: { type: string, minLength: 1, maxLength: 50 }
+        relationship:
+          $ref: '#/components/schemas/Relationship'
+        dateOfBirth: { type: [string, 'null'], format: date }
+        ssn:
+          type: [string, 'null']
+          pattern: '^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$'
+          maxLength: 11
+          writeOnly: true
+          description: "`@Ssn`; never echoed."
+        benefitsEnrolled: { type: [boolean, 'null'], description: "Default `false`." }
+        active: { type: [boolean, 'null'], description: "`false` on `PUT` soft-deletes the dependent (ignored on `POST`)." }
+
+    EmergencyContactRequest:
+      type: object
+      required: [contactName, phonePrimary]
+      additionalProperties: false
+      properties:
+        contactName: { type: string, minLength: 1, maxLength: 100 }
+        relationship: { type: [string, 'null'], maxLength: 30 }
+        phonePrimary: { type: string, maxLength: 30, pattern: '^(?:\D*\d){10,11}\D*$' }
+        phoneSecondary: { type: [string, 'null'], maxLength: 30, pattern: '^(?:\D*\d){10,11}\D*$' }
+        email: { type: [string, 'null'], format: email, maxLength: 100 }
+        priorityOrder: { type: [integer, 'null'], minimum: 1, maximum: 99, description: "Default `1`." }
+        active: { type: [boolean, 'null'], description: "`false` on `PUT` soft-deletes the contact (ignored on `POST`)." }
+
+    # --------------------------------------------------------------- responses
+    EmployeeDetail:
+      type: object
+      description: |
+        `VW_EMPLOYEE_DETAILS` semantics as a DTO (one join). Never contains the SSN, the
+        encrypted SSN, `PHOTO_BLOB` or salary. Read-only server fields: `id`, `empNumber`,
+        `employmentStatus`, `active`, `terminationDate`, `terminationReason`, `version`,
+        audit columns.
+      required: [id, empNumber, firstName, lastName, hireDate, deptId, deptName, jobId, jobTitle, employmentType, employmentStatus, active, version, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        empNumber: { type: string, pattern: '^EMP-[0-9]{6}$', readOnly: true, description: "Assigned from `SEQ_EMP_NUMBER`." }
+        firstName: { type: string }
+        middleName: { type: [string, 'null'] }
+        lastName: { type: string }
+        dateOfBirth: { type: [string, 'null'], format: date }
+        gender:
+          oneOf:
+            - $ref: '#/components/schemas/Gender'
+            - type: 'null'
+        maritalStatus: { type: [string, 'null'] }
+        nationality: { type: [string, 'null'] }
+        ssnLast4:
+          type: [string, 'null']
+          pattern: '^[0-9]{4}$'
+          description: Last four digits, only for `EMPLOYEE:EDIT` holders or the employee themselves; otherwise `null`. Also `null` when no SSN is stored.
+        email: { type: [string, 'null'] }
+        phoneWork: { type: [string, 'null'] }
+        phoneMobile: { type: [string, 'null'] }
+        addressLine1: { type: [string, 'null'] }
+        addressLine2: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        stateProvince: { type: [string, 'null'] }
+        postalCode: { type: [string, 'null'] }
+        countryCode: { type: [string, 'null'] }
+        hireDate: { type: string, format: date }
+        terminationDate: { type: [string, 'null'], format: date }
+        terminationReason: { type: [string, 'null'] }
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string, description: "`POST-QUERY` `DEPT_NAME_DISP`" }
+        jobId: { type: integer, format: int64 }
+        jobTitle: { type: string, description: "`JOB_TITLE_DISP`" }
+        gradeCode: { type: [string, 'null'] }
+        managerEmpId: { type: [integer, 'null'], format: int64 }
+        managerName: { type: [string, 'null'], description: "`MANAGER_NAME_DISP` (`firstName + ' ' + lastName`)" }
+        locationCode: { type: [string, 'null'] }
+        locationName: { type: [string, 'null'] }
+        employmentType:
+          $ref: '#/components/schemas/EmploymentType'
+        employmentStatus:
+          $ref: '#/components/schemas/EmploymentStatus'
+        active: { type: boolean, description: "`ACTIVE_FLAG='Y'`" }
+        notes: { type: [string, 'null'] }
+        version: { type: integer, minimum: 0, description: "JPA `@Version`; echo in `If-Match`." }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: [string, 'null'] }
+        modifiedDate: { type: [string, 'null'], format: date-time }
+
+    EmployeeListItem:
+      type: object
+      description: Search-grid row (no sensitive columns).
+      required: [id, empNumber, firstName, lastName, deptId, deptName, jobId, jobTitle, hireDate, employmentStatus, active]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        empNumber: { type: string, pattern: '^EMP-[0-9]{6}$' }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: [string, 'null'] }
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string }
+        jobId: { type: integer, format: int64 }
+        jobTitle: { type: string }
+        managerEmpId: { type: [integer, 'null'], format: int64 }
+        managerName: { type: [string, 'null'] }
+        locationCode: { type: [string, 'null'] }
+        hireDate: { type: string, format: date }
+        employmentType:
+          $ref: '#/components/schemas/EmploymentType'
+        employmentStatus:
+          $ref: '#/components/schemas/EmploymentStatus'
+        active: { type: boolean }
+
+    PageOfEmployeeListItem:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeListItem'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    EmployeeSummary:
+      type: object
+      description: P0 projection `fields=id,name,jobTitle` (manager LOV) - unchanged.
+      required: [id, empNumber, name, jobTitle]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        empNumber: { type: string, pattern: '^EMP-[0-9]{6}$' }
+        name: { type: string, description: "`firstName + ' ' + lastName`" }
+        jobTitle: { type: [string, 'null'] }
+
+    PageOfEmployeeSummary:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      additionalProperties: false
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeSummary'
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    SalaryRecord:
+      type: object
+      description: "`SALARY_RECORDS` row (salary-module). `changePct` as `NUMBER(5,2)` string, e.g. `\"5.00\"`."
+      required: [salaryId, empId, effectiveDate, baseSalary, currencyCode, payFrequency, salaryBasis, active, outOfGradeBand, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        salaryId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        effectiveDate: { type: string, format: date }
+        endDate: { type: [string, 'null'], format: date, description: "`null` on the active row." }
+        baseSalary:
+          $ref: '#/components/schemas/Money'
+        currencyCode: { type: string, pattern: '^[A-Z]{3}$' }
+        payFrequency:
+          $ref: '#/components/schemas/PayFrequency'
+        salaryBasis:
+          $ref: '#/components/schemas/SalaryBasis'
+        changeReason: { type: [string, 'null'] }
+        changePct:
+          type: [string, 'null']
+          pattern: '^-?[0-9]+\.[0-9]{2}$'
+          description: "`ROUND((new - old) / old * 100, 2)`; `null` for the first record."
+        active: { type: boolean, description: "`ACTIVE_FLAG='Y'` - exactly one per employee." }
+        outOfGradeBand: { type: boolean, description: "`baseSalary` outside `[gradeMinSalary, gradeMaxSalary]` of the employee's job grade at creation time (advisory)." }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+
+    EmployeeHistoryEntry:
+      type: object
+      description: "`EMPLOYEE_HISTORY` row against the real DDL columns (BUG-03), joined to names."
+      required: [histId, empId, changeType, effectiveDate, createdBy, createdDate]
+      additionalProperties: false
+      properties:
+        histId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        changeType:
+          $ref: '#/components/schemas/HistoryChangeType'
+        effectiveDate: { type: string, format: date }
+        oldDeptId: { type: [integer, 'null'], format: int64 }
+        oldDeptName: { type: [string, 'null'] }
+        newDeptId: { type: [integer, 'null'], format: int64 }
+        newDeptName: { type: [string, 'null'] }
+        oldJobId: { type: [integer, 'null'], format: int64 }
+        oldJobTitle: { type: [string, 'null'] }
+        newJobId: { type: [integer, 'null'], format: int64 }
+        newJobTitle: { type: [string, 'null'] }
+        oldManagerId: { type: [integer, 'null'], format: int64 }
+        oldManagerName: { type: [string, 'null'] }
+        newManagerId: { type: [integer, 'null'], format: int64 }
+        newManagerName: { type: [string, 'null'] }
+        oldSalary:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Salary read scope only, otherwise `null`.
+        newSalary:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        oldLocation: { type: [string, 'null'] }
+        newLocation: { type: [string, 'null'] }
+        reasonCode: { type: [string, 'null'] }
+        comments: { type: [string, 'null'] }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+
+    Dependent:
+      type: object
+      required: [dependentId, empId, firstName, lastName, relationship, benefitsEnrolled, active]
+      additionalProperties: false
+      properties:
+        dependentId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        firstName: { type: string }
+        lastName: { type: string }
+        relationship:
+          $ref: '#/components/schemas/Relationship'
+        dateOfBirth: { type: [string, 'null'], format: date }
+        ssnLast4: { type: [string, 'null'], pattern: '^[0-9]{4}$', description: "Never the full SSN." }
+        benefitsEnrolled: { type: boolean }
+        active: { type: boolean }
+
+    EmergencyContact:
+      type: object
+      required: [contactId, empId, contactName, phonePrimary, priorityOrder, active]
+      additionalProperties: false
+      properties:
+        contactId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        contactName: { type: string }
+        relationship: { type: [string, 'null'] }
+        phonePrimary: { type: string }
+        phoneSecondary: { type: [string, 'null'] }
+        email: { type: [string, 'null'] }
+        priorityOrder: { type: integer, minimum: 1, maximum: 99 }
+        active: { type: boolean }
+
+    # --------------------------------------------------------------- reference (P0, unchanged)
+    DepartmentRef:
+      type: object
+      required: [deptId, deptCode, deptName, active]
+      additionalProperties: false
+      properties:
+        deptId: { type: integer, format: int64 }
+        deptCode: { type: string, maxLength: 20 }
+        deptName: { type: string, maxLength: 100 }
+        parentDeptId: { type: [integer, 'null'], format: int64 }
+        locationCode: { type: [string, 'null'], maxLength: 10 }
+        active: { type: boolean }
+
+    JobTitleRef:
+      type: object
+      required: [jobId, jobCode, jobTitle, gradeId, gradeCode, gradeName, gradeMinSalary, gradeMaxSalary, active]
+      additionalProperties: false
+      properties:
+        jobId: { type: integer, format: int64 }
+        jobCode: { type: string, maxLength: 20 }
+        jobTitle: { type: string, maxLength: 100 }
+        jobFamily: { type: [string, 'null'], maxLength: 50 }
+        gradeId: { type: integer }
+        gradeCode: { type: string, maxLength: 10 }
+        gradeName: { type: string, maxLength: 50 }
+        gradeMinSalary:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: "`JOB_GRADES.MIN_SALARY` - UI pre-warning only."
+        gradeMaxSalary:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: "`JOB_GRADES.MAX_SALARY` - UI pre-warning only."
+        active: { type: boolean }
+
+    LocationRef:
+      type: object
+      required: [locationCode, locationName, active]
+      additionalProperties: false
+      properties:
+        locationCode: { type: string, maxLength: 10 }
+        locationName: { type: string, maxLength: 100 }
+        city: { type: [string, 'null'] }
+        stateProvince: { type: [string, 'null'] }
+        countryCode: { type: [string, 'null'], maxLength: 3 }
+        timezone: { type: string }
+        active: { type: boolean }

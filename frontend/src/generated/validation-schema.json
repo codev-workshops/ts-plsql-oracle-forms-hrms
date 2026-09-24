@@ -1,0 +1,2290 @@
+{
+  "$schema" : "https://hrms.example/schemas/validation-schema/v1",
+  "schemaVersion" : 1,
+  "generator" : "hrms-validation:exporter",
+  "generatorVersion" : "0.1.0",
+  "sourceHash" : "c58e4bed3bbe2c90ede1a1c0cbeee561265646536c8b210f54c74a683ec85fd2",
+  "module" : "hrms",
+  "modules" : [ "p0-foundation", "p1-performance", "p2-leave", "p3-employee", "p4-payroll", "p5-reporting-decommission" ],
+  "parameters" : {
+    "SECURITY.PASSWORD_MIN_LENGTH" : 8,
+    "SECURITY.SESSION_TIMEOUT_MIN" : 30,
+    "HR.MAX_FUTURE_HIRE_DAYS" : 90
+  },
+  "dtos" : {
+    "LoginRequest" : {
+      "module" : "p0-foundation",
+      "fields" : {
+        "username" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 3,
+          "maxLength" : 100,
+          "format" : "email",
+          "messages" : {
+            "required" : "Username is required",
+            "format" : "Enter a valid e-mail address"
+          }
+        },
+        "password" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : false,
+          "minLength" : 1,
+          "maxLength" : 128,
+          "messages" : {
+            "required" : "Password is required"
+          }
+        }
+      }
+    },
+    "ChangePasswordRequest" : {
+      "module" : "p0-foundation",
+      "fields" : {
+        "currentPassword" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : false,
+          "minLength" : 1,
+          "maxLength" : 128,
+          "messages" : {
+            "required" : "Current password is required"
+          }
+        },
+        "newPassword" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : false,
+          "minLength" : 8,
+          "maxLength" : 128,
+          "rules" : [ {
+            "id" : "password.minLength",
+            "kind" : "minLength",
+            "value" : 8,
+            "parameter" : "SECURITY.PASSWORD_MIN_LENGTH",
+            "errorCode" : "-20310",
+            "message" : "Password must be at least 8 characters"
+          }, {
+            "id" : "password.uppercase",
+            "kind" : "pattern",
+            "value" : "[A-Z]",
+            "errorCode" : "-20311",
+            "message" : "Password must contain an uppercase letter"
+          }, {
+            "id" : "password.digit",
+            "kind" : "pattern",
+            "value" : "[0-9]",
+            "errorCode" : "-20312",
+            "message" : "Password must contain a number"
+          } ],
+          "messages" : {
+            "required" : "New password is required"
+          }
+        }
+      }
+    },
+    "SsoExchangeRequest" : {
+      "module" : "p0-foundation",
+      "fields" : {
+        "module" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "auth", "employee", "payroll", "payroll.engine", "leave", "performance", "reporting" ],
+          "messages" : {
+            "required" : "Module is required"
+          }
+        },
+        "clientIp" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Client IP is required"
+          }
+        },
+        "returnPath" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 500,
+          "pattern" : "^/[^\\s]*$",
+          "messages" : {
+            "pattern" : "Return path must be a relative path"
+          }
+        }
+      }
+    },
+    "EmployeeSearchQuery" : {
+      "module" : "p0-foundation",
+      "fields" : {
+        "status" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "ACTIVE" ],
+          "messages" : { }
+        },
+        "fields" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "id,name,jobTitle" ],
+          "messages" : { }
+        },
+        "q" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : {
+            "maxLength" : "Search text is too long"
+          }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 100,
+          "messages" : { }
+        }
+      }
+    },
+    "ReviewCycleRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "cycleName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Cycle name is required"
+          }
+        },
+        "cycleYear" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 2000,
+          "max" : 2099,
+          "messages" : {
+            "required" : "Cycle year is required"
+          }
+        },
+        "startDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "Start date is required"
+          }
+        },
+        "endDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "End date is required",
+            "format" : "End date must be on or after the start date"
+          }
+        },
+        "selfReviewDue" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "managerReviewDue" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "calibrationDue" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        }
+      }
+    },
+    "SelfAssessmentRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "selfAssessment" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20000,
+          "messages" : {
+            "required" : "Self-assessment is required"
+          }
+        }
+      }
+    },
+    "ManagerReviewRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "overallRating" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 1.0,
+          "max" : 5.0,
+          "scale" : 1,
+          "rules" : [ {
+            "id" : "rating.range.min",
+            "kind" : "min",
+            "value" : 1.0,
+            "errorCode" : "-20403",
+            "message" : "Rating must be between 1.0 and 5.0"
+          }, {
+            "id" : "rating.range.max",
+            "kind" : "max",
+            "value" : 5.0,
+            "errorCode" : "-20403",
+            "message" : "Rating must be between 1.0 and 5.0"
+          } ],
+          "messages" : {
+            "required" : "Rating is required"
+          }
+        },
+        "managerAssessment" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20000,
+          "messages" : {
+            "required" : "Manager assessment is required"
+          }
+        },
+        "strengths" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        },
+        "improvementAreas" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        },
+        "developmentPlan" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        }
+      }
+    },
+    "AcknowledgeRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "employeeComments" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        }
+      }
+    },
+    "GoalRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "goalTitle" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 200,
+          "messages" : {
+            "required" : "Goal title is required"
+          }
+        },
+        "goalDescription" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        },
+        "goalCategory" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "BUSINESS", "DEVELOPMENT", "LEADERSHIP", "INNOVATION", "COMPLIANCE" ],
+          "messages" : { }
+        },
+        "weightPct" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "max" : 100.0,
+          "scale" : 2,
+          "messages" : {
+            "format" : "Weight must be between 0 and 100"
+          }
+        },
+        "targetDate" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        }
+      }
+    },
+    "GoalProgressRequest" : {
+      "module" : "p1-performance",
+      "fields" : {
+        "progressPct" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "max" : 100.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "Progress is required",
+            "format" : "Progress must be between 0 and 100"
+          }
+        },
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "NOT_STARTED", "IN_PROGRESS", "COMPLETED", "DEFERRED", "CANCELLED" ],
+          "messages" : { }
+        },
+        "comments" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20000,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveRequestCreateRequest" : {
+      "module" : "p2-leave",
+      "fields" : {
+        "leaveTypeId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Leave type is required"
+          }
+        },
+        "startDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "leave.pastLimit",
+            "kind" : "custom",
+            "value" : "5",
+            "errorCode" : "-20211",
+            "message" : "Cannot submit leave requests more than 5 days in the past"
+          } ],
+          "messages" : {
+            "required" : "Start date is required"
+          }
+        },
+        "endDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "leave.dateOrder",
+            "kind" : "custom",
+            "value" : "startDate",
+            "errorCode" : "-20210",
+            "message" : "Start date must be before or equal to end date"
+          } ],
+          "messages" : {
+            "required" : "End date is required",
+            "format" : "Start date must be before or equal to end date"
+          }
+        },
+        "halfDay" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : {
+            "format" : "A half day must start and end on the same date"
+          }
+        },
+        "halfDayPeriod" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "AM", "PM" ],
+          "messages" : {
+            "required" : "Select AM or PM for a half day"
+          }
+        },
+        "reason" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveCancelRequest" : {
+      "module" : "p2-leave",
+      "fields" : {
+        "reason" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveApproveRequest" : {
+      "module" : "p2-leave",
+      "fields" : {
+        "comments" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveRejectRequest" : {
+      "module" : "p2-leave",
+      "fields" : {
+        "comments" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 4000,
+          "messages" : {
+            "required" : "A rejection reason is required"
+          }
+        }
+      }
+    },
+    "BusinessDaysQuery" : {
+      "module" : "p2-leave",
+      "fields" : {
+        "start" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "Start date is required"
+          }
+        },
+        "end" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "leave.dateOrder",
+            "kind" : "custom",
+            "value" : "start",
+            "errorCode" : "-20210",
+            "message" : "Start date must be before or equal to end date"
+          } ],
+          "messages" : {
+            "required" : "End date is required",
+            "format" : "Start date must be before or equal to end date"
+          }
+        }
+      }
+    },
+    "EmployeeListQuery" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "lastName" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "firstName" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "q" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "jobId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "managerEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "ACTIVE", "ON_LEAVE", "SUSPENDED", "TERMINATED" ],
+          "messages" : { }
+        },
+        "locationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : false,
+          "pattern" : "^[A-Z0-9]{1,10}$",
+          "messages" : { }
+        },
+        "hireDateTo" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "employee.hireDateRange",
+            "kind" : "custom",
+            "value" : "hireDateFrom",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "hireDateFrom must be before or equal to hireDateTo"
+          } ],
+          "messages" : {
+            "format" : "hireDateFrom must be before or equal to hireDateTo"
+          }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 100,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeCreateRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "firstName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "First name is required",
+            "maxLength" : "First name may not exceed 50 characters"
+          }
+        },
+        "middleName" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "lastName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Last name is required",
+            "maxLength" : "Last name may not exceed 50 characters"
+          }
+        },
+        "dateOfBirth" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "employee.dateNotFuture",
+            "kind" : "custom",
+            "value" : "today",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "Date of birth cannot be in the future"
+          } ],
+          "messages" : {
+            "format" : "Date of birth cannot be in the future"
+          }
+        },
+        "gender" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "M", "F", "O" ],
+          "messages" : { }
+        },
+        "maritalStatus" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "messages" : { }
+        },
+        "nationality" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "ssn" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 11,
+          "pattern" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "rules" : [ {
+            "id" : "employee.ssn",
+            "kind" : "pattern",
+            "value" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          } ],
+          "sensitive" : true,
+          "messages" : {
+            "pattern" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          }
+        },
+        "email" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "format" : "email",
+          "messages" : {
+            "format" : "Enter a valid e-mail address"
+          }
+        },
+        "phoneWork" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "phoneMobile" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "addressLine1" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "addressLine2" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "city" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "stateProvince" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "postalCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20,
+          "messages" : { }
+        },
+        "countryCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z]{2,3}$",
+          "messages" : {
+            "pattern" : "Country code must be 2-3 upper-case letters"
+          }
+        },
+        "hireDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "employee.hireDateLimit",
+            "kind" : "custom",
+            "value" : "90",
+            "parameter" : "HR.MAX_FUTURE_HIRE_DAYS",
+            "errorCode" : "-20501",
+            "message" : "Hire date cannot be more than 90 days in the future"
+          } ],
+          "messages" : {
+            "required" : "Hire date is required"
+          }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Department is required",
+            "format" : "Select an active department"
+          }
+        },
+        "jobId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Job title is required",
+            "format" : "Select an active job title"
+          }
+        },
+        "managerEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : {
+            "format" : "Select an active manager (not the employee themselves)"
+          }
+        },
+        "locationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z0-9]{1,10}$",
+          "messages" : {
+            "pattern" : "Select a location"
+          }
+        },
+        "employmentType" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "FULL_TIME", "PART_TIME", "CONTRACT", "INTERN" ],
+          "messages" : { }
+        },
+        "initialSalary" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.01,
+          "scale" : 2,
+          "rules" : [ {
+            "id" : "salary.positive.min",
+            "kind" : "min",
+            "value" : 0.01,
+            "errorCode" : "-20101",
+            "message" : "Salary must be positive"
+          } ],
+          "messages" : { }
+        },
+        "notes" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeUpdateRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "firstName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "First name is required",
+            "maxLength" : "First name may not exceed 50 characters"
+          }
+        },
+        "middleName" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "lastName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Last name is required",
+            "maxLength" : "Last name may not exceed 50 characters"
+          }
+        },
+        "dateOfBirth" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "employee.dateNotFuture",
+            "kind" : "custom",
+            "value" : "today",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "Date of birth cannot be in the future"
+          } ],
+          "messages" : {
+            "format" : "Date of birth cannot be in the future"
+          }
+        },
+        "gender" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "M", "F", "O" ],
+          "messages" : { }
+        },
+        "maritalStatus" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "messages" : { }
+        },
+        "nationality" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "ssn" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 11,
+          "pattern" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "rules" : [ {
+            "id" : "employee.ssn",
+            "kind" : "pattern",
+            "value" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          } ],
+          "sensitive" : true,
+          "messages" : {
+            "pattern" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          }
+        },
+        "email" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "format" : "email",
+          "messages" : {
+            "format" : "Enter a valid e-mail address"
+          }
+        },
+        "phoneWork" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "phoneMobile" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "addressLine1" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "addressLine2" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "city" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "stateProvince" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "postalCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20,
+          "messages" : { }
+        },
+        "countryCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z]{2,3}$",
+          "messages" : {
+            "pattern" : "Country code must be 2-3 upper-case letters"
+          }
+        },
+        "jobId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Job title is required",
+            "format" : "Select an active job title"
+          }
+        },
+        "managerEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : {
+            "format" : "Select an active manager (not the employee themselves)"
+          }
+        },
+        "employmentType" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "FULL_TIME", "PART_TIME", "CONTRACT", "INTERN" ],
+          "messages" : { }
+        },
+        "notes" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeTerminateRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "effectiveDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "Termination date is required"
+          }
+        },
+        "reason" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Termination reason is required"
+          }
+        },
+        "comments" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeTransferRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "effectiveDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "Effective date is required"
+          }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Department is required",
+            "format" : "Select an active department"
+          }
+        },
+        "newJobId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : {
+            "format" : "Select an active job title"
+          }
+        },
+        "newManagerEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : {
+            "format" : "Select an active manager (not the employee themselves)"
+          }
+        },
+        "newLocationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z0-9]{1,10}$",
+          "messages" : {
+            "pattern" : "Select a location"
+          }
+        },
+        "reasonCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "messages" : { }
+        },
+        "comments" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 4000,
+          "messages" : { }
+        }
+      }
+    },
+    "SalaryChangeRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "effectiveDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "Effective date is required"
+          }
+        },
+        "baseSalary" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.01,
+          "scale" : 2,
+          "rules" : [ {
+            "id" : "salary.positive.min",
+            "kind" : "min",
+            "value" : 0.01,
+            "errorCode" : "-20101",
+            "message" : "Salary must be positive"
+          } ],
+          "messages" : {
+            "required" : "Salary is required"
+          }
+        },
+        "currencyCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "pattern" : "^[A-Z]{3}$",
+          "messages" : {
+            "pattern" : "Currency must be a 3-letter ISO code"
+          }
+        },
+        "payFrequency" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "WEEKLY", "BIWEEKLY", "SEMIMONTHLY", "MONTHLY" ],
+          "messages" : { }
+        },
+        "salaryBasis" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "ANNUAL", "HOURLY" ],
+          "messages" : { }
+        },
+        "changeReason" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Change reason is required"
+          }
+        }
+      }
+    },
+    "DependentRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "firstName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "First name is required",
+            "maxLength" : "First name may not exceed 50 characters"
+          }
+        },
+        "lastName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Last name is required",
+            "maxLength" : "Last name may not exceed 50 characters"
+          }
+        },
+        "relationship" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "SPOUSE", "CHILD", "PARENT", "DOMESTIC_PARTNER", "OTHER" ],
+          "messages" : {
+            "required" : "Relationship is required"
+          }
+        },
+        "dateOfBirth" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "employee.dateNotFuture",
+            "kind" : "custom",
+            "value" : "today",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "Date of birth cannot be in the future"
+          } ],
+          "messages" : {
+            "format" : "Date of birth cannot be in the future"
+          }
+        },
+        "ssn" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 11,
+          "pattern" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+          "rules" : [ {
+            "id" : "employee.ssn",
+            "kind" : "pattern",
+            "value" : "^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          } ],
+          "sensitive" : true,
+          "messages" : {
+            "pattern" : "SSN must be 9 digits (NNN-NN-NNNN)"
+          }
+        },
+        "benefitsEnrolled" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : {
+            "format" : "Benefits enrolment must be yes or no"
+          }
+        }
+      }
+    },
+    "EmergencyContactRequest" : {
+      "module" : "p3-employee",
+      "fields" : {
+        "contactName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Contact name is required"
+          }
+        },
+        "relationship" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "messages" : { }
+        },
+        "phonePrimary" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "required" : "Primary phone is required",
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "phoneSecondary" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone number must contain 10 or 11 digits"
+          }
+        },
+        "email" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "format" : "email",
+          "messages" : {
+            "format" : "Enter a valid e-mail address"
+          }
+        },
+        "priorityOrder" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 99,
+          "messages" : { }
+        }
+      }
+    },
+    "PayPeriodListQuery" : {
+      "module" : "p4-payroll",
+      "fields" : {
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "OPEN", "PROCESSING", "CLOSED", "REVERSED" ],
+          "messages" : { }
+        },
+        "sort" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : false,
+          "pattern" : "^(periodStartDate|periodEndDate|payDate|periodName),(asc|desc)$",
+          "messages" : {
+            "pattern" : "sort must be <periodStartDate|periodEndDate|payDate|periodName>,<asc|desc>"
+          }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 100,
+          "messages" : { }
+        }
+      }
+    },
+    "PayrollRunListQuery" : {
+      "module" : "p4-payroll",
+      "fields" : {
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "PENDING", "CALCULATING", "CALCULATED", "APPROVED", "PAID", "REVERSED", "ERROR" ],
+          "messages" : { }
+        }
+      }
+    },
+    "PayrollRunCreateRequest" : {
+      "module" : "p4-payroll",
+      "fields" : {
+        "runType" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "REGULAR", "SUPPLEMENTAL", "BONUS", "FINAL" ],
+          "messages" : {
+            "required" : "runType is required"
+          }
+        }
+      }
+    },
+    "PayrollRunReverseRequest" : {
+      "module" : "p4-payroll",
+      "fields" : {
+        "reason" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 4000,
+          "messages" : {
+            "required" : "A reversal reason is required"
+          }
+        }
+      }
+    },
+    "PayrollDetailListQuery" : {
+      "module" : "p4-payroll",
+      "fields" : {
+        "empId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "CALCULATED", "ERROR", "REVERSED" ],
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 500,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeDirectoryQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "asOf" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "locationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "OrgHierarchyQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "asOf" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "rootEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "maxLevel" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 20,
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "EmployeeCompensationQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "asOf" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "gradeId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveSummaryQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "asOf" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "year" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 2000,
+          "max" : 2099,
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "leaveTypeId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "PayrollLatestQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "periodId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "PendingApprovalsQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "asOf" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "itemType" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "LEAVE", "REVIEW" ],
+          "messages" : { }
+        },
+        "mine" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "deptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "DepartmentRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "deptCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "required" : "Department code is required",
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "deptName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Department name is required"
+          }
+        },
+        "parentDeptId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "costCenter" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "managerEmpId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "locationCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "JobGradeRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "gradeCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 10,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "required" : "Grade code is required",
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "gradeName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Grade name is required"
+          }
+        },
+        "minSalary" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "Minimum salary is required"
+          }
+        },
+        "maxSalary" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "Maximum salary is required"
+          }
+        },
+        "overtimeEligible" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "JobTitleRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "jobCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "required" : "Job code is required",
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "jobTitle" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Job title is required"
+          }
+        },
+        "jobFamily" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "gradeId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Grade is required"
+          }
+        },
+        "eeoCategory" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 10,
+          "messages" : { }
+        },
+        "flsaStatus" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "EXEMPT", "NON_EXEMPT" ],
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "LocationRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "locationCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 10,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "required" : "Location code is required",
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "locationName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 100,
+          "messages" : {
+            "required" : "Location name is required"
+          }
+        },
+        "addressLine1" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "addressLine2" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "city" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "stateProvince" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "postalCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 20,
+          "messages" : { }
+        },
+        "countryCode" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "minLength" : 2,
+          "maxLength" : 3,
+          "pattern" : "^[A-Z]{2,3}$",
+          "messages" : {
+            "pattern" : "Country must be an ISO-3166 alpha-2/3 code"
+          }
+        },
+        "phoneNumber" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 30,
+          "pattern" : "^(?:\\D*\\d){10,11}\\D*$",
+          "messages" : {
+            "pattern" : "Phone must contain 10 or 11 digits"
+          }
+        },
+        "timezone" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 50,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "LeaveTypeRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "leaveTypeCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20,
+          "pattern" : "^[A-Z0-9_-]+$",
+          "messages" : {
+            "required" : "Leave type code is required",
+            "pattern" : "Code must be upper-case letters, digits, '_' or '-'"
+          }
+        },
+        "leaveTypeName" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 50,
+          "messages" : {
+            "required" : "Leave type name is required"
+          }
+        },
+        "paidFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "accrualFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "accrualRate" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "max" : 9999.99,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "accrualFrequency" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "MONTHLY", "BIWEEKLY", "ANNUAL" ],
+          "messages" : { }
+        },
+        "maxBalance" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "max" : 9999.99,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "carryoverMax" : {
+          "type" : "decimal",
+          "required" : false,
+          "min" : 0.0,
+          "max" : 9999.99,
+          "scale" : 2,
+          "messages" : { }
+        },
+        "carryoverExpiry" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "max" : 12,
+          "messages" : { }
+        },
+        "minTenureDays" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "max" : 3650,
+          "messages" : { }
+        },
+        "requiresApproval" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "requiresDocument" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        },
+        "activeFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "SystemParameterRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "paramGroup" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 50,
+          "pattern" : "^[A-Z][A-Z0-9_]*$",
+          "messages" : {
+            "required" : "Parameter group is required",
+            "pattern" : "Must start with a letter and contain only A-Z, 0-9 or '_'"
+          }
+        },
+        "paramCode" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 50,
+          "pattern" : "^[A-Z][A-Z0-9_]*$",
+          "messages" : {
+            "required" : "Parameter code is required",
+            "pattern" : "Must start with a letter and contain only A-Z, 0-9 or '_'"
+          }
+        },
+        "paramValue" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 4000,
+          "messages" : {
+            "required" : "Parameter value is required"
+          }
+        },
+        "paramDescription" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        },
+        "dataType" : {
+          "type" : "enum",
+          "required" : true,
+          "values" : [ "VARCHAR2", "NUMBER", "DATE", "BOOLEAN" ],
+          "messages" : {
+            "required" : "Data type is required"
+          }
+        },
+        "editableFlag" : {
+          "type" : "boolean",
+          "required" : false,
+          "messages" : { }
+        }
+      }
+    },
+    "SystemParameterUpdateRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "paramValue" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 4000,
+          "messages" : {
+            "required" : "Parameter value is required"
+          }
+        },
+        "paramDescription" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 200,
+          "messages" : { }
+        }
+      }
+    },
+    "AccrualRunRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "accrualDate" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        }
+      }
+    },
+    "CarryoverRunRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "year" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 2000,
+          "max" : 2099,
+          "messages" : {
+            "required" : "Year is required"
+          }
+        }
+      }
+    },
+    "AuditLogSearchQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "tableName" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 60,
+          "pattern" : "^[a-z][a-z0-9_]*$",
+          "messages" : {
+            "pattern" : "tableName is the lower-case PostgreSQL table name"
+          }
+        },
+        "recordId" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "messages" : { }
+        },
+        "actionType" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "INSERT", "UPDATE", "DELETE", "STATUS_CHANGE", "LOGIN", "LOGOUT" ],
+          "messages" : { }
+        },
+        "changedBy" : {
+          "type" : "string",
+          "required" : false,
+          "trim" : true,
+          "maxLength" : 100,
+          "messages" : { }
+        },
+        "from" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "to" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "audit.range",
+            "kind" : "custom",
+            "value" : "from",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "to must be on or after from"
+          } ],
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 100,
+          "messages" : { }
+        }
+      }
+    },
+    "GlFeedRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "runId" : {
+          "type" : "integer",
+          "required" : true,
+          "min" : 1,
+          "messages" : {
+            "required" : "Payroll run is required"
+          }
+        }
+      }
+    },
+    "BenefitsFeedRequest" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "effectiveDate" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        }
+      }
+    },
+    "TimeAttendanceLine" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "empNumber" : {
+          "type" : "string",
+          "required" : true,
+          "trim" : true,
+          "minLength" : 1,
+          "maxLength" : 20,
+          "messages" : {
+            "required" : "emp_number is required"
+          }
+        },
+        "workDate" : {
+          "type" : "date",
+          "required" : true,
+          "format" : "date",
+          "messages" : {
+            "required" : "date is required"
+          }
+        },
+        "hoursRegular" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "max" : 24.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "hours_regular is required"
+          }
+        },
+        "hoursOvertime" : {
+          "type" : "decimal",
+          "required" : true,
+          "min" : 0.0,
+          "max" : 24.0,
+          "scale" : 2,
+          "messages" : {
+            "required" : "hours_overtime is required"
+          }
+        }
+      }
+    },
+    "IntegrationFileListQuery" : {
+      "module" : "p5-reporting-decommission",
+      "fields" : {
+        "feed" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "GL_JOURNAL", "BENEFITS_FEED", "TIME_ATTENDANCE" ],
+          "messages" : { }
+        },
+        "status" : {
+          "type" : "enum",
+          "required" : false,
+          "values" : [ "SUCCESS", "FAILED", "STAGED" ],
+          "messages" : { }
+        },
+        "from" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "messages" : { }
+        },
+        "to" : {
+          "type" : "date",
+          "required" : false,
+          "format" : "date",
+          "rules" : [ {
+            "id" : "files.range",
+            "kind" : "custom",
+            "value" : "from",
+            "errorCode" : "VALIDATION_FAILED",
+            "message" : "to must be on or after from"
+          } ],
+          "messages" : { }
+        },
+        "page" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 0,
+          "messages" : { }
+        },
+        "size" : {
+          "type" : "integer",
+          "required" : false,
+          "min" : 1,
+          "max" : 100,
+          "messages" : { }
+        }
+      }
+    }
+  }
+}
