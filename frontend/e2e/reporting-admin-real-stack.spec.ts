@@ -159,16 +159,28 @@ test.describe('P5 PostgreSQL-backed reporting + admin flows', () => {
       expect(inactive.activeFlag).toBe(false);
 
       await page.getByRole('tab', { name: 'Audit log' }).click();
-      await page.getByLabel(/^Table/).fill('HOLIDAYS');
-      await page.getByLabel(/^Record id/).fill(String(created.holidayId));
-      const audit = page.waitForResponse((r) => r.url().includes('/api/admin/audit-log') && r.request().method() === 'GET');
+      // AuditLogSearchQuery.tableName is the lower-case PostgreSQL table name (^[a-z][a-z0-9_]*$);
+      // the server compares lower(table_name) and echoes the stored upper-case name.
+      const holidayId = created.holidayId;
+      await page.getByLabel(/^Table/).fill('holidays');
+      await page.getByLabel(/^Record id/).fill(String(holidayId));
+      const audit = page.waitForResponse((r) => r.url().includes('/api/admin/audit-log') && r.url().includes('tableName=holidays') && r.url().includes(`recordId=${holidayId}`) && r.request().method() === 'GET');
       await page.getByRole('button', { name: 'Search' }).click();
-      const auditPage = (await (await audit).json()) as AuditLogPage;
+      const auditResponse = await audit;
+      expect(auditResponse.status()).toBe(200);
+      const auditPage = (await auditResponse.json()) as AuditLogPage;
+      expect(auditPage.content.length).toBeGreaterThanOrEqual(2);
       const actions = auditPage.content.map((a) => a.actionType);
       expect(actions).toEqual(expect.arrayContaining(['INSERT', 'UPDATE']));
       const actor = jwtSub(token);
-      for (const entry of auditPage.content) expect(entry.changedBy, 'audit actor is the JWT sub (user-account id)').toBe(actor);
-      await expect(page.getByRole('table', { name: 'Audit log' }).getByRole('row')).toHaveCount(auditPage.content.length + 1);
+      for (const entry of auditPage.content) {
+        expect(entry.tableName.toLowerCase()).toBe('holidays');
+        expect(entry.recordId).toBe(holidayId);
+        expect(entry.changedBy, 'audit actor is the JWT sub (user-account id)').toBe(actor);
+      }
+      const auditTable = page.getByRole('table', { name: 'Audit log' });
+      await expect(auditTable.getByRole('row')).toHaveCount(auditPage.content.length + 1);
+      for (const entry of auditPage.content) await expect(auditTable.getByRole('row', { name: new RegExp(`^${entry.auditId}\\b`) })).toContainText(actor);
     } finally {
       if (created && (await request.get(`/api/admin/holidays/${created.holidayId}`, { headers: bearer(token) })).ok()) {
         await request.delete(`/api/admin/holidays/${created.holidayId}`, { headers: bearer(token), failOnStatusCode: false });
