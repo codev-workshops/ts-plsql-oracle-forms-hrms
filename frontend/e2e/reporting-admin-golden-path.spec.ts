@@ -72,8 +72,6 @@ test.describe('P5 reporting + admin golden path (mock stack)', () => {
     await page.getByRole('tab', { name: 'Audit log' }).click();
     const auditTable = page.getByRole('table', { name: 'Audit log' });
     await expect(auditTable.getByRole('row')).toHaveCount(4);
-    // tableName must be the lower-case PostgreSQL table name (^[a-z][a-z0-9_]*$); the msw
-    // fixtures only seed employees / salary_records / user_sessions rows.
     await page.getByLabel(/^Table/).fill('employees');
     const audit = page.waitForResponse((r) => r.url().includes('/api/admin/audit-log') && r.url().includes('tableName=employees') && r.request().method() === 'GET');
     await page.getByRole('button', { name: 'Search' }).click();

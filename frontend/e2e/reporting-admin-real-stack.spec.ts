@@ -159,8 +159,6 @@ test.describe('P5 PostgreSQL-backed reporting + admin flows', () => {
       expect(inactive.activeFlag).toBe(false);
 
       await page.getByRole('tab', { name: 'Audit log' }).click();
-      // AuditLogSearchQuery.tableName is the lower-case PostgreSQL table name (^[a-z][a-z0-9_]*$);
-      // the server compares lower(table_name) and echoes the stored upper-case name.
       const holidayId = created.holidayId;
       await page.getByLabel(/^Table/).fill('holidays');
       await page.getByLabel(/^Record id/).fill(String(holidayId));
