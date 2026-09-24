@@ -29,7 +29,7 @@ REPO = "codev-workshops/ts-plsql-oracle-forms-hrms"
 REPO_URL = f"https://github.com/{REPO}"
 
 # Branch that carries the reference documents and from which phase/p0-foundation is cut.
-BASE_BRANCH = os.environ.get("HRMS_WF_BASE_BRANCH", "main")
+BASE_BRANCH = os.environ.get("HRMS_WF_BASE_BRANCH", "devin/1789629102-hrms-analysis-artifacts")
 
 # Phases to run in this invocation (subset of P0..P5, in order). Earlier phases
 # must already be promoted; the workflow verifies the previous phase branch exists.
@@ -42,6 +42,68 @@ PHASES_TO_RUN = [p for p in os.environ.get("HRMS_WF_PHASES", "P0,P1,P2,P3,P4,P5"
 APPROVED_GATES = {g for g in os.environ.get("HRMS_WF_APPROVED_GATES", "").split(",") if g}
 
 MAX_REMEDIATION_ROUNDS = 3
+
+# Golden-oracle mode. "live": child sessions have an Oracle instance and run
+# utPLSQL / parallel-run / reconciliation against it. "off" (default): no
+# Oracle is available; Level 2/3 validate the Java + React code against the
+# local PostgreSQL stack using recorded legacy expectations (see ORACLE_OFF_RULES).
+ORACLE_MODE = os.environ.get("HRMS_WF_ORACLE", "off")
+
+# Implementation-node results whose `blockers` text is accepted as informational
+# (comma separated labels, e.g. "P0.backend"). Used when a recorded session
+# reported a blocker that a later policy change (e.g. ORACLE_MODE=off) made moot,
+# so the run can resume without re-spending that session.
+ACCEPTED_BLOCKERS = {b for b in os.environ.get("HRMS_WF_ACCEPT_BLOCKERS", "P0.backend").split(",") if b}
+
+# Contract/implementation prompts of phases before this one were issued before
+# ORACLE_MODE existed and must stay byte-identical so their recorded results
+# replay; later phases get the Oracle-mode rules in every prompt.
+ORACLE_RULES_FROM_PHASE = "P1"
+
+ORACLE_OFF_RULES = """
+GOLDEN-ORACLE MODE = OFF (decided by the project owner): there is NO Oracle database, no Oracle Forms and no utPLSQL runtime
+available to you, and you must not try to install, connect to or emulate one. Validate the NEW Java + React code against a
+local PostgreSQL only (Testcontainers or docker compose). Concretely:
+- The legacy PL/SQL under plsql/ and forms/ is read-only reference: derive expected behaviour (rules, error codes, view
+  semantics) by reading it and encode those expectations as fixtures in the scenario registry / reconciliation packs.
+- Level 2 = tools/parallel-run REST runner executed against the PostgreSQL-backed backend, comparing to the recorded
+  expected results in the scenario registry (utPLSQL runner skipped, marked `legacy_source=recorded`).
+- Level 3 = tools/reconcile + tests/reconciliation/pg/ queries executed on PostgreSQL only, compared to the expected rows
+  in tests/golden/ (populate them from the seed + view definitions if empty; document how each file was produced).
+- Playwright runs against the real frontend + backend + PostgreSQL stack.
+- Missing Oracle is NEVER a blocker or an `environment` failure; CDC/reverse-extract/decommission items are delivered as
+  code + unit tests only and marked `untested-live`.
+""".strip()
+
+
+# Human decisions resolving `failure_owner=contract` findings. With a decision
+# recorded for the phase, the contract finding is routed to BOTH implementation
+# nodes (remediation) with the decision text instead of halting the run.
+CONTRACT_DECISIONS = {
+    "P0": (
+        "DECISION P0-D1 (project owner, golden-oracle mode OFF): legacy Oracle Forms are not run, so LEGACY TILES ARE OUT OF "
+        "SCOPE for this phase. Do not design a token carrier for the legacy-tile navigation. Backend: keep the SSO bridge "
+        "code (SsoController, proxy/module-legacy.conf) compiling and unit-tested, fix the contract-conformance defects "
+        "the integration report lists (auth_request method/body, ProxyModule lower-case enum + clientIp in the parallel-run "
+        "scenarios, seeded accounts fixture, tool jar Main-Class/paths), and mark the end-to-end SSO exchange `untested-live` "
+        "in the scenario registry. Frontend: render legacy tiles disabled with a 'not available in this environment' hint "
+        "(no navigation), and skip/remove the legacy-tile Playwright test with a comment referencing P0-D1. Integration: "
+        "the legacy-tile e2e is excluded from the P0 gate; every other check stands."
+    ),
+}
+
+
+def phase_decisions(phase):
+    text = CONTRACT_DECISIONS.get(phase["id"])
+    return f"\nRecorded contract decision(s) for this phase:\n{text}" if text else ""
+
+
+def oracle_rules(phase_id=None):
+    if ORACLE_MODE != "off":
+        return ""
+    if phase_id is not None and PHASE_ORDER.index(phase_id) < PHASE_ORDER.index(ORACLE_RULES_FROM_PHASE):
+        return ""
+    return "\n" + ORACLE_OFF_RULES
 
 REF_DOCS = (
     "CUTOVER_PLAN.md (phasing/gates §4–§10), TEST_STRATEGY.md (levels §2, gate matrix §5, tooling §7), "
@@ -393,7 +455,7 @@ BRANCH_RESULT = {
         "head_sha": {"type": "string"},
         "level1_passed": {"type": "boolean", "description": "Level-1 tests green on this branch"},
         "summary": {"type": "string"},
-        "blockers": {"type": "string", "description": "Empty when none"},
+        "blockers": {"type": "string", "description": "STOP-SHIP ONLY: non-empty means you could NOT deliver a green, pushed branch (it halts the workflow). Deviations, renames, legacy divergences and 'untested-live' notes belong in `summary`, not here. Empty when the branch is delivered."},
     },
     "required": ["branch", "pr_url", "head_sha", "level1_passed", "summary", "blockers"],
 }
@@ -408,7 +470,7 @@ CONTRACT_RESULT = {
         "error_codes_path": {"type": "string"},
         "validation_schema_path": {"type": "string"},
         "summary": {"type": "string"},
-        "blockers": {"type": "string"},
+        "blockers": {"type": "string", "description": "STOP-SHIP ONLY: non-empty means you could NOT deliver a green, pushed branch (it halts the workflow). Deviations, renames, legacy divergences and 'untested-live' notes belong in `summary`, not here. Empty when the branch is delivered."},
     },
     "required": ["branch", "pr_url", "head_sha", "openapi_path", "error_codes_path", "validation_schema_path", "summary", "blockers"],
 }
@@ -497,7 +559,7 @@ def contract_prompt(phase):
     c = phase["contract"]
     return f"""
 You are the CONTRACT node for {phase['title']}.
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules(phase['id'])}
 
 Read {phase['plan_sections']}.
 
@@ -540,7 +602,7 @@ Definition of done: pages render against msw mocks of the contract; Vitest green
 """
     return f"""
 You are the {role.upper()} implementation node for {phase['title']}.
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules(phase['id'])}
 
 Read {phase['plan_sections']} and the frozen contract under contracts/{phase['slug']}/ on branch `{sub_branch(phase, 'contract')}`. The contract is frozen: if you believe it is wrong, implement what it says and report the problem in `blockers` – do not change it.
 {extra_note}
@@ -552,7 +614,7 @@ Report `blockers` non-empty if anything in the definition of done is not met.
 def remediation_prompt(phase, role, branch, findings, report_url, round_no):
     return f"""
 You are the {role.upper()} REMEDIATION node for {phase['title']} (remediation round {round_no} of {MAX_REMEDIATION_ROUNDS}).
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
 The integration session on `{sub_branch(phase, 'integration')}` failed and routed these findings to {role}. Full reports: {report_url}
 Findings:
@@ -567,7 +629,7 @@ def merge_prompt(phase, heads, round_no):
     heads_txt = bullets(f"{name}: {sha}" for name, sha in heads)
     return f"""
 You are the FAN-IN node for {phase['title']} (round {round_no}).
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
 Create or refresh the phase-integration merge branch `{sub_branch(phase, 'integration')}`:
 1. `git fetch`; reset the integration branch to `{sub_branch(phase, 'contract')}` (create it if missing; force-push is allowed ONLY on this integration branch).
@@ -583,9 +645,9 @@ def integration_prompt(phase, merge, round_no):
     it = phase["integration"]
     return f"""
 You are the INTEGRATION-TEST session for {phase['title']} (round {round_no}). You run in your own session; do not modify application code – you produce a verdict and a routed findings list.
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules()}{phase_decisions(phase)}
 
-Check out `{sub_branch(phase, 'integration')}` at {merge['head_sha']}. Start PostgreSQL + backend + frontend (docker compose / repo scripts). Oracle golden-oracle credentials, if provisioned, are in the environment; if Level 2/3 cannot run for lack of an Oracle connection, set failure_owner=environment and say exactly what is missing.
+Check out `{sub_branch(phase, 'integration')}` at {merge['head_sha']}. Start PostgreSQL + backend + frontend (docker compose / repo scripts). {oracle_env_note()}
 
 Run all of the following and record each as pass/fail:
 - Level 1 (TEST_STRATEGY.md §2.1): full backend JUnit + frontend Vitest on the merged tree.
@@ -606,6 +668,14 @@ Set failure_owner=none only when every check passed.
 """.strip()
 
 
+def oracle_env_note():
+    if ORACLE_MODE == "off":
+        return ("Level 2/3 run in golden-oracle mode OFF as described above; if the scenario registry or tests/golden/ lacks "
+                "recorded expectations for a scenario/view, that is a [backend] finding (missing fixture), not an environment failure.")
+    return ("Oracle golden-oracle credentials are in the environment; if Level 2/3 cannot run for lack of an Oracle connection, "
+            "set failure_owner=environment and say exactly what is missing.")
+
+
 def approval_prompt(phase, gate):
     return f"""
 You are a MANUAL-APPROVAL node for {phase['title']}: gate `{gate['gate_id']}` – {gate['title']}.
@@ -620,7 +690,7 @@ def promote_prompt(phase, integration_head, approvals):
     appr = bullets(f"{a['gate_id']}: {a['approver']} – {a['notes']}" for a in approvals) or "- none required"
     return f"""
 You are the PROMOTE node for {phase['title']}.
-{GLOBAL_RULES}
+{GLOBAL_RULES}{oracle_rules()}
 
 The phase gate passed (Level 1 + 2 + 3 + Playwright) on `{sub_branch(phase, 'integration')}` at {integration_head}, and these manual approvals were granted:
 {appr}
@@ -637,6 +707,17 @@ Do NOT flip production proxy flags or drop anything on Oracle – those are oper
 # Reusable per-phase sub-graph
 # --------------------------------------------------------------------------
 
+def blocked(result, label=None):
+    """True only for a real blocker; agents often write 'none'/'None. Note: ...' when there is nothing blocking."""
+    text = (result.get("blockers") or "").strip()
+    if not text or text.lower().startswith(("none", "no blocker", "n/a", "-")):
+        return False
+    if label in ACCEPTED_BLOCKERS:
+        log(f"[{label}] blockers accepted as informational (HRMS_WF_ACCEPT_BLOCKERS): {text}")
+        return False
+    return True
+
+
 def gate_passed(result):
     return all(
         result[k]
@@ -644,14 +725,32 @@ def gate_passed(result):
     ) and result["failure_owner"] == "none"
 
 
-def run_agent(label, prompt, schema, mode="default", minutes=60):
-    return agent(
+WF_PHASES = [
+    {"title": "contract", "detail": "Freeze the module API surface (endpoints, ApiError codes, validation-schema.json) as a contract PR"},
+    {"title": "backend", "detail": "Spring services/entities/Flyway + Level-1 JUnit + parallel-run scenarios, stacked on contract"},
+    {"title": "frontend", "detail": "React pages + Vitest, consuming the generated validation schema, stacked on contract"},
+    {"title": "fan-in", "detail": "Merge backend+frontend heads on top of contract into the integration branch"},
+    {"title": "integration", "detail": "Playwright e2e + Level-2 parallel run + Level-3 reconciliation on the merged tree"},
+    {"title": "remediate", "detail": "Fix routed findings on the owning branch, then rebase + re-run"},
+    {"title": "approval", "detail": "Manual gates: calendar bakes, shadow gate, sign-offs"},
+    {"title": "promote", "detail": "Fast-forward the phase branch; next phase cuts from it"},
+]
+
+
+async def run_agent(label, prompt, schema, mode=None, minutes=60):
+    # label is "<pid>.<node>[.rN]"; the workflow phase group is the node name.
+    node = label.split(".")[1]
+    group = {"backend-salary": "backend", "remediate-backend": "remediate",
+             "remediate-frontend": "remediate"}.get(node, node)
+    # mode is left unset (inherits the parent session mode); "lite" is gated per org.
+    return await agent(
         prompt,
-        output_schema=schema,
+        phase=group,
+        schema=schema,
+        label=label,
         repos=[REPO],
         mode=mode,
-        phase_label=label,
-        soft_time_limit_minutes=minutes,
+        soft_time_limit_minutes=min(minutes, 60),
     )
 
 
@@ -675,7 +774,7 @@ async def run_backend(phase, contract_branch, pid):
         res = await run_agent(
             f"{pid}.{node['name']}", impl_prompt(phase, "backend", node, branch, base, extra_note=note), BRANCH_RESULT, minutes=90)
         results.append((node["name"], res))
-        if res["blockers"]:
+        if blocked(res, f"{pid}.{node['name']}"):
             raise RuntimeError(f"{pid} {node['name']} reported blockers: {res['blockers']}")
         base = branch  # next node stacks on this one
     return results
@@ -687,7 +786,7 @@ async def run_phase(phase):
 
     # 1. Contract node – freezes the API surface; nothing fans out before it lands.
     contract = await run_agent(f"{pid}.contract", contract_prompt(phase), CONTRACT_RESULT, minutes=45)
-    if contract["blockers"]:
+    if blocked(contract, f"{pid}.contract"):
         raise RuntimeError(f"{pid} contract blocked: {contract['blockers']}")
     contract_branch = contract["branch"]
     log(f"[{pid}] contract landed: {contract['pr_url']} @ {contract['head_sha']}")
@@ -703,16 +802,16 @@ async def run_phase(phase):
         fe_note = ("\nP4 deviation: the React payroll pages go live only when payroll.engine is promoted to JAVA after "
                    "the manual shadow gate (≥3 periods, 0.00 diff). Build and test them fully, gated on payroll=NEW.")
 
-    backend_results, frontend = await parallel(
-        run_backend(phase, contract_branch, pid),
-        run_agent(f"{pid}.frontend",
-                  impl_prompt(phase, "frontend", phase["frontend"], frontend_branch, contract_branch, extra_note=fe_note),
-                  BRANCH_RESULT, minutes=90),
-    )
-    if frontend["blockers"]:
+    backend_results, frontend = await parallel([
+        lambda: run_backend(phase, contract_branch, pid),
+        lambda: run_agent(f"{pid}.frontend",
+                          impl_prompt(phase, "frontend", phase["frontend"], frontend_branch, contract_branch, extra_note=fe_note),
+                          BRANCH_RESULT, minutes=90),
+    ])
+    if blocked(frontend, f"{pid}.frontend"):
         raise RuntimeError(f"{pid} frontend reported blockers: {frontend['blockers']}")
     for name, r in backend_results:
-        if r["blockers"]:
+        if blocked(r, f"{pid}.{name}"):
             raise RuntimeError(f"{pid} {name} reported blockers: {r['blockers']}")
     if not (frontend["level1_passed"] and all(r["level1_passed"] for _, r in backend_results)):
         raise RuntimeError(f"{pid}: a parallel session finished without green Level-1 tests; fan-in refused")
@@ -723,7 +822,7 @@ async def run_phase(phase):
     backend_branch = backend_results[-1][1]["branch"]  # top of the backend stack (P3: employee-service)
 
     for round_no in range(1, MAX_REMEDIATION_ROUNDS + 2):
-        merge = await run_agent(f"{pid}.fan-in.r{round_no}", merge_prompt(phase, heads, round_no), MERGE_RESULT, mode="lite", minutes=30)
+        merge = await run_agent(f"{pid}.fan-in.r{round_no}", merge_prompt(phase, heads, round_no), MERGE_RESULT, minutes=30)
         if merge["conflicts_resolved"].startswith(("UNRESOLVED:", "BUILD-FAIL:")):
             raise RuntimeError(f"{pid} fan-in failed: {merge['conflicts_resolved']}")
 
@@ -735,6 +834,9 @@ async def run_phase(phase):
             break
 
         owner = report["failure_owner"]
+        if owner == "contract" and pid in CONTRACT_DECISIONS:
+            log(f"[{pid}] contract finding resolved by recorded decision; routing remediation to both nodes")
+            owner = "both"
         if owner in ("contract", "environment"):
             raise RuntimeError(f"{pid} integration failed with owner={owner}; human intervention required: {report['findings']}")
         if round_no > MAX_REMEDIATION_ROUNDS:
@@ -743,16 +845,16 @@ async def run_phase(phase):
         # Route remediation to the responsible node(s) only, then rebase the merge and re-run.
         tasks = []
         if owner in ("backend", "both"):
-            tasks.append(("backend", run_agent(f"{pid}.remediate-backend.r{round_no}",
-                                               remediation_prompt(phase, "backend", backend_branch, report["findings"], report["report_url"], round_no),
-                                               BRANCH_RESULT, minutes=90)))
+            tasks.append(("backend", lambda: run_agent(f"{pid}.remediate-backend.r{round_no}",
+                                                       remediation_prompt(phase, "backend", backend_branch, report["findings"], report["report_url"], round_no),
+                                                       BRANCH_RESULT, minutes=90)))
         if owner in ("frontend", "both"):
-            tasks.append(("frontend", run_agent(f"{pid}.remediate-frontend.r{round_no}",
-                                                remediation_prompt(phase, "frontend", frontend_branch, report["findings"], report["report_url"], round_no),
-                                                BRANCH_RESULT, minutes=90)))
-        fixed = await parallel(*(t for _, t in tasks))
+            tasks.append(("frontend", lambda: run_agent(f"{pid}.remediate-frontend.r{round_no}",
+                                                        remediation_prompt(phase, "frontend", frontend_branch, report["findings"], report["report_url"], round_no),
+                                                        BRANCH_RESULT, minutes=90)))
+        fixed = await parallel([t for _, t in tasks])
         for (role, _), res in zip(tasks, fixed):
-            if res["blockers"]:
+            if blocked(res, f"{pid}.remediate-{role}.r{round_no}"):
                 raise RuntimeError(f"{pid} {role} remediation blocked: {res['blockers']}")
             heads = [(b, res["head_sha"] if b == res["branch"] else s) for b, s in heads]
         log(f"[{pid}] remediation r{round_no} pushed by {[r for r, _ in tasks]}; re-running fan-in + integration")
@@ -764,7 +866,7 @@ async def run_phase(phase):
             log(f"[{pid}] gate {gate['gate_id']} pre-approved via HRMS_WF_APPROVED_GATES")
             granted.append({"gate_id": gate["gate_id"], "approver": "pre-approved (HRMS_WF_APPROVED_GATES)", "notes": ""})
             continue
-        decision = await run_agent(f"{pid}.approval.{gate['gate_id']}", approval_prompt(phase, gate), APPROVAL_RESULT, mode="lite", minutes=60)
+        decision = await run_agent(f"{pid}.approval.{gate['gate_id']}", approval_prompt(phase, gate), APPROVAL_RESULT, minutes=60)
         if not decision["approved"]:
             log(f"[{pid}] STOP: gate {gate['gate_id']} not approved ({decision['approver']}: {decision['notes']}). "
                 f"Re-run with the same run_id and HRMS_WF_APPROVED_GATES including {gate['gate_id']} once granted.")
@@ -772,7 +874,7 @@ async def run_phase(phase):
         granted.append({"gate_id": gate["gate_id"], "approver": decision["approver"], "notes": decision["notes"]})
 
     # 8. Promote – fast-forward the phase branch; next phase's contract cuts from it.
-    promoted = await run_agent(f"{pid}.promote", promote_prompt(phase, report["head_sha"], granted), PROMOTE_RESULT, mode="lite", minutes=30)
+    promoted = await run_agent(f"{pid}.promote", promote_prompt(phase, report["head_sha"], granted), PROMOTE_RESULT, minutes=30)
     log(f"[{pid}] promoted {promoted['phase_branch']} @ {promoted['head_sha']}")
     return {"phase": pid, "status": "promoted", "phase_branch": promoted["phase_branch"], "head_sha": promoted["head_sha"],
             "integration_report": report["report_url"]}
@@ -783,10 +885,13 @@ async def run_phase(phase):
 # --------------------------------------------------------------------------
 
 async def main():
-    await register_workflow(
-        name="hrms-phase-workflow",
-        description="HRMS modernization: contract → parallel backend+frontend → fan-in → integration session → gate, per phase P0–P5",
-    )
+    await register_workflow({
+        "name": "hrms-phase-workflow",
+        "description": "HRMS modernization: contract → parallel backend+frontend → fan-in → integration session → gate, per phase P0–P5",
+        "product": f"{REPO} (Spring Boot + React on PostgreSQL)",
+        "soft_time_limit_minutes": 60,
+        "phases": WF_PHASES,
+    })
     unknown = [p for p in PHASES_TO_RUN if p not in PHASES]
     if unknown:
         raise ValueError(f"Unknown phases in HRMS_WF_PHASES: {unknown}")
