@@ -31,9 +31,13 @@ session and `frontend/playwright.config.ts` under `E2E_REAL_STACK=1` rely on):
 docker run -d --name hrms-pg -e POSTGRES_DB=hrms -e POSTGRES_USER=hrms -e POSTGRES_PASSWORD=hrms \
   -p 5432:5432 postgres:16
 
-# 2. auth-service (runs Flyway V1+V2 on the empty database), JDK 21
+# 2. auth-service (runs Flyway V1..Vn on the empty database), JDK 21
 (cd backend && mvn -B install -DskipTests)
 : "${HRMS_FIELD_KEY_BASE64:?Export a stable base64-encoded 32-byte local key before starting}"
+# First boot only: the schema is empty until Flyway runs, and the P4 PayElementStartupValidator
+# (contracts/p4-payroll) refuses to start unless PAY_ELEMENTS 1/100-103 (seeded by
+# 01_reference_data.sql in step 3, not by a migration) are present. Disable it for this one boot.
+HRMS_PAYROLL_VALIDATE_PAY_ELEMENTS=false \
 HRMS_PG_URL=jdbc:postgresql://localhost:5432/hrms HRMS_PG_USER=hrms HRMS_PG_PASSWORD=hrms \
 HRMS_FIELD_KEY_BASE64="$HRMS_FIELD_KEY_BASE64" HRMS_PROXY_CIDRS=127.0.0.1/32,::1/128 \
 java -jar backend/auth/target/auth-0.1.0-SNAPSHOT.jar
@@ -42,7 +46,13 @@ java -jar backend/auth/target/auth-0.1.0-SNAPSHOT.jar
 for f in 01_reference_data 02_employee_data 03_transaction_data 04_user_accounts; do
   docker exec -i hrms-pg psql -v ON_ERROR_STOP=1 -U hrms -d hrms < tools/fixtures/pg/$f.sql
 done
+
+# 4. restart auth-service WITHOUT HRMS_PAYROLL_VALIDATE_PAY_ELEMENTS so the startup validator is
+#    back on (it is the guard that the TaxEngine's frozen element ids exist).
 ```
+
+Order matters: Flyway needs the app to start, the seed needs Flyway's schema, and the validator
+needs the seed. Every later boot (non-empty database) runs with the validator enabled.
 
 Seeded logins (`tools/fixtures/pg/04_user_accounts.sql`, password `Welcome1!`):
 `david.martinez@company.com` (STAFF), `jennifer.park@company.com` (MANAGER),

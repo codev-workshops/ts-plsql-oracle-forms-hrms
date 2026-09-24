@@ -415,6 +415,43 @@ class PayrollApiTest extends AuthApiTestBase {
   }
 
   /**
+   * error-codes.md §1.1: an employee with ANY ERROR row has no payslip (422 with that row's code),
+   * even when the run also holds CALCULATED rows for them. Seed run 9001 / emp 31 is such a mixed
+   * employee (legacy ERROR row 10038, error_code INTERNAL_ERROR); the 422 code equals the row's
+   * errorCode as served by GET .../details, and a row with no stored code maps to INTERNAL_ERROR.
+   */
+  @Test
+  void payslipWithMixedCalculatedAndErrorRowsIs422WithTheStoredCode() throws Exception {
+    mvc.perform(get("/api/payroll/runs/9001/payslips/31").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.message").value("HSA election missing for 2024"));
+    mvc.perform(
+            get("/api/payroll/runs/9001/details?empId=31")
+                .header("Authorization", "Bearer " + exec))
+        .andExpect(jsonPath("$.content[?(@.status == 'ERROR')].errorCode").value("INTERNAL_ERROR"));
+    mvc.perform(get("/api/payroll/runs/9001/payslips/2").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk());
+
+    try {
+      jdbc.update("update payroll_details set error_code = null where detail_id = 10038");
+      mvc.perform(
+              get("/api/payroll/runs/9001/payslips/31").header("Authorization", "Bearer " + exec))
+          .andExpect(status().isUnprocessableEntity())
+          .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+      jdbc.update(
+          "update payroll_details set error_code = 'MISSING_TAX_RATE' where detail_id = 10038");
+      mvc.perform(
+              get("/api/payroll/runs/9001/payslips/31").header("Authorization", "Bearer " + exec))
+          .andExpect(status().isUnprocessableEntity())
+          .andExpect(jsonPath("$.code").value("MISSING_TAX_RATE"));
+    } finally {
+      jdbc.update(
+          "update payroll_details set error_code = 'INTERNAL_ERROR' where detail_id = 10038");
+    }
+  }
+
+  /**
    * CUTOVER_PLAN §8.2 oracle-cdc leg: when a LEGACY-engine run of record exists for the period
    * (replicated from Oracle), the shadow diff compares against its rows instead of the recorded
    * pack; a REVERSED legacy run does not count. Seed run 9002 (emp 2 only, stale gross 20833.33)

@@ -15,13 +15,14 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Transactional owner of SALARY_RECORDS and its explicit audit/event side effects. */
 @Service
-public class SalaryService {
+public class SalaryService implements SalaryAsOfReader {
 
   private static final String TABLE = "SALARY_RECORDS";
   private final SalaryRecordRepository records;
@@ -55,6 +56,12 @@ public class SalaryService {
     requireEmployee(empId);
     access.requireReadable(empId, caller);
     return records.history(empId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<SalaryRecord> effectiveOn(long empId, LocalDate asOf) {
+    return records.findEffectiveOn(empId, asOf);
   }
 
   @Transactional

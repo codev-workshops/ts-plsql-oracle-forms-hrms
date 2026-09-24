@@ -5,7 +5,7 @@
 --   psql "$PG_URL" -f tools/parallel-run/fixtures/payroll.sql
 --
 -- Why: `payroll.calculate.no-active-salary` needs an OPEN period on which no seed employee has a
--- salary in force (PKG_PAYROLL.get_salary_as_of / SalaryRecordRepository.findEffectiveOn resolve
+-- salary in force (PKG_PAYROLL.get_salary_as_of / SalaryAsOfReader.effectiveOn resolve
 -- the salary effective on PERIOD_END_DATE; the earliest seed salary is effective 2010-03-15), so
 -- every ACTIVE employee gets exactly one ERROR sentinel row -20104 and the seed period 202406 stays
 -- untouched for the to-the-cent scenarios. Idempotent.
