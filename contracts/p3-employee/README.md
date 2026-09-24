@@ -13,8 +13,11 @@ served by `salary-module` (sole owner of `salary_records`, ARCH-01 – `employee
 its `SalaryService` Java interface in the hire / terminate transaction and never touches the
 table), everything else under `/api/employees/**` by `employee-service` (sole owner of
 `employees`, `employee_history`, `employee_dependents`, `emergency_contacts`); the acting
-identity is always the JWT `empId` / `username` claim (no request carries an actor id; `{id}`
-is the subject, scoped by the per-route "self / `EMPLOYEE:EDIT` / `PAYROLL:VIEW`" rule);
+identity always comes from the P0 JWT – `empId` is the acting employee ID used for the
+row-level "self" scope, and `sub` (`user_accounts.user_id`) is the audit actor written to
+`createdBy` / `modifiedBy` / `changedBy`; there is no `username` claim and no request carries
+an actor id (`{id}` is the subject, scoped by the per-route "self / `EMPLOYEE:EDIT` /
+`PAYROLL:VIEW`" rule);
 `empNumber` is server-assigned from `SEQ_EMP_NUMBER` and read-only (not a property of any
 request DTO); there is no `DELETE` route and no route that sets `employmentStatus` directly –
 `POST …/terminate` is the only exit from `ACTIVE`, writes against a `TERMINATED` employee are

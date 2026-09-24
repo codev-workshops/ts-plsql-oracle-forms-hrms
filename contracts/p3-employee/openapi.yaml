@@ -29,9 +29,14 @@ info:
       `SalaryService` Java interface (never by JPA association or SQL join). `departments`,
       `job_titles`, `job_grades`, `locations` are read-only reference data owned by `reference`
       (P0).
-    * **Identity is always `jwt.empId`.** No request body or query parameter of a write operation
-      carries the acting employee's identity; `createdBy` / `modifiedBy` / `changedBy` come from
-      the `SecurityContext` (JPA auditing). `{id}` path variables identify the *subject*
+    * **Identity always comes from the P0 JWT, never from the request.** No request body or
+      query parameter of a write operation carries the acting identity. The JWT carries two
+      actor claims with distinct roles: `jwt.empId` is the acting *employee* ID used for every
+      row-level "self" scope rule (`jwt.empId == id`), and `jwt.sub` is the acting *user account*
+      ID (`user_accounts.user_id`, the `CallerIdentity.userId()` of the `SecurityContext`) that is
+      written verbatim into the audit columns: `createdBy` / `modifiedBy` / `changedBy` on
+      `employees`, `employee_history`, `salary_records`, etc. are the JWT `sub` value (JPA
+      auditing), not the username and not `empId`. `{id}` path variables identify the *subject*
       employee and are authorised by the `x-preauthorize` authority plus the row-level "self"
       rule stated per operation; a caller outside the scope receives `403 FORBIDDEN`, never
       `404`.
@@ -227,7 +232,7 @@ paths:
         3. Active e-mail uniqueness, case-insensitive (`TRG_EMP_BEFORE_INSERT`) → `409 -20502`.
         4. `empNumber := 'EMP-' || LPAD(SEQ_EMP_NUMBER.nextval, 6, '0')`;
            `employmentStatus = ACTIVE`, `activeFlag = 'Y'`, `employmentType` default `FULL_TIME`,
-           `ssn` encrypted; `createdBy = jwt.username`.
+           `ssn` encrypted; `createdBy = jwt.sub` (`user_accounts.user_id`).
         5. When `initialSalary` is present, `salary-module.SalaryService.create(empId,
            baseSalary = initialSalary, effectiveDate = hireDate, changeReason = 'INITIAL',
            payFrequency = MONTHLY, salaryBasis = ANNUAL)` runs in the same transaction
@@ -957,7 +962,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+      description: >-
+        P0 access token (frozen; issued by `auth-service.JwtService`). Claims: `sub` =
+        `user_accounts.user_id` (audit actor for `createdBy` / `modifiedBy` / `changedBy`),
+        `empId` = acting employee ID (row-level "self" scope), `roles[]` (expanded to the
+        `x-preauthorize` authorities), `jti`, `iat`, `exp`. There is no `username` claim.
 
   parameters:
     EmployeeId:
