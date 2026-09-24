@@ -86,6 +86,7 @@ class RegistryAndReportTest {
     codes.put("employee.validate.salary-not-positive", "-20101");
     codes.put("employee.trigger.hire-date-too-far", "-20501");
     codes.put("employee.trigger.email-in-use", "-20502");
+    codes.put("employee.update.email-in-use", "-20502");
     codes.put("employee.trigger.no-reactivation", "-20503");
     codes.put("employee.trigger.no-physical-delete", "-20504");
     Map<String, Scenario> byId =
@@ -105,6 +106,8 @@ class RegistryAndReportTest {
         .containsEntry("employmentStatus", "ACTIVE");
     assertThat(byId.get("employee.update.ok").target().method()).isEqualTo("PUT");
     assertThat(byId.get("employee.update.ok").target().setup()).hasSize(1);
+    assertThat(byId.get("employee.update.email-in-use").target().method()).isEqualTo("PUT");
+    assertThat(byId.get("employee.update.email-in-use").target().setup()).hasSize(1);
     for (Scenario s : ScenarioRegistry.all()) {
       if (s.id().startsWith("employee.")) {
         assertThat(ScenarioRegistry.legacySource(s))
@@ -114,7 +117,9 @@ class RegistryAndReportTest {
         Outcome legacy =
             s.id().equals(EmployeeScenarios.SESSION_REVOKED)
                 ? EmployeeScenarios.LEGACY_SESSION_STILL_VALID
-                : s.expect();
+                : s.id().equals(EmployeeScenarios.UPDATE_EMAIL_IN_USE)
+                    ? EmployeeScenarios.LEGACY_UPDATE_EMAIL_ACCEPTED
+                    : s.expect();
         assertThat(ScenarioRegistry.legacyOutcome(s)).as(s.id()).isEqualTo(legacy);
       }
     }

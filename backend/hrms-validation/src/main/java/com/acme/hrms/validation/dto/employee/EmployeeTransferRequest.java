@@ -11,7 +11,7 @@ import java.time.LocalDate;
  * Body of POST /api/employees/{id}/transfer (PKG_EMPLOYEE.transfer_employee; a job change here is
  * the promote_employee path).
  */
-public class EmployeeTransferRequest {
+public class EmployeeTransferRequest extends StrictRequest {
 
   @NotNull
   @FieldMeta(requiredMessage = "Effective date is required")

@@ -37,7 +37,8 @@ function fromRow(c: EmergencyContact): Values {
 /** `EMERGENCY_CONTACT` block (HRMS_EMPLOYEE.fmb "Emergency Contacts" tab) → `/api/employees/{id}/contacts`. */
 export function ContactsTab({ employee }: { employee: EmployeeDetail }) {
   const qc = useQueryClient();
-  const { canEditEmployee } = useEmployeeWrite();
+  const { canEditRelated } = useEmployeeWrite();
+  const editable = canEditRelated(employee.id) && employee.employmentStatus !== 'TERMINATED';
   const [editing, setEditing] = useState<EmergencyContact | 'new' | null>(null);
   const contacts = useQuery({ queryKey: employeeContactsKey(employee.id), queryFn: () => api.employees.listEmergencyContacts(employee.id) });
   const saved = () => {
@@ -49,7 +50,7 @@ export function ContactsTab({ employee }: { employee: EmployeeDetail }) {
     <section aria-labelledby="contacts-title">
       <div className="toolbar">
         <h3 id="contacts-title">Emergency contacts</h3>
-        {canEditEmployee && editing === null && <button type="button" onClick={() => setEditing('new')}>Add contact</button>}
+        {editable && editing === null && <button type="button" onClick={() => setEditing('new')}>Add contact</button>}
       </div>
       {contacts.isPending ? (
         <p role="status">Loading…</p>
@@ -58,7 +59,7 @@ export function ContactsTab({ employee }: { employee: EmployeeDetail }) {
       ) : contacts.data.length ? (
         <table className="grid" aria-label="Emergency contacts">
           <thead>
-            <tr><th>Priority</th><th>Name</th><th>Relationship</th><th>Primary phone</th><th>Secondary phone</th><th>E-mail</th><th>Active</th>{canEditEmployee && <th />}</tr>
+            <tr><th>Priority</th><th>Name</th><th>Relationship</th><th>Primary phone</th><th>Secondary phone</th><th>E-mail</th><th>Active</th>{editable && <th />}</tr>
           </thead>
           <tbody>
             {contacts.data.map((c) => (
@@ -70,7 +71,7 @@ export function ContactsTab({ employee }: { employee: EmployeeDetail }) {
                 <td>{c.phoneSecondary ?? '—'}</td>
                 <td>{c.email ?? '—'}</td>
                 <td>{c.active ? 'Yes' : 'No'}</td>
-                {canEditEmployee && (
+                {editable && (
                   <td>
                     <button type="button" onClick={() => setEditing(c)} aria-label={`Edit contact ${c.contactName}`}>Edit</button>
                   </td>
@@ -82,7 +83,7 @@ export function ContactsTab({ employee }: { employee: EmployeeDetail }) {
       ) : (
         <p>No emergency contacts recorded.</p>
       )}
-      {editing !== null && canEditEmployee && (
+      {editing !== null && editable && (
         <ContactForm empId={employee.id} contact={editing === 'new' ? null : editing} onCancel={() => setEditing(null)} onSaved={saved} />
       )}
     </section>

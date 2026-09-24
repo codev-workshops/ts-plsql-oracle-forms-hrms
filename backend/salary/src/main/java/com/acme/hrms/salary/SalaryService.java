@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,8 +61,16 @@ public class SalaryService {
   public SalaryRecord change(long empId, SalaryChangeRequest request, String actor) {
     access.requireWritable();
     SalaryChangeRequest req = access.validate(request);
-    EmployeeRef employee = requireActive(empId);
+    requireActive(empId);
     SalaryRecord previous = records.findActive(empId).orElse(null);
+    employees.lock(empId);
+    EmployeeRef employee = requireActive(empId);
+    SalaryRecord current = records.findActive(empId).orElse(null);
+    if (!Objects.equals(
+        previous == null ? null : previous.salaryId(),
+        current == null ? null : current.salaryId())) {
+      throw new HrmsException(ErrorCode.CONFLICT);
+    }
     validateEffectiveDate(req.getEffectiveDate(), employee, previous);
 
     BigDecimal newSalary = req.getBaseSalary().setScale(2, RoundingMode.HALF_UP);
@@ -85,7 +94,14 @@ public class SalaryService {
                 outOfBand,
                 actor));
     SalaryRecord created = records.findById(id).orElseThrow();
-    publish(empId, req.getEffectiveDate(), oldSalary, newSalary, req.getChangeReason(), actor);
+    publish(
+        empId,
+        req.getEffectiveDate(),
+        oldSalary,
+        newSalary,
+        req.getChangeReason(),
+        actor,
+        SalaryChangeEvent.Kind.CHANGE);
     auditInsert(id, empId, newSalary, req.getEffectiveDate(), actor);
     return created;
   }
@@ -119,7 +135,7 @@ public class SalaryService {
                 assertWithinGrade(salary, employee.gradeMin(), employee.gradeMax()),
                 actor));
     SalaryRecord created = records.findById(id).orElseThrow();
-    publish(empId, effectiveDate, null, salary, "INITIAL", actor);
+    publish(empId, effectiveDate, null, salary, "INITIAL", actor, SalaryChangeEvent.Kind.INITIAL);
     auditInsert(id, empId, salary, effectiveDate, actor);
     return created;
   }
@@ -175,9 +191,8 @@ public class SalaryService {
     }
     return newSalary
         .subtract(oldSalary)
-        .divide(oldSalary, 10, RoundingMode.HALF_UP)
         .multiply(BigDecimal.valueOf(100))
-        .setScale(2, RoundingMode.HALF_UP);
+        .divide(oldSalary, 2, RoundingMode.HALF_UP);
   }
 
   private EmployeeRef requireEmployee(long empId) {
@@ -220,10 +235,11 @@ public class SalaryService {
       BigDecimal oldSalary,
       BigDecimal newSalary,
       String reason,
-      String actor) {
+      String actor,
+      SalaryChangeEvent.Kind kind) {
     for (SalaryChangeListener listener : listeners) {
       listener.onSalaryChanged(
-          new SalaryChangeEvent(empId, date, oldSalary, newSalary, reason, actor));
+          new SalaryChangeEvent(empId, date, oldSalary, newSalary, reason, actor, kind));
     }
   }
 

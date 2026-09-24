@@ -42,6 +42,28 @@ class SalaryServiceTest {
   }
 
   @Test
+  void changePctIsTheExactlyRoundedFormulaForEveryMoneyMagnitude() {
+    assertThat(SalaryService.changePct(new BigDecimal("66000.00"), new BigDecimal("999999.00")))
+        .isEqualTo(new BigDecimal("1415.15"));
+    assertThat(SalaryService.changePct(new BigDecimal("0.01"), new BigDecimal("9999999999.99")))
+        .isEqualTo(new BigDecimal("99999999999800.00"));
+    assertThat(SalaryService.changePct(new BigDecimal("9999999999.99"), new BigDecimal("0.01")))
+        .isEqualTo(new BigDecimal("-100.00"));
+    assertThat(SalaryService.changePct(new BigDecimal("66000.01"), new BigDecimal("66003.31")))
+        .isEqualTo(new BigDecimal("0.00"));
+    assertThat(
+            SalaryService.changePct(
+                new BigDecimal("9998000000.01"), new BigDecimal("9998499900.01")))
+        .isEqualTo(new BigDecimal("0.00"));
+    assertThat(
+            SalaryService.changePct(new BigDecimal("12345678.91"), new BigDecimal("15562345.55")))
+        .isEqualTo(new BigDecimal("26.05"));
+    assertThat(
+            SalaryService.changePct(new BigDecimal("9999999999.99"), new BigDecimal("500000.00")))
+        .isEqualTo(new BigDecimal("-99.99"));
+  }
+
+  @Test
   void assertWithinGradeTreatsInclusiveBoundariesAsInBand() {
     assertThat(
             service.assertWithinGrade(

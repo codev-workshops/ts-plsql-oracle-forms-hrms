@@ -30,14 +30,24 @@ final class EmployeeScenarios {
 
   static final String MODULE = "employee";
   static final String SESSION_REVOKED = "employee.terminate.session-revoked";
+  static final String UPDATE_EMAIL_IN_USE = "employee.update.email-in-use";
   private static final String EXEC = PerformanceScenarios.ADMIN;
   private static final String EMILY = "emily.johnson@company.com";
 
   /** Legacy leg of {@link #SESSION_REVOKED}: the terminated employee's session stays usable. */
   static final Outcome LEGACY_SESSION_STILL_VALID = Outcome.ok(Map.of("empId", "12"));
 
+  /** Legacy leg of {@link #UPDATE_EMAIL_IN_USE}: TRG_EMP_BEFORE_INSERT never fired on update. */
+  static final Outcome LEGACY_UPDATE_EMAIL_ACCEPTED = Outcome.ok(Map.of());
+
   static Outcome legacyOutcome(Scenario scenario) {
-    return SESSION_REVOKED.equals(scenario.id()) ? LEGACY_SESSION_STILL_VALID : scenario.expect();
+    if (SESSION_REVOKED.equals(scenario.id())) {
+      return LEGACY_SESSION_STILL_VALID;
+    }
+    if (UPDATE_EMAIL_IN_USE.equals(scenario.id())) {
+      return LEGACY_UPDATE_EMAIL_ACCEPTED;
+    }
+    return scenario.expect();
   }
 
   static List<Scenario> all() {
@@ -91,6 +101,18 @@ final class EmployeeScenarios {
                 .withSetup(
                     List.of(call("POST", "/api/employees", create("pr.update@company.com"), EXEC))),
             Outcome.ok(Map.of("firstName", "RENAMED", "version", "1"))),
+        new Scenario(
+            UPDATE_EMAIL_IN_USE,
+            MODULE,
+            plsql(
+                "begin pkg_employee.update_employee(p_emp_id => :emp_id, p_email => '"
+                    + EMILY
+                    + "', p_user => :user); end;",
+                List.of()),
+            call("PUT", "/api/employees/{id}", update("PR", EMILY), EXEC)
+                .withSetup(
+                    List.of(call("POST", "/api/employees", create("pr.email@company.com"), EXEC))),
+            Outcome.error("-20502")),
         new Scenario(
             "employee.terminate.ok",
             MODULE,
@@ -216,7 +238,10 @@ final class EmployeeScenarios {
                     + " :user); end;",
                 List.of()),
             call(
-                "POST", "/api/employees", with(create("v5@company.com"), "initialSalary", 0), EXEC),
+                "POST",
+                "/api/employees",
+                with(create("v5@company.com"), "initialSalary", "0.00"),
+                EXEC),
             Outcome.error("-20101")),
         // ---- TRG_EMPLOYEES rules -----------------------------------------------------------
         new Scenario(
@@ -273,7 +298,7 @@ final class EmployeeScenarios {
     m.put("managerEmpId", 31);
     m.put("locationCode", "CHI");
     m.put("employmentType", "FULL_TIME");
-    m.put("initialSalary", 85000);
+    m.put("initialSalary", "85000.00");
     m.put("email", email);
     return Map.copyOf(m);
   }

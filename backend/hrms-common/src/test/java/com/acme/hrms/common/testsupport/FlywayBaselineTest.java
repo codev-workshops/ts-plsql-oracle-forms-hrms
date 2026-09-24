@@ -29,7 +29,18 @@ class FlywayBaselineTest {
         jdbc.queryForList(
             "select version from flyway_schema_history where success order by installed_rank",
             String.class);
-    assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+    assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+  }
+
+  @Test
+  void salaryChangePctIsNumeric16Scale2() {
+    Map<String, Object> column =
+        jdbc.queryForMap(
+            "select data_type, numeric_precision, numeric_scale from information_schema.columns"
+                + " where table_name = 'salary_records' and column_name = 'change_pct'");
+    assertThat(column.get("data_type")).isEqualTo("numeric");
+    assertThat(((Number) column.get("numeric_precision")).intValue()).isEqualTo(16);
+    assertThat(((Number) column.get("numeric_scale")).intValue()).isEqualTo(2);
   }
 
   @Test

@@ -272,14 +272,34 @@ export function salaryHistoryFor(empId: number) {
   return salaries.filter((s) => s.empId === empId).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate) || b.salaryId - a.salaryId);
 }
 
+const MONEY_PATTERN = /^-?\d+\.\d{2}$/;
+
+function moneyToCents(money: string): bigint | null {
+  return MONEY_PATTERN.test(money) ? BigInt(money.replace('.', '')) : null;
+}
+
+/** `ROUND((new - old) / old * 100, 2)` with HALF_UP in exact cents arithmetic; null when `old` is unusable. */
+export function salaryChangePct(oldSalary: string, newSalary: string): string | null {
+  const oldCents = moneyToCents(oldSalary);
+  const newCents = moneyToCents(newSalary);
+  if (oldCents === null || newCents === null || oldCents <= 0n) return null;
+  const numerator = (newCents - oldCents) * 10000n;
+  let hundredths = numerator / oldCents;
+  const remainder = numerator % oldCents;
+  if (remainder * 2n >= oldCents) hundredths += 1n;
+  else if (remainder * -2n >= oldCents) hundredths -= 1n;
+  const abs = hundredths < 0n ? -hundredths : hundredths;
+  const sign = hundredths < 0n ? '-' : '';
+  return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
+
 export function insertSalary(input: Omit<SalaryRecord, 'salaryId' | 'createdBy' | 'createdDate' | 'active' | 'endDate' | 'changePct'>, createdBy: string): SalaryRecord {
   const previous = activeSalaryFor(input.empId);
   let changePct: string | null = null;
   if (previous) {
     previous.active = false;
     previous.endDate = input.effectiveDate;
-    const old = Number(previous.baseSalary);
-    changePct = (Math.round(((Number(input.baseSalary) - old) / old) * 10000) / 100).toFixed(2);
+    changePct = salaryChangePct(previous.baseSalary, input.baseSalary);
   }
   const record: SalaryRecord = { ...input, salaryId: nextSalaryId++, endDate: null, changePct, active: true, createdBy, createdDate: new Date().toISOString() };
   salaries.push(record);

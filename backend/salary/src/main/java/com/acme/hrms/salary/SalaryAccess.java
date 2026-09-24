@@ -48,6 +48,8 @@ public class SalaryAccess {
           "Salary must be positive: " + format(salary),
           "baseSalary");
     }
+    body.requireNoUnknownProperties();
+    body.requireNoMalformedProperties();
     Set<ConstraintViolation<SalaryChangeRequest>> violations = validator.validate(body);
     if (!violations.isEmpty()) {
       throw new ConstraintViolationException(violations);

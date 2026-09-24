@@ -2,6 +2,7 @@ package com.acme.hrms.validation.dto.employee;
 
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -15,13 +16,14 @@ import java.time.LocalDate;
  * Body of POST /api/employees/{id}/salary (salary-module; PKG_PAYROLL.create_salary_record
  * semantics).
  */
-public class SalaryChangeRequest {
+public class SalaryChangeRequest extends StrictRequest {
 
   @NotNull
   @FieldMeta(requiredMessage = "Effective date is required")
   private LocalDate effectiveDate;
 
   @NotNull
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.01")
   @Digits(integer = 10, fraction = 2)
   @FieldMeta(

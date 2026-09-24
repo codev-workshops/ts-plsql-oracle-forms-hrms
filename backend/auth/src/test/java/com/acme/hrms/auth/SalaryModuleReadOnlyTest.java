@@ -32,7 +32,7 @@ class SalaryModuleReadOnlyTest extends AuthApiTestBase {
                     json.writeValueAsString(
                         Map.of(
                             "effectiveDate", "2025-01-01",
-                            "baseSalary", 0,
+                            "baseSalary", "0.00",
                             "changeReason", "MERIT"))))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("MODULE_READ_ONLY"));

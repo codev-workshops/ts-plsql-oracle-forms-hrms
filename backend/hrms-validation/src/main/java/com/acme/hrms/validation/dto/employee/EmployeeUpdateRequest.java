@@ -17,7 +17,7 @@ import java.time.LocalDate;
  * Status, employee number, hire date, termination fields and salary are not editable here
  * (terminate / transfer / salary endpoints).
  */
-public class EmployeeUpdateRequest {
+public class EmployeeUpdateRequest extends StrictRequest {
 
   @NotBlank
   @Size(max = EmployeeRules.NAME_MAX)

@@ -4,6 +4,7 @@ import com.acme.hrms.validation.constraints.HireDateWithinLimit;
 import com.acme.hrms.validation.constraints.Ssn;
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Email;
@@ -21,7 +22,7 @@ import java.time.LocalDate;
  * accepted: it is assigned from SEQ_EMP_NUMBER. Initial salary travels with the hire and is written
  * by salary-module in the same transaction.
  */
-public class EmployeeCreateRequest {
+public class EmployeeCreateRequest extends StrictRequest {
 
   @NotBlank
   @Size(max = EmployeeRules.NAME_MAX)
@@ -147,6 +148,7 @@ public class EmployeeCreateRequest {
   @AllowedValues({"FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"})
   private String employmentType;
 
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.01")
   @Digits(integer = 10, fraction = 2)
   @FieldMeta(

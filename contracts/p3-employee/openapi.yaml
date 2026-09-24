@@ -29,9 +29,14 @@ info:
       `SalaryService` Java interface (never by JPA association or SQL join). `departments`,
       `job_titles`, `job_grades`, `locations` are read-only reference data owned by `reference`
       (P0).
-    * **Identity is always `jwt.empId`.** No request body or query parameter of a write operation
-      carries the acting employee's identity; `createdBy` / `modifiedBy` / `changedBy` come from
-      the `SecurityContext` (JPA auditing). `{id}` path variables identify the *subject*
+    * **Identity always comes from the P0 JWT, never from the request.** No request body or
+      query parameter of a write operation carries the acting identity. The JWT carries two
+      actor claims with distinct roles: `jwt.empId` is the acting *employee* ID used for every
+      row-level "self" scope rule (`jwt.empId == id`), and `jwt.sub` is the acting *user account*
+      ID (`user_accounts.user_id`, the `CallerIdentity.userId()` of the `SecurityContext`) that is
+      written verbatim into the audit columns: `createdBy` / `modifiedBy` / `changedBy` on
+      `employees`, `employee_history`, `salary_records`, etc. are the JWT `sub` value (JPA
+      auditing), not the username and not `empId`. `{id}` path variables identify the *subject*
       employee and are authorised by the `x-preauthorize` authority plus the row-level "self"
       rule stated per operation; a caller outside the scope receives `403 FORBIDDEN`, never
       `404`.
@@ -227,7 +232,7 @@ paths:
         3. Active e-mail uniqueness, case-insensitive (`TRG_EMP_BEFORE_INSERT`) → `409 -20502`.
         4. `empNumber := 'EMP-' || LPAD(SEQ_EMP_NUMBER.nextval, 6, '0')`;
            `employmentStatus = ACTIVE`, `activeFlag = 'Y'`, `employmentType` default `FULL_TIME`,
-           `ssn` encrypted; `createdBy = jwt.username`.
+           `ssn` encrypted; `createdBy = jwt.sub` (`user_accounts.user_id`).
         5. When `initialSalary` is present, `salary-module.SalaryService.create(empId,
            baseSalary = initialSalary, effectiveDate = hireDate, changeReason = 'INITIAL',
            payFrequency = MONTHLY, salaryBasis = ANNUAL)` runs in the same transaction
@@ -562,6 +567,14 @@ paths:
         gradeMaxSalary`) is **not** an error: the UI pre-warns, the server records
         `outOfGradeBand = true` on the response (COMPONENT_MAPPING.md §8 `validate_salary_range`
         is advisory).
+
+        `change_pct` is always the **exact** rounded formula value: it is never clipped,
+        capped or rejected, and no magnitude of raise or cut is a validation error (only
+        `baseSalary <= 0` is, `-20101`). With `Money` bounded to `0.01 .. 9999999999.99`, the
+        result lies in `[-100.00, 99999999999800.00]` (at most 14 integer digits), so the
+        `salary_records.change_pct` column is PostgreSQL `NUMERIC(16,2)`; the legacy Oracle
+        `CHANGE_PCT NUMBER(5,2)` width (overflow above `999.99`) is a storage limit of the
+        legacy schema, not a business rule, and is **not** reproduced (README.md).
       x-preauthorize: hasAuthority('PAYROLL:EDIT')
       x-module-flag: employee=NEW
       x-history: [SALARY_CHANGE]
@@ -957,7 +970,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+      description: >-
+        P0 access token (frozen; issued by `auth-service.JwtService`). Claims: `sub` =
+        `user_accounts.user_id` (audit actor for `createdBy` / `modifiedBy` / `changedBy`),
+        `empId` = acting employee ID (row-level "self" scope), `roles[]` (expanded to the
+        `x-preauthorize` authorities), `jti`, `iat`, `exp`. There is no `username` claim.
 
   parameters:
     EmployeeId:
@@ -1408,7 +1425,7 @@ components:
 
     SalaryRecord:
       type: object
-      description: "`SALARY_RECORDS` row (salary-module). `changePct` as `NUMBER(5,2)` string, e.g. `\"5.00\"`."
+      description: "`SALARY_RECORDS` row (salary-module). `changePct` as an exact two-decimal string (PostgreSQL `NUMERIC(16,2)`, wider than the legacy Oracle `NUMBER(5,2)`), e.g. `\"5.00\"` or `\"1415.15\"`."
       required: [salaryId, empId, effectiveDate, baseSalary, currencyCode, payFrequency, salaryBasis, active, outOfGradeBand, createdBy, createdDate]
       additionalProperties: false
       properties:
@@ -1427,7 +1444,7 @@ components:
         changePct:
           type: [string, 'null']
           pattern: '^-?[0-9]+\.[0-9]{2}$'
-          description: "`ROUND((new - old) / old * 100, 2)`; `null` for the first record."
+          description: "Exact `ROUND((new - old) / old * 100, 2)` for the whole valid `Money` range - never clipped or rejected, range `[-100.00, 99999999999800.00]`; `null` for the first record (no prior salary)."
         active: { type: boolean, description: "`ACTIVE_FLAG='Y'` - exactly one per employee." }
         outOfGradeBand: { type: boolean, description: "`baseSalary` outside `[gradeMinSalary, gradeMaxSalary]` of the employee's job grade at creation time (advisory)." }
         createdBy: { type: string }
