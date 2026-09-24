@@ -1,14 +1,15 @@
 package com.acme.hrms.validation.dto.payroll;
 
+import com.acme.hrms.validation.dto.employee.StrictRequest;
 import com.acme.hrms.validation.meta.FieldMeta;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
  * Body of POST /api/payroll/runs/{runId}/reverse; PKG_PAYROLL.reverse_payroll p_reason has no
- * default.
+ * default. {@code additionalProperties: false}.
  */
-public class PayrollRunReverseRequest {
+public class PayrollRunReverseRequest extends StrictRequest {
 
   @NotBlank
   @Size(min = 1, max = PayrollConstants.REASON_MAX)
