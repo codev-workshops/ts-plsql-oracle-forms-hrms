@@ -115,7 +115,7 @@ public class EmployeeService {
     requireDepartment(deptId);
     requireJob(jobId);
     if (managerId != null) {
-      requireManager(managerId, null);
+      requireManager(managerId, null, "managerEmpId");
     }
     if (r.getLocationCode() != null) {
       requireLocation(r.getLocationCode());
@@ -218,7 +218,7 @@ public class EmployeeService {
     Long managerId = toLong(r.getManagerEmpId());
     requireJob(jobId);
     if (managerId != null) {
-      requireManager(managerId, empId);
+      requireManager(managerId, empId, "managerEmpId");
     }
     if (r.getEmail() != null) {
       requireEmailFree(r.getEmail(), empId);
@@ -371,7 +371,7 @@ public class EmployeeService {
     Long managerId =
         r.getNewManagerEmpId() == null ? before.managerEmpId() : toLong(r.getNewManagerEmpId());
     if (r.getNewManagerEmpId() != null) {
-      requireManager(managerId, empId);
+      requireManager(managerId, empId, "newManagerEmpId");
     }
     String location =
         r.getNewLocationCode() == null ? before.locationCode() : r.getNewLocationCode();
@@ -598,12 +598,10 @@ public class EmployeeService {
    * {@code validate_manager}: the manager must be active ({@code -20004}) and, for an existing
    * subject, must not be the subject or anyone reporting (transitively) to the subject.
    */
-  void requireManager(long managerEmpId, @Nullable Long subjectEmpId) {
+  void requireManager(long managerEmpId, @Nullable Long subjectEmpId, String field) {
     if (!employees.managerActive(managerEmpId)) {
       throw new HrmsException(
-          ErrorCode.INVALID_MANAGER,
-          "Invalid or inactive manager: " + managerEmpId,
-          "managerEmpId");
+          ErrorCode.INVALID_MANAGER, "Invalid or inactive manager: " + managerEmpId, field);
     }
     if (subjectEmpId != null && employees.isInReportingChain(subjectEmpId, managerEmpId)) {
       throw new HrmsException(
@@ -612,7 +610,7 @@ public class EmployeeService {
               + subjectEmpId
               + " cannot report to "
               + managerEmpId,
-          "managerEmpId");
+          field);
     }
   }
 

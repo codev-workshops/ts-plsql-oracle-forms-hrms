@@ -234,9 +234,21 @@ class EmployeeServiceTest {
     expect(
             () -> service.create(create(c -> c.setManagerEmpId(424242)), HR),
             ErrorCode.INVALID_MANAGER)
-        .hasMessage("Invalid or inactive manager: 424242");
+        .hasMessage("Invalid or inactive manager: 424242")
+        .hasFieldOrPropertyWithValue("field", "managerEmpId");
     // 99 is TERMINATED in the seed
-    expect(() -> service.create(create(c -> c.setManagerEmpId(99)), HR), ErrorCode.INVALID_MANAGER);
+    expect(() -> service.create(create(c -> c.setManagerEmpId(99)), HR), ErrorCode.INVALID_MANAGER)
+        .hasFieldOrPropertyWithValue("field", "managerEmpId");
+    expect(
+            () -> service.update(3, 0, update(u -> u.setManagerEmpId(99)), HR),
+            ErrorCode.INVALID_MANAGER)
+        .hasMessage("Invalid or inactive manager: 99")
+        .hasFieldOrPropertyWithValue("field", "managerEmpId");
+    EmployeeTransferRequest t = transfer(30);
+    t.setNewManagerEmpId(99);
+    expect(() -> service.transfer(30, t, HR), ErrorCode.INVALID_MANAGER)
+        .hasMessage("Invalid or inactive manager: 99")
+        .hasFieldOrPropertyWithValue("field", "newManagerEmpId");
   }
 
   @Test
@@ -245,14 +257,21 @@ class EmployeeServiceTest {
     expect(
             () -> service.update(3, 0, update(u -> u.setManagerEmpId(31)), HR),
             ErrorCode.INVALID_MANAGER)
-        .hasMessage("Circular reporting chain detected: Employee 3 cannot report to 31");
+        .hasMessage("Circular reporting chain detected: Employee 3 cannot report to 31")
+        .hasFieldOrPropertyWithValue("field", "managerEmpId");
     expect(
-        () -> service.update(3, 0, update(u -> u.setManagerEmpId(3)), HR),
-        ErrorCode.INVALID_MANAGER);
+            () -> service.update(3, 0, update(u -> u.setManagerEmpId(3)), HR),
+            ErrorCode.INVALID_MANAGER)
+        .hasFieldOrPropertyWithValue("field", "managerEmpId");
     EmployeeTransferRequest t = transfer(30);
     t.setNewManagerEmpId(32);
     expect(() -> service.transfer(30, t, HR), ErrorCode.INVALID_MANAGER)
-        .hasMessage("Circular reporting chain detected: Employee 30 cannot report to 32");
+        .hasMessage("Circular reporting chain detected: Employee 30 cannot report to 32")
+        .hasFieldOrPropertyWithValue("field", "newManagerEmpId");
+    EmployeeTransferRequest self = transfer(30);
+    self.setNewManagerEmpId(30);
+    expect(() -> service.transfer(30, self, HR), ErrorCode.INVALID_MANAGER)
+        .hasFieldOrPropertyWithValue("field", "newManagerEmpId");
     // a sibling is fine
     EmployeeDetail moved = service.update(33, 0, update(u -> u.setManagerEmpId(32)), HR);
     assertThat(moved.managerEmpId()).isEqualTo(32);
