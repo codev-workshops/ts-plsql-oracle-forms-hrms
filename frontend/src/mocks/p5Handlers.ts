@@ -27,6 +27,14 @@ import type {
   SystemParameter,
   SystemParameterRequest,
   SystemParameterUpdateRequest,
+  Holiday,
+  PayElement,
+  PayElementRequest,
+  Role,
+  TaxBracket,
+  TaxLadderGap,
+  UserAccount,
+  UserStatusRequest,
 } from '../api/types';
 import { getDto, zodFor, type DtoName } from '../validation/schema';
 import {
@@ -37,7 +45,9 @@ import {
   PAYROLL_LATEST_ROWS,
   PENDING_ROWS,
   REPORT_AS_OF,
+  AUTHORITY_VOCABULARY,
   clone,
+  effectiveAuthorities,
   nextId,
   p5,
   uuid,
@@ -710,6 +720,316 @@ export function createP5Handlers(authenticate: Authenticate) {
       return HttpResponse.json(clone(job));
     }),
 
+    // --- admin: holidays (§9.2 expansion) ------------------------------------------------
+    http.get('/api/admin/holidays', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const q = new URL(request.url).searchParams;
+      let rows = activeFilter(request, p5.holidays);
+      if (q.get('year')) rows = rows.filter((h) => h.holidayDate.startsWith(`${q.get('year')}-`));
+      if (q.get('locationCode')) rows = rows.filter((h) => h.locationCode === null || h.locationCode === q.get('locationCode'));
+      return HttpResponse.json(clone(rows.slice().sort((a, b) => a.holidayDate.localeCompare(b.holidayDate) || (a.locationCode ?? '').localeCompare(b.locationCode ?? ''))));
+    }),
+    http.post('/api/admin/holidays', async ({ request }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const parsed = parseBody<{ holidayDate: string; holidayName: string; locationCode?: string; floatingFlag?: boolean; activeFlag?: boolean }>(await body(request), 'HolidayRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = parsed.value;
+      const loc = b.locationCode ?? null;
+      if (!locationRefOk(loc)) return error(400, { code: '-20604', message: `Invalid or inactive location: ${loc}`, field: 'locationCode' });
+      if (p5.holidays.some((h) => h.holidayDate === b.holidayDate && (h.locationCode ?? null) === loc)) return duplicate('holidayDate', `${b.holidayDate}/${loc ?? '*'}`);
+      const row: Holiday = { holidayId: nextId(), holidayDate: b.holidayDate, holidayName: b.holidayName, locationCode: loc, floatingFlag: b.floatingFlag ?? false, observedDate: observed(b.holidayDate), activeFlag: b.activeFlag ?? true, ...created(auth.user) };
+      p5.holidays.push(row);
+      return HttpResponse.json(clone(row), { status: 201, headers: { Location: `/api/admin/holidays/${row.holidayId}` } });
+    }),
+    http.get('/api/admin/holidays/:holidayId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const row = p5.holidays.find((h) => h.holidayId === num(params.holidayId));
+      return row ? HttpResponse.json(clone(row)) : referenceNotFound('Holiday');
+    }),
+    http.put('/api/admin/holidays/:holidayId', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.holidays.find((h) => h.holidayId === num(params.holidayId));
+      if (!row) return referenceNotFound('Holiday');
+      const parsed = parseBody<{ holidayDate: string; holidayName: string; locationCode?: string; floatingFlag?: boolean; activeFlag?: boolean }>(await body(request), 'HolidayRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = parsed.value;
+      const loc = b.locationCode ?? null;
+      if (!locationRefOk(loc)) return error(400, { code: '-20604', message: `Invalid or inactive location: ${loc}`, field: 'locationCode' });
+      if (p5.holidays.some((h) => h !== row && h.holidayDate === b.holidayDate && (h.locationCode ?? null) === loc)) return duplicate('holidayDate', `${b.holidayDate}/${loc ?? '*'}`);
+      Object.assign(row, { holidayDate: b.holidayDate, holidayName: b.holidayName, locationCode: loc, floatingFlag: b.floatingFlag ?? false, observedDate: observed(b.holidayDate), activeFlag: b.activeFlag ?? true }, stamp(auth.user));
+      return HttpResponse.json(clone(row));
+    }),
+    http.delete('/api/admin/holidays/:holidayId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.holidays.find((h) => h.holidayId === num(params.holidayId));
+      if (!row) return referenceNotFound('Holiday');
+      Object.assign(row, { activeFlag: false }, stamp(auth.user));
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // --- admin: pay elements ------------------------------------------------------------
+    http.get('/api/admin/pay-elements', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const type = new URL(request.url).searchParams.get('elementType');
+      let rows = activeFilter(request, p5.payElements);
+      if (type) rows = rows.filter((e) => e.elementType === type);
+      return HttpResponse.json(clone(rows.slice().sort((a, b) => (a.priorityOrder ?? 0) - (b.priorityOrder ?? 0) || a.elementCode.localeCompare(b.elementCode))));
+    }),
+    http.post('/api/admin/pay-elements', async ({ request }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const parsed = parseBody<Record<string, unknown>>(await body(request), 'PayElementRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = payElementFromRequest(parsed.value);
+      if (b.elementType === 'TAX') return error(422, { code: '-20607', message: 'Tax elements are reserved rows (100–103)', field: 'elementType' });
+      if (p5.payElements.some((e) => e.elementCode === b.elementCode)) return duplicate('elementCode', b.elementCode);
+      const rule = payElementRule(b);
+      if (rule) return rule;
+      const row: PayElement = { elementId: nextId(), ...b, reserved: false, activeEmployeeElements: 0, ...created(auth.user) };
+      p5.payElements.push(row);
+      return HttpResponse.json(clone(row), { status: 201, headers: { Location: `/api/admin/pay-elements/${row.elementId}` } });
+    }),
+    http.get('/api/admin/pay-elements/:elementId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const row = p5.payElements.find((e) => e.elementId === num(params.elementId));
+      return row ? HttpResponse.json(clone(row)) : referenceNotFound('Pay element');
+    }),
+    http.put('/api/admin/pay-elements/:elementId', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.payElements.find((e) => e.elementId === num(params.elementId));
+      if (!row) return referenceNotFound('Pay element');
+      const parsed = parseBody<Record<string, unknown>>(await body(request), 'PayElementRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = payElementFromRequest(parsed.value);
+      if (b.elementCode !== row.elementCode) return duplicate('elementCode', b.elementCode);
+      if (row.reserved) {
+        const mutable = row.elementId === 0 ? [] : ['elementName', 'glAccountCode', 'priorityOrder'];
+        const changed = (Object.keys(b) as (keyof typeof b)[]).find((k) => !mutable.includes(k) && (b[k] ?? null) !== (row[k] ?? null));
+        if (changed) return error(422, { code: '-20607', message: `Pay element ${row.elementId} (${row.elementCode}) is reserved: ${changed} is immutable`, field: changed });
+      }
+      const rule = payElementRule(b);
+      if (rule) return rule;
+      Object.assign(row, b, stamp(auth.user));
+      return HttpResponse.json(clone(row));
+    }),
+    http.delete('/api/admin/pay-elements/:elementId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.payElements.find((e) => e.elementId === num(params.elementId));
+      if (!row) return referenceNotFound('Pay element');
+      if (row.reserved) return error(422, { code: '-20607', message: `Pay element ${row.elementId} (${row.elementCode}) is reserved: activeFlag is immutable` });
+      if ((row.activeEmployeeElements ?? 0) > 0) return inUse(`Pay element ${row.elementCode} is assigned to ${row.activeEmployeeElements} active employees`);
+      Object.assign(row, { activeFlag: false }, stamp(auth.user));
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // --- admin: tax brackets ------------------------------------------------------------
+    http.get('/api/admin/tax-brackets', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const q = new URL(request.url).searchParams;
+      let rows = activeFilter(request, p5.taxBrackets);
+      if (q.get('taxYear')) rows = rows.filter((t) => t.taxYear === Number(q.get('taxYear')));
+      if (q.get('stateCode')) rows = rows.filter((t) => (q.get('stateCode') === 'FEDERAL' ? t.stateCode === null : t.stateCode === q.get('stateCode')));
+      if (q.get('filingStatus')) rows = rows.filter((t) => t.filingStatus === q.get('filingStatus'));
+      return HttpResponse.json(clone(rows.slice().sort((a, b) => b.taxYear - a.taxYear || (a.stateCode ?? '').localeCompare(b.stateCode ?? '') || a.filingStatus.localeCompare(b.filingStatus) || Number(a.bracketMin) - Number(b.bracketMin))));
+    }),
+    http.get('/api/admin/tax-brackets/ladder-gaps', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const taxYear = Number(new URL(request.url).searchParams.get('taxYear'));
+      if (!Number.isInteger(taxYear) || taxYear < 2000 || taxYear > 2100) return validation('taxYear', 'Tax year is required');
+      return HttpResponse.json(ladderGaps(taxYear));
+    }),
+    http.post('/api/admin/tax-brackets', async ({ request }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const parsed = parseBody<Record<string, unknown>>(await body(request), 'TaxBracketRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = taxBracketFromRequest(parsed.value);
+      const rule = taxBracketRule(b, null);
+      if (rule) return rule;
+      const row: TaxBracket = { bracketId: nextId(), ...b, locked: false, ...created(auth.user) };
+      p5.taxBrackets.push(row);
+      return HttpResponse.json(clone(row), { status: 201, headers: { Location: `/api/admin/tax-brackets/${row.bracketId}` } });
+    }),
+    http.get('/api/admin/tax-brackets/:bracketId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const row = p5.taxBrackets.find((t) => t.bracketId === num(params.bracketId));
+      return row ? HttpResponse.json(clone(row)) : referenceNotFound('Tax bracket');
+    }),
+    http.put('/api/admin/tax-brackets/:bracketId', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.taxBrackets.find((t) => t.bracketId === num(params.bracketId));
+      if (!row) return referenceNotFound('Tax bracket');
+      if (row.locked) return yearLocked(row.taxYear);
+      const parsed = parseBody<Record<string, unknown>>(await body(request), 'TaxBracketRequest');
+      if (!parsed.ok) return parsed.response;
+      const b = taxBracketFromRequest(parsed.value);
+      const rule = taxBracketRule(b, row);
+      if (rule) return rule;
+      Object.assign(row, b, stamp(auth.user));
+      return HttpResponse.json(clone(row));
+    }),
+    http.delete('/api/admin/tax-brackets/:bracketId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const row = p5.taxBrackets.find((t) => t.bracketId === num(params.bracketId));
+      if (!row) return referenceNotFound('Tax bracket');
+      if (row.locked) return yearLocked(row.taxYear);
+      Object.assign(row, { activeFlag: false }, stamp(auth.user));
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // --- admin: roles & user accounts (auth-owned, /api/admin prefix) -----------------
+    http.get('/api/admin/authorities', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      return HttpResponse.json([...AUTHORITY_VOCABULARY]);
+    }),
+    http.get('/api/admin/roles', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      return HttpResponse.json(clone(p5.roles.slice().sort((a, b) => a.roleCode.localeCompare(b.roleCode))));
+    }),
+    http.post('/api/admin/roles', async ({ request }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const raw = await body<Record<string, unknown>>(request);
+      const parsed = parseBody<{ roleCode: string; roleName: string; minGrade: number; maxGrade: number }>(raw, 'RoleRequest');
+      if (!parsed.ok) return parsed.response;
+      const perms = permissionsRule(raw.permissions);
+      if ('response' in perms) return perms.response;
+      const b = parsed.value;
+      if (p5.roles.some((r) => r.roleCode.toLowerCase() === b.roleCode.toLowerCase())) return error(409, { code: '-20801', message: `Role code already exists: ${b.roleCode}`, field: 'roleCode' });
+      if (b.maxGrade < b.minGrade) return valueRule('maxGrade', 'Maximum grade must be greater than or equal to minimum grade');
+      const exceeding = perms.value.find((a) => !auth.user.roles.includes(a));
+      if (exceeding) return error(422, { code: '-20806', message: `Cannot grant ${exceeding}: caller does not hold it`, field: 'permissions' });
+      p5.roleSeq += 1;
+      const role: Role = { roleId: p5.roleSeq, ...b, permissions: perms.value, seeded: false, userCount: 0, createdBy: auth.user.userId, createdDate: new Date().toISOString() };
+      p5.roles.push(role);
+      return HttpResponse.json(clone(role), { status: 201, headers: { Location: `/api/admin/roles/${role.roleId}` } });
+    }),
+    http.get('/api/admin/roles/:roleId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const role = p5.roles.find((r) => r.roleId === num(params.roleId));
+      return role ? HttpResponse.json(clone(role)) : roleNotFound();
+    }),
+    http.put('/api/admin/roles/:roleId', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const role = p5.roles.find((r) => r.roleId === num(params.roleId));
+      if (!role) return roleNotFound();
+      const raw = await body<Record<string, unknown>>(request);
+      const parsed = parseBody<{ roleCode: string; roleName: string; minGrade: number; maxGrade: number }>(raw, 'RoleRequest');
+      if (!parsed.ok) return parsed.response;
+      const perms = permissionsRule(raw.permissions);
+      if ('response' in perms) return perms.response;
+      const b = parsed.value;
+      const same = b.roleName === role.roleName && b.minGrade === role.minGrade && b.maxGrade === role.maxGrade && sameSet(perms.value, role.permissions);
+      if (role.seeded && (!same || b.roleCode !== role.roleCode)) return error(422, { code: '-20802', message: `Role ${role.roleCode} is seeded and read-only` });
+      if (b.roleCode !== role.roleCode) return error(409, { code: '-20801', message: 'Role code is immutable', field: 'roleCode' });
+      if (b.maxGrade < b.minGrade) return valueRule('maxGrade', 'Maximum grade must be greater than or equal to minimum grade');
+      const exceeding = perms.value.find((a) => !role.permissions.includes(a) && !auth.user.roles.includes(a));
+      if (exceeding) return error(422, { code: '-20806', message: `Cannot grant ${exceeding}: caller does not hold it`, field: 'permissions' });
+      const previous = role.permissions;
+      Object.assign(role, b, { permissions: perms.value });
+      if (!adminEditGuardOk()) {
+        role.permissions = previous;
+        return error(422, { code: '-20805', message: 'Cannot remove the last active account holding ADMIN:EDIT', field: 'permissions' });
+      }
+      const holders = refreshAuthorities().filter((u) => u.roles.some((g) => g.roleId === role.roleId));
+      for (const u of holders) for (const g of u.roles) if (g.roleId === role.roleId) Object.assign(g, { roleName: role.roleName });
+      return HttpResponse.json({ ...clone(role), sessionsRevoked: holders.length });
+    }),
+    http.delete('/api/admin/roles/:roleId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const role = p5.roles.find((r) => r.roleId === num(params.roleId));
+      if (!role) return roleNotFound();
+      if (role.seeded) return error(422, { code: '-20802', message: `Role ${role.roleCode} is seeded and read-only` });
+      const holders = p5.users.filter((u) => u.roles.some((g) => g.roleId === role.roleId)).length;
+      if (holders > 0) return error(409, { code: '-20803', message: `Role ${role.roleCode} is assigned to ${holders} accounts` });
+      p5.roles = p5.roles.filter((r) => r !== role);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get('/api/admin/users', ({ request }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const q = new URL(request.url).searchParams;
+      let rows = p5.users.slice().sort((a, b) => a.username.localeCompare(b.username));
+      const text = (q.get('q') ?? '').toLowerCase();
+      if (text) rows = rows.filter((u) => [u.username, u.empNumber, u.fullName].some((s) => s.toLowerCase().includes(text)));
+      if (q.get('status')) rows = rows.filter((u) => u.status === q.get('status'));
+      if (q.get('roleId')) rows = rows.filter((u) => u.roles.some((g) => g.roleId === Number(q.get('roleId'))));
+      if (q.get('locked') === 'true') rows = rows.filter((u) => u.locked);
+      return HttpResponse.json(clone(paginate(rows, Number(q.get('page') ?? 0), Number(q.get('size') ?? 50))));
+    }),
+    http.get('/api/admin/users/:userId', ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:VIEW');
+      if ('response' in auth) return auth.response;
+      const user = p5.users.find((u) => u.userId === num(params.userId));
+      return user ? HttpResponse.json(clone(user)) : userNotFound();
+    }),
+    http.put('/api/admin/users/:userId/roles', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const user = p5.users.find((u) => u.userId === num(params.userId));
+      if (!user) return userNotFound();
+      const raw = await body<{ roleIds?: unknown }>(request);
+      const ids = Array.isArray(raw.roleIds) ? raw.roleIds.map(Number) : [];
+      if (ids.length === 0 || ids.some((n) => !Number.isInteger(n) || n < 1)) return validation('roleIds', 'At least one role is required');
+      if (new Set(ids).size !== ids.length) return validation('roleIds', 'Roles must be distinct');
+      const unknown = ids.find((id) => !p5.roles.some((r) => r.roleId === id));
+      if (unknown !== undefined) return error(422, { code: '-20807', message: `Unknown role: ${unknown}`, field: 'roleIds' });
+      if (mockUserId(auth.user) === user.userId) return error(422, { code: '-20804', message: 'Cannot modify your own account' });
+      const granted = new Set(ids.flatMap((id) => p5.roles.find((r) => r.roleId === id)?.permissions ?? []));
+      const exceeding = [...granted].find((a) => !user.authorities.includes(a) && !auth.user.roles.includes(a));
+      if (exceeding) return error(422, { code: '-20806', message: `Cannot grant ${exceeding}: caller does not hold it`, field: 'roleIds' });
+      const previous = user.roles;
+      user.roles = ids.map((id) => {
+        const r = p5.roles.find((x) => x.roleId === id)!;
+        return previous.find((g) => g.roleId === id) ?? { roleId: id, roleCode: r.roleCode, roleName: r.roleName, grantedBy: auth.user.userId, grantedDate: new Date().toISOString() };
+      });
+      if (!adminEditGuardOk()) {
+        user.roles = previous;
+        refreshAuthorities();
+        return error(422, { code: '-20805', message: 'Cannot remove the last active account holding ADMIN:EDIT', field: 'roleIds' });
+      }
+      refreshAuthorities();
+      Object.assign(user, { modifiedBy: auth.user.userId, modifiedDate: new Date().toISOString() });
+      return HttpResponse.json({ ...clone(user), sessionsRevoked: 1 });
+    }),
+    http.put('/api/admin/users/:userId/status', async ({ request, params }) => {
+      const auth = guard(request, 'ADMIN:EDIT');
+      if ('response' in auth) return auth.response;
+      const user = p5.users.find((u) => u.userId === num(params.userId));
+      if (!user) return userNotFound();
+      const parsed = parseBody<UserStatusRequest>(await body(request), 'UserStatusRequest');
+      if (!parsed.ok) return parsed.response;
+      if (mockUserId(auth.user) === user.userId) return error(422, { code: '-20804', message: 'Cannot modify your own account' });
+      const previous = user.status;
+      user.status = parsed.value.status;
+      if (!adminEditGuardOk()) {
+        user.status = previous;
+        return error(422, { code: '-20805', message: 'Cannot remove the last active account holding ADMIN:EDIT', field: 'status' });
+      }
+      if (user.status === 'ACTIVE') Object.assign(user, { locked: false, lockedUntil: null, failedAttempts: 0 });
+      Object.assign(user, { modifiedBy: auth.user.userId, modifiedDate: new Date().toISOString() });
+      return HttpResponse.json({ ...clone(user), sessionsRevoked: user.status === 'DISABLED' ? 1 : 0 });
+    }),
+
     // --- admin: audit log -------------------------------------------------------------
     http.get('/api/admin/audit-log', ({ request }) => {
       const auth = guard(request, 'ADMIN:VIEW');
@@ -845,6 +1165,109 @@ function leaveTypeRule(lt: ReturnType<typeof leaveTypeFromRequest>) {
   if (lt.accrualFlag && (!lt.accrualRate || !lt.accrualFrequency)) return valueRule(lt.accrualRate ? 'accrualFrequency' : 'accrualRate', 'Accrual rate and frequency are required when accrual is enabled');
   if (lt.maxBalance && lt.carryoverMax && Number(lt.carryoverMax) > Number(lt.maxBalance)) return valueRule('carryoverMax', 'Carryover maximum must not exceed maximum balance');
   return null;
+}
+
+/** `BusinessCalendar` weekend shift: Saturday → Friday, Sunday → Monday. */
+function observed(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const dow = d.getUTCDay();
+  if (dow === 6) d.setUTCDate(d.getUTCDate() - 1);
+  if (dow === 0) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function payElementFromRequest(v: Record<string, unknown>): Omit<PayElement, 'elementId' | 'reserved' | 'activeEmployeeElements' | 'createdBy' | 'createdDate' | 'modifiedBy' | 'modifiedDate'> {
+  const dec = (x: unknown) => (typeof x === 'number' ? x.toFixed(2) : typeof x === 'string' && x !== '' ? x : null);
+  return {
+    elementCode: String(v.elementCode),
+    elementName: String(v.elementName),
+    elementType: v.elementType as PayElementRequest['elementType'],
+    calculationType: v.calculationType as PayElementRequest['calculationType'],
+    defaultAmount: dec(v.defaultAmount),
+    defaultPercentage: dec(v.defaultPercentage),
+    taxableFlag: (v.taxableFlag as boolean | undefined) ?? true,
+    pretaxFlag: (v.pretaxFlag as boolean | undefined) ?? false,
+    employerPaid: (v.employerPaid as boolean | undefined) ?? false,
+    glAccountCode: (v.glAccountCode as string | undefined) ?? null,
+    priorityOrder: (v.priorityOrder as number | undefined) ?? 100,
+    activeFlag: (v.activeFlag as boolean | undefined) ?? true,
+  };
+}
+
+function payElementRule(e: ReturnType<typeof payElementFromRequest>) {
+  if (e.calculationType === 'FLAT' && e.defaultPercentage) return valueRule('defaultPercentage', 'FLAT elements take a default amount, not a percentage');
+  if (e.calculationType === 'PERCENTAGE' && e.defaultAmount) return valueRule('defaultAmount', 'PERCENTAGE elements take a default percentage, not an amount');
+  if (e.pretaxFlag && e.elementType !== 'DEDUCTION' && e.elementType !== 'BENEFIT') return valueRule('pretaxFlag', 'Only deductions and benefits can be pre-tax');
+  return null;
+}
+
+function taxBracketFromRequest(v: Record<string, unknown>): Omit<TaxBracket, 'bracketId' | 'locked' | 'createdBy' | 'createdDate' | 'modifiedBy' | 'modifiedDate'> {
+  const dec = (x: unknown, scale: number) => (typeof x === 'number' ? x.toFixed(scale) : typeof x === 'string' && x !== '' ? x : null);
+  return {
+    taxYear: Number(v.taxYear),
+    filingStatus: v.filingStatus as TaxBracket['filingStatus'],
+    stateCode: (v.stateCode as string | undefined) ?? null,
+    bracketMin: dec(v.bracketMin, 2) ?? '0.00',
+    bracketMax: dec(v.bracketMax, 2),
+    taxRate: dec(v.taxRate, 4) ?? '0.0000',
+    baseTax: dec(v.baseTax, 2) ?? '0.00',
+    activeFlag: (v.activeFlag as boolean | undefined) ?? true,
+  };
+}
+
+const yearLocked = (taxYear: number) => error(422, { code: '-20609', message: `Tax year ${taxYear} is locked by payroll run 9001 (APPROVED)`, field: 'taxYear' });
+
+function taxBracketRule(b: ReturnType<typeof taxBracketFromRequest>, current: TaxBracket | null) {
+  if (p5.taxBrackets.some((t) => t.locked && t.taxYear === b.taxYear)) return yearLocked(b.taxYear);
+  if (b.bracketMax !== null && Number(b.bracketMax) <= Number(b.bracketMin)) return valueRule('bracketMax', 'Bracket maximum must be greater than bracket minimum');
+  if (b.stateCode !== null && b.filingStatus !== 'ALL') return valueRule('filingStatus', 'State rows use filing status ALL');
+  if (!b.activeFlag) return null;
+  const overlaps = p5.taxBrackets.find((t) => t !== current && t.activeFlag && t.taxYear === b.taxYear && (t.stateCode ?? null) === b.stateCode && t.filingStatus === b.filingStatus && Number(t.bracketMin) < (b.bracketMax === null ? Infinity : Number(b.bracketMax)) && Number(b.bracketMin) < (t.bracketMax === null ? Infinity : Number(t.bracketMax)));
+  if (overlaps) return error(409, { code: '-20608', message: `Bracket [${b.bracketMin}, ${b.bracketMax ?? '∞'}) overlaps bracket ${overlaps.bracketId} [${overlaps.bracketMin}, ${overlaps.bracketMax ?? '∞'})`, field: 'bracketMin' });
+  return null;
+}
+
+/** Contiguity holes of each active federal ladder for `taxYear`; the engine maps them to `MISSING_TAX_RATE`. */
+function ladderGaps(taxYear: number): TaxLadderGap[] {
+  const statuses = [...new Set(p5.taxBrackets.filter((t) => t.activeFlag && t.taxYear === taxYear && t.stateCode === null).map((t) => t.filingStatus))].sort();
+  return statuses.map((filingStatus) => {
+    const ladder = p5.taxBrackets.filter((t) => t.activeFlag && t.taxYear === taxYear && t.stateCode === null && t.filingStatus === filingStatus).sort((a, b) => Number(a.bracketMin) - Number(b.bracketMin));
+    const gaps: TaxLadderGap['gaps'] = [];
+    let cursor = 0;
+    for (const step of ladder) {
+      if (Number(step.bracketMin) > cursor) gaps.push({ from: cursor.toFixed(2), to: step.bracketMin });
+      cursor = step.bracketMax === null ? Infinity : Number(step.bracketMax);
+    }
+    if (cursor !== Infinity) gaps.push({ from: cursor.toFixed(2), to: null });
+    return { taxYear, filingStatus, gaps };
+  });
+}
+
+const roleNotFound = () => error(404, { code: 'ROLE_NOT_FOUND', message: 'Role not found' });
+const userNotFound = () => error(404, { code: 'USER_NOT_FOUND', message: 'User account not found' });
+
+function permissionsRule(raw: unknown): { value: Authority[] } | { response: Response } {
+  if (!Array.isArray(raw) || raw.length === 0) return { response: validation('permissions', 'At least one permission is required') };
+  if (new Set(raw).size !== raw.length) return { response: validation('permissions', 'Permissions must be distinct') };
+  const bad = raw.find((a) => !AUTHORITY_VOCABULARY.includes(a as Authority));
+  if (bad !== undefined) return { response: validation('permissions', `Unknown authority: ${String(bad)}`) };
+  return { value: [...(raw as Authority[])].sort() };
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
+/** mocks/handlers.ts issues `ua-N` user ids; the contract's `userId` path is the integer `N`. */
+const mockUserId = (user: SessionUser) => Number(user.userId.replace(/^\D+/, ''));
+
+function refreshAuthorities(): UserAccount[] {
+  for (const u of p5.users) u.authorities = effectiveAuthorities(u, p5.roles);
+  for (const r of p5.roles) r.userCount = p5.users.filter((u) => u.roles.some((g) => g.roleId === r.roleId)).length;
+  return p5.users;
+}
+
+/** Last-admin invariant (`-20805`): at least one ACTIVE account must still hold ADMIN:EDIT after the write. */
+function adminEditGuardOk(): boolean {
+  return refreshAuthorities().some((u) => u.status === 'ACTIVE' && u.authorities.includes('ADMIN:EDIT'));
 }
 
 function paramValueRule(dataType: SystemParameter['dataType'], value: string) {

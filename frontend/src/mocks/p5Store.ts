@@ -1,9 +1,11 @@
 import type {
   AuditLogRow,
+  Authority,
   BatchRunResult,
   Department,
   EmployeeCompensationRow,
   EmployeeDirectoryRow,
+  Holiday,
   IntegrationFile,
   JobGrade,
   JobTitle,
@@ -11,9 +13,13 @@ import type {
   LeaveType,
   Location,
   OrgHierarchyRow,
+  PayElement,
   PayrollLatestRow,
   PendingApprovalRow,
+  Role,
   SystemParameter,
+  TaxBracket,
+  UserAccount,
 } from '../api/types';
 
 /**
@@ -122,7 +128,119 @@ const seedFiles = (): IntegrationFile[] => [
   { fileId: '11111111-1111-4111-8111-111111111111', feed: 'GL_JOURNAL', fileName: 'GL_JOURNAL_1003_20240405.txt', status: 'SUCCESS', sizeBytes: 412, sha256: 'a'.repeat(64), recordCount: 6, sourceRef: '1003', storageKey: 'GL_JOURNAL/2024/04/11111111-1111-4111-8111-111111111111-GL_JOURNAL_1003_20240405.txt', contentUrl: '/api/integration/files/11111111-1111-4111-8111-111111111111/content', createdBy: 'james.richardson@company.com', createdAt: '2024-04-05T12:00:00Z', message: null },
 ];
 
+const seedHolidays = (): Holiday[] => [
+  { holidayId: 1, holidayDate: '2024-01-01', holidayName: 'New Year\u2019s Day', locationCode: null, floatingFlag: false, observedDate: '2024-01-01', ...AUDIT, activeFlag: true },
+  { holidayId: 2, holidayDate: '2024-06-19', holidayName: 'Juneteenth', locationCode: 'HQ', floatingFlag: false, observedDate: '2024-06-19', ...AUDIT, activeFlag: true },
+  { holidayId: 3, holidayDate: '2024-11-28', holidayName: 'Thanksgiving', locationCode: null, floatingFlag: true, observedDate: '2024-11-28', ...AUDIT, activeFlag: true },
+  { holidayId: 4, holidayDate: '2023-12-25', holidayName: 'Christmas 2023', locationCode: null, floatingFlag: false, observedDate: '2023-12-25', ...AUDIT, activeFlag: false },
+];
+
+const payElement = (elementId: number, elementCode: string, elementName: string, elementType: PayElement['elementType'], calculationType: PayElement['calculationType'], extra: Partial<PayElement> = {}): PayElement => ({
+  elementId,
+  elementCode,
+  elementName,
+  elementType,
+  calculationType,
+  defaultAmount: null,
+  defaultPercentage: null,
+  taxableFlag: elementType === 'EARNING',
+  pretaxFlag: false,
+  employerPaid: false,
+  glAccountCode: null,
+  priorityOrder: 100,
+  reserved: elementId === 0 || elementId === 1 || (elementId >= 100 && elementId <= 103),
+  activeEmployeeElements: 0,
+  ...AUDIT,
+  activeFlag: true,
+  ...extra,
+});
+
+/** Reserved rows mirror `PayrollConstants` (`0` ERROR sentinel, `1` BASE_PAY, `100`–`103` taxes). */
+const seedPayElements = (): PayElement[] => [
+  payElement(0, 'ERROR', 'Calculation error sentinel', 'ERROR', 'FORMULA', { activeFlag: false, priorityOrder: 9999 }),
+  payElement(1, 'BASE_PAY', 'Base salary', 'EARNING', 'FORMULA', { priorityOrder: 1, glAccountCode: '6000.100', activeEmployeeElements: 5 }),
+  payElement(100, 'FED_TAX', 'Federal income tax', 'TAX', 'FORMULA', { priorityOrder: 500, glAccountCode: '2100' }),
+  payElement(101, 'STATE_TAX', 'State income tax', 'TAX', 'FORMULA', { priorityOrder: 510, glAccountCode: '2110' }),
+  payElement(102, 'FICA', 'Social security', 'TAX', 'PERCENTAGE', { defaultPercentage: '6.20', priorityOrder: 520, glAccountCode: '2120' }),
+  payElement(103, 'MEDICARE', 'Medicare', 'TAX', 'PERCENTAGE', { defaultPercentage: '1.45', priorityOrder: 530, glAccountCode: '2130' }),
+  payElement(200, 'HEALTH_INS', 'Health insurance', 'DEDUCTION', 'FLAT', { defaultAmount: '150.00', pretaxFlag: true, priorityOrder: 300, glAccountCode: '2200', activeEmployeeElements: 2 }),
+  payElement(201, 'BONUS', 'Discretionary bonus', 'EARNING', 'FLAT', { defaultAmount: '0.00', priorityOrder: 50, glAccountCode: '6000.200' }),
+  payElement(202, 'PARKING', 'Parking allowance', 'REIMBURSEMENT', 'FLAT', { defaultAmount: '75.00', priorityOrder: 400, activeFlag: false }),
+];
+
+const bracket = (bracketId: number, taxYear: number, filingStatus: TaxBracket['filingStatus'], stateCode: string | null, bracketMin: string, bracketMax: string | null, taxRate: string, baseTax: string, locked = false): TaxBracket => ({
+  bracketId,
+  taxYear,
+  filingStatus,
+  stateCode,
+  bracketMin,
+  bracketMax,
+  taxRate,
+  baseTax,
+  locked,
+  ...AUDIT,
+  activeFlag: true,
+});
+
+/** 2024 SINGLE ladder has a deliberate gap `[50000, 60000)`; 2023 is locked by approved run 9001. */
+const seedTaxBrackets = (): TaxBracket[] => [
+  bracket(1, 2024, 'SINGLE', null, '0.00', '11600.00', '0.1000', '0.00'),
+  bracket(2, 2024, 'SINGLE', null, '11600.00', '50000.00', '0.1200', '1160.00'),
+  bracket(3, 2024, 'SINGLE', null, '60000.00', null, '0.2200', '6968.00'),
+  bracket(4, 2024, 'MARRIED_JOINT', null, '0.00', '23200.00', '0.1000', '0.00'),
+  bracket(5, 2024, 'MARRIED_JOINT', null, '23200.00', null, '0.1200', '2320.00'),
+  bracket(6, 2024, 'ALL', 'CA', '0.00', null, '0.0930', '0.00'),
+  bracket(7, 2023, 'SINGLE', null, '0.00', null, '0.1000', '0.00', true),
+];
+
+const MODULES = ['PAYROLL', 'EMPLOYEE', 'LEAVE', 'ADMIN', 'REPORTS'] as const;
+const ACTIONS = ['VIEW', 'EDIT', 'APPROVE', 'CREATE'] as const;
+
+/** `GET /api/admin/authorities` – exactly the `@PreAuthorize` vocabulary (openapi `Authority`). */
+export const AUTHORITY_VOCABULARY: Authority[] = [
+  ...MODULES.flatMap((m) => ACTIONS.map((a) => `${m}:${a}` as Authority)),
+  'LEAVE:ADMIN',
+  'LEAVE:VIEW_ALL',
+  'PERFORMANCE:VIEW',
+  'PERFORMANCE:EDIT',
+  'PERFORMANCE:APPROVE',
+  'PERFORMANCE:CREATE',
+  'PERFORMANCE:ADMIN',
+].sort() as Authority[];
+
+const SEEDED_ROLE = { seeded: true, createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z' } as const;
+
+const seedRoles = (): Role[] => [
+  { roleId: 1, roleCode: 'STAFF', roleName: 'Staff', minGrade: 1, maxGrade: 3, permissions: ['EMPLOYEE:VIEW', 'LEAVE:VIEW', 'LEAVE:CREATE'], userCount: 3, ...SEEDED_ROLE },
+  { roleId: 2, roleCode: 'MANAGER', roleName: 'Manager', minGrade: 4, maxGrade: 6, permissions: ['PAYROLL:VIEW', 'EMPLOYEE:VIEW', 'LEAVE:VIEW', 'ADMIN:VIEW', 'REPORTS:VIEW', 'LEAVE:CREATE', 'PERFORMANCE:VIEW'], userCount: 1, ...SEEDED_ROLE },
+  { roleId: 3, roleCode: 'EXECUTIVE', roleName: 'Executive', minGrade: 7, maxGrade: 999, permissions: AUTHORITY_VOCABULARY, userCount: 1, ...SEEDED_ROLE },
+  { roleId: 1000, roleCode: 'AUDITOR', roleName: 'Read-only auditor', minGrade: 1, maxGrade: 999, permissions: ['ADMIN:VIEW', 'REPORTS:VIEW'], userCount: 0, seeded: false, createdBy: 'ua-1', createdDate: '2024-05-01T09:00:00Z' },
+];
+
+const grant = (roleId: number, roleCode: string, roleName: string) => ({ roleId, roleCode, roleName, grantedBy: 'SYSTEM', grantedDate: '2024-01-01T00:00:00Z' });
+
+/** Mirrors mocks/handlers.ts MOCK_USERS (`ua-N` → `userId N`). `authorities` is recomputed from roles on write. */
+const seedUsers = (): UserAccount[] => [
+  { userId: 1, empId: 1, empNumber: 'EMP-000001', fullName: 'JAMES RICHARDSON', username: 'james.richardson@company.com', status: 'ACTIVE', locked: false, lockedUntil: null, failedAttempts: 0, mustChangePassword: false, passwordChangedAt: '2024-01-01T00:00:00Z', roles: [grant(3, 'EXECUTIVE', 'Executive')], authorities: [], createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z', modifiedBy: null, modifiedDate: null },
+  { userId: 2, empId: 21, empNumber: 'EMP-000021', fullName: 'JENNIFER PARK', username: 'jennifer.park@company.com', status: 'ACTIVE', locked: false, lockedUntil: null, failedAttempts: 0, mustChangePassword: false, passwordChangedAt: '2024-01-01T00:00:00Z', roles: [grant(2, 'MANAGER', 'Manager')], authorities: [], createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z', modifiedBy: null, modifiedDate: null },
+  { userId: 3, empId: 11, empNumber: 'EMP-000011', fullName: 'DAVID MARTINEZ', username: 'david.martinez@company.com', status: 'ACTIVE', locked: false, lockedUntil: null, failedAttempts: 0, mustChangePassword: false, passwordChangedAt: '2024-01-01T00:00:00Z', roles: [grant(1, 'STAFF', 'Staff')], authorities: [], createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z', modifiedBy: null, modifiedDate: null },
+  { userId: 4, empId: 12, empNumber: 'EMP-000012', fullName: 'EMILY JOHNSON', username: 'emily.johnson@company.com', status: 'ACTIVE', locked: true, lockedUntil: '2099-01-01T00:00:00Z', failedAttempts: 5, mustChangePassword: true, passwordChangedAt: null, roles: [grant(1, 'STAFF', 'Staff')], authorities: [], createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z', modifiedBy: null, modifiedDate: null },
+  { userId: 5, empId: 2, empNumber: 'EMP-000002', fullName: 'SARAH CHEN', username: 'sarah.chen@company.com', status: 'ACTIVE', locked: false, lockedUntil: null, failedAttempts: 0, mustChangePassword: false, passwordChangedAt: '2024-01-01T00:00:00Z', roles: [grant(1, 'STAFF', 'Staff')], authorities: [], createdBy: 'SYSTEM', createdDate: '2024-01-01T00:00:00Z', modifiedBy: null, modifiedDate: null },
+];
+
+export function effectiveAuthorities(user: UserAccount, roles: Role[]): Authority[] {
+  const set = new Set<Authority>();
+  for (const g of user.roles) for (const a of roles.find((r) => r.roleId === g.roleId)?.permissions ?? []) set.add(a);
+  return [...set].sort();
+}
+
 export interface P5State {
+  holidays: Holiday[];
+  payElements: PayElement[];
+  taxBrackets: TaxBracket[];
+  roles: Role[];
+  users: UserAccount[];
+  roleSeq: number;
   departments: Department[];
   grades: JobGrade[];
   jobTitles: JobTitle[];
@@ -138,7 +256,15 @@ export interface P5State {
 export let p5: P5State = fresh();
 
 function fresh(): P5State {
+  const roles = seedRoles();
+  const users = seedUsers().map((u) => ({ ...u, authorities: effectiveAuthorities(u, roles) }));
   return {
+    holidays: seedHolidays(),
+    payElements: seedPayElements(),
+    taxBrackets: seedTaxBrackets(),
+    roles,
+    users,
+    roleSeq: 1000,
     departments: seedDepartments(),
     grades: seedGrades(),
     jobTitles: seedJobTitles(),

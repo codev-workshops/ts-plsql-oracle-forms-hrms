@@ -105,6 +105,26 @@ import type {
   SystemParameterRequest,
   SystemParameterUpdateRequest,
   TimeAttendanceImportResult,
+  Holiday,
+  HolidayListQuery,
+  HolidayRequest,
+  PayElement,
+  PayElementListQuery,
+  PayElementRequest,
+  TaxBracket,
+  TaxBracketListQuery,
+  TaxBracketRequest,
+  TaxLadderGap,
+  Authority,
+  Role,
+  RoleRequest,
+  RoleWriteResult,
+  UserAccount,
+  UserAccountPage,
+  UserAccountSearchQuery,
+  UserAccountWriteResult,
+  UserRolesRequest,
+  UserStatusRequest,
 } from './types';
 
 /** `GET …csv` twin of a paged report: `Accept: text/csv`, body streamed as text, filename from `Content-Disposition`. */
@@ -602,6 +622,112 @@ export const api = {
       return data;
     },
     auditLogCsv: (params: AuditLogSearchQuery = {}) => downloadCsv('/api/admin/audit-log', params, 'audit-log.csv'),
+
+    // §9.2 expansion – admin-owned payroll reference data (HOLIDAYS / PAY_ELEMENTS / TAX_BRACKETS).
+    async listHolidays(params: HolidayListQuery = {}): Promise<Holiday[]> {
+      const { data } = await http.get<Holiday[]>('/api/admin/holidays', { params });
+      return data;
+    },
+    async createHoliday(body: HolidayRequest): Promise<Holiday> {
+      const { data } = await http.post<Holiday>('/api/admin/holidays', body);
+      return data;
+    },
+    async getHoliday(holidayId: number): Promise<Holiday> {
+      const { data } = await http.get<Holiday>(`/api/admin/holidays/${holidayId}`);
+      return data;
+    },
+    async updateHoliday(holidayId: number, body: HolidayRequest): Promise<Holiday> {
+      const { data } = await http.put<Holiday>(`/api/admin/holidays/${holidayId}`, body);
+      return data;
+    },
+    async deactivateHoliday(holidayId: number): Promise<void> {
+      await http.delete(`/api/admin/holidays/${holidayId}`);
+    },
+
+    async listPayElements(params: PayElementListQuery = {}): Promise<PayElement[]> {
+      const { data } = await http.get<PayElement[]>('/api/admin/pay-elements', { params });
+      return data;
+    },
+    async createPayElement(body: PayElementRequest): Promise<PayElement> {
+      const { data } = await http.post<PayElement>('/api/admin/pay-elements', body);
+      return data;
+    },
+    async getPayElement(elementId: number): Promise<PayElement> {
+      const { data } = await http.get<PayElement>(`/api/admin/pay-elements/${elementId}`);
+      return data;
+    },
+    async updatePayElement(elementId: number, body: PayElementRequest): Promise<PayElement> {
+      const { data } = await http.put<PayElement>(`/api/admin/pay-elements/${elementId}`, body);
+      return data;
+    },
+    async deactivatePayElement(elementId: number): Promise<void> {
+      await http.delete(`/api/admin/pay-elements/${elementId}`);
+    },
+
+    async listTaxBrackets(params: TaxBracketListQuery = {}): Promise<TaxBracket[]> {
+      const { data } = await http.get<TaxBracket[]>('/api/admin/tax-brackets', { params });
+      return data;
+    },
+    async taxLadderGaps(taxYear: number): Promise<TaxLadderGap[]> {
+      const { data } = await http.get<TaxLadderGap[]>('/api/admin/tax-brackets/ladder-gaps', { params: { taxYear } });
+      return data;
+    },
+    async createTaxBracket(body: TaxBracketRequest): Promise<TaxBracket> {
+      const { data } = await http.post<TaxBracket>('/api/admin/tax-brackets', body);
+      return data;
+    },
+    async getTaxBracket(bracketId: number): Promise<TaxBracket> {
+      const { data } = await http.get<TaxBracket>(`/api/admin/tax-brackets/${bracketId}`);
+      return data;
+    },
+    async updateTaxBracket(bracketId: number, body: TaxBracketRequest): Promise<TaxBracket> {
+      const { data } = await http.put<TaxBracket>(`/api/admin/tax-brackets/${bracketId}`, body);
+      return data;
+    },
+    async deactivateTaxBracket(bracketId: number): Promise<void> {
+      await http.delete(`/api/admin/tax-brackets/${bracketId}`);
+    },
+
+    // §9.2 expansion – role management (auth-owned tables behind the /api/admin prefix).
+    async listAuthorities(): Promise<Authority[]> {
+      const { data } = await http.get<Authority[]>('/api/admin/authorities');
+      return data;
+    },
+    async listRoles(): Promise<Role[]> {
+      const { data } = await http.get<Role[]>('/api/admin/roles');
+      return data;
+    },
+    async createRole(body: RoleRequest): Promise<Role> {
+      const { data } = await http.post<Role>('/api/admin/roles', body);
+      return data;
+    },
+    async getRole(roleId: number): Promise<Role> {
+      const { data } = await http.get<Role>(`/api/admin/roles/${roleId}`);
+      return data;
+    },
+    async updateRole(roleId: number, body: RoleRequest): Promise<RoleWriteResult> {
+      const { data } = await http.put<RoleWriteResult>(`/api/admin/roles/${roleId}`, body);
+      return data;
+    },
+    async deleteRole(roleId: number): Promise<void> {
+      await http.delete(`/api/admin/roles/${roleId}`);
+    },
+    async searchUsers(params: UserAccountSearchQuery = {}): Promise<UserAccountPage> {
+      const { data } = await http.get<UserAccountPage>('/api/admin/users', { params });
+      return data;
+    },
+    async getUser(userId: number): Promise<UserAccount> {
+      const { data } = await http.get<UserAccount>(`/api/admin/users/${userId}`);
+      return data;
+    },
+    async replaceUserRoles(userId: number, body: UserRolesRequest): Promise<UserAccountWriteResult> {
+      const { data } = await http.put<UserAccountWriteResult>(`/api/admin/users/${userId}/roles`, body);
+      return data;
+    },
+    async setUserStatus(userId: number, body: UserStatusRequest): Promise<UserAccountWriteResult> {
+      const { data } = await http.put<UserAccountWriteResult>(`/api/admin/users/${userId}/status`, body);
+      return data;
+    },
   },
   /** `integration-module` – `integration` tag. */
   integration: {

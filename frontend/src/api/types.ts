@@ -1320,6 +1320,173 @@ export interface SystemParameter extends SystemParameterRequest {
   modifiedDate?: string | null;
 }
 
+// --- admin payroll reference (§9.2 expansion) --------------------------------
+export interface HolidayRequest {
+  holidayDate: string;
+  holidayName: string;
+  /** null = company-wide; otherwise an active `LOCATIONS` row (`-20604`). */
+  locationCode?: string | null;
+  floatingFlag?: boolean;
+  activeFlag?: boolean;
+}
+
+export interface Holiday extends Omit<HolidayRequest, 'activeFlag'>, AuditColumns {
+  holidayId: number;
+  /** Weekend shift applied by `BusinessCalendar` (Sat → Fri, Sun → Mon); derived. */
+  observedDate?: string;
+}
+
+export interface HolidayListQuery extends ActiveFilterQuery {
+  year?: number;
+  locationCode?: string;
+}
+
+export type PayElementType = 'EARNING' | 'DEDUCTION' | 'TAX' | 'BENEFIT' | 'REIMBURSEMENT' | 'ERROR';
+export type CalculationType = 'FLAT' | 'PERCENTAGE' | 'HOURS' | 'FORMULA';
+
+export interface PayElementRequest {
+  elementCode: string;
+  elementName: string;
+  elementType: PayElementType;
+  calculationType: CalculationType;
+  /** `calculationType` × defaults rules are `-20603` on the server. */
+  defaultAmount?: string | null;
+  defaultPercentage?: string | null;
+  taxableFlag?: boolean;
+  pretaxFlag?: boolean;
+  employerPaid?: boolean;
+  glAccountCode?: string | null;
+  priorityOrder?: number;
+  activeFlag?: boolean;
+}
+
+export interface PayElement extends Omit<PayElementRequest, 'activeFlag'>, AuditColumns {
+  elementId: number;
+  /** `0`, `1`, `100`–`103`: `-20607` rules apply. */
+  reserved: boolean;
+  activeEmployeeElements?: number;
+}
+
+export interface PayElementListQuery extends ActiveFilterQuery {
+  elementType?: PayElementType;
+}
+
+/** Admin tax-bracket filing status: P4 `FilingStatus` plus `ALL` for state flat rows. */
+export type TaxFilingStatus = FilingStatus | 'ALL';
+
+export interface TaxBracketRequest {
+  taxYear: number;
+  filingStatus: TaxFilingStatus;
+  /** null = federal ladder step; two-letter code = state flat row. */
+  stateCode?: string | null;
+  bracketMin: Money;
+  bracketMax?: string | null;
+  /** Fraction in `[0, 1]`, four decimals. */
+  taxRate: string;
+  baseTax?: Money;
+  activeFlag?: boolean;
+}
+
+export interface TaxBracket extends Omit<TaxBracketRequest, 'activeFlag'>, AuditColumns {
+  bracketId: number;
+  /** `taxYear` has an APPROVED/PAID run (`-20609`). */
+  locked: boolean;
+}
+
+export interface TaxBracketListQuery extends ActiveFilterQuery {
+  taxYear?: number;
+  /** `FEDERAL` or a two-letter state code. */
+  stateCode?: string;
+  filingStatus?: TaxFilingStatus;
+}
+
+export interface TaxLadderGap {
+  taxYear: number;
+  filingStatus: TaxFilingStatus;
+  gaps: { from: Money; to: string | null }[];
+}
+
+// --- admin role management (auth-owned tables, /api/admin prefix) --------------
+export interface RoleRequest {
+  roleCode: string;
+  roleName: string;
+  minGrade: number;
+  maxGrade: number;
+  /** Non-empty, distinct, each in `GET /api/admin/authorities`; least privilege `-20806`. */
+  permissions: Authority[];
+}
+
+export interface Role extends RoleRequest {
+  roleId: number;
+  /** `1`–`3` (STAFF / MANAGER / EXECUTIVE) are read-only (`-20802`). */
+  seeded: boolean;
+  userCount: number;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface RoleWriteResult extends Role {
+  sessionsRevoked: number;
+}
+
+export type AccountStatus = 'ACTIVE' | 'DISABLED';
+
+export interface UserRoleGrant {
+  roleId: number;
+  roleCode: string;
+  roleName: string;
+  grantedBy: string;
+  grantedDate: string;
+}
+
+export interface UserAccount {
+  userId: number;
+  empId: number;
+  empNumber: string;
+  fullName: string;
+  username: string;
+  status: AccountStatus;
+  locked: boolean;
+  lockedUntil?: string | null;
+  failedAttempts?: number;
+  mustChangePassword: boolean;
+  passwordChangedAt?: string | null;
+  roles: UserRoleGrant[];
+  /** Effective set = union of the roles' permissions. */
+  authorities: Authority[];
+  createdBy: string;
+  createdDate: string;
+  modifiedBy?: string | null;
+  modifiedDate?: string | null;
+}
+
+export interface UserAccountWriteResult extends UserAccount {
+  sessionsRevoked: number;
+}
+
+export interface UserAccountSearchQuery {
+  q?: string;
+  status?: AccountStatus;
+  roleId?: number;
+  locked?: boolean;
+  page?: number;
+  size?: number;
+}
+
+export interface UserAccountPage {
+  content: UserAccount[];
+  page: PageMeta;
+}
+
+export interface UserRolesRequest {
+  roleIds: number[];
+}
+
+export interface UserStatusRequest {
+  status: AccountStatus;
+  reason?: string | null;
+}
+
 // --- admin leave jobs --------------------------------------------------------
 export interface AccrualRunRequest {
   accrualDate?: string;

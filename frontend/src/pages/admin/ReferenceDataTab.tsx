@@ -29,6 +29,10 @@ export interface ReferenceDataConfig<Row extends { activeFlag: boolean }, Reques
   deactivate: (id: Id) => Promise<void>;
   /** Query keys to invalidate besides this grid (the P0 read-only reference lists). */
   invalidates?: readonly (readonly unknown[])[];
+  /** Server-side read-only rows (reserved pay elements, locked tax years): returns the reason, or null. */
+  rowLocked?: (row: Row) => string | null;
+  /** Rows that may be edited but never deactivated (reserved pay elements, `-20607`). */
+  canDeactivate?: (row: Row) => boolean;
 }
 
 export const adminListKey = (id: string, params: { active?: boolean }) => ['admin', id, params] as const;
@@ -38,7 +42,7 @@ export const adminListKey = (id: string, params: { active?: boolean }) => ['admi
  * create / edit dialog validated by the exported `…Request` DTO, and DELETE = soft deactivation
  * (`activeFlag=false`, refused with `-20602` while dependants are active). Writes need `ADMIN:EDIT`.
  */
-export function ReferenceDataTab<Row extends { activeFlag: boolean }, Request extends object, Id extends string | number>({ config }: { config: ReferenceDataConfig<Row, Request, Id> }) {
+export function ReferenceDataTab<Row extends { activeFlag: boolean }, Request extends object, Id extends string | number>({ config, children }: { config: ReferenceDataConfig<Row, Request, Id>; children?: ReactNode }) {
   const { hasAuthority } = useAuth();
   const canEdit = hasAuthority('ADMIN:EDIT');
   const queryClient = useQueryClient();
@@ -82,6 +86,7 @@ export function ReferenceDataTab<Row extends { activeFlag: boolean }, Request ex
           </button>
         )}
       </form>
+      {children}
 
       {result.isPending && <p role="status">Loading {config.title.toLowerCase()}…</p>}
       {result.isError && (
@@ -118,14 +123,22 @@ export function ReferenceDataTab<Row extends { activeFlag: boolean }, Request ex
                 </td>
                 {canEdit && (
                   <td className="actions">
-                    <button type="button" onClick={() => setEditing({ row })} aria-label={`Edit ${config.rowLabel(row)}`}>
-                      Edit
-                    </button>
-                    {row.activeFlag && (
-                      <button type="button" onClick={() => setConfirm(row)} aria-label={`Deactivate ${config.rowLabel(row)}`}>
-                        Deactivate
-                      </button>
-                    )}
+                    {(() => {
+                      const locked = config.rowLocked?.(row) ?? null;
+                      if (locked) return <span className="muted">{locked}</span>;
+                      return (
+                        <>
+                          <button type="button" onClick={() => setEditing({ row })} aria-label={`Edit ${config.rowLabel(row)}`}>
+                            Edit
+                          </button>
+                          {row.activeFlag && (config.canDeactivate?.(row) ?? true) && (
+                            <button type="button" onClick={() => setConfirm(row)} aria-label={`Deactivate ${config.rowLabel(row)}`}>
+                              Deactivate
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </td>
                 )}
               </tr>

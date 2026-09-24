@@ -48,10 +48,10 @@ describe('AdminPage – gating', () => {
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
   });
 
-  it('renders all eight tabs and opens Departments by default', async () => {
+  it('renders all thirteen tabs and opens Departments by default', async () => {
     renderAdminAs(executive);
     await screen.findByRole('heading', { name: 'Administration' });
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Departments', 'Job grades', 'Job titles', 'Locations', 'Leave types', 'System parameters', 'Leave jobs', 'Audit log']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Departments', 'Job grades', 'Job titles', 'Locations', 'Leave types', 'System parameters', 'Holidays', 'Pay elements', 'Tax brackets', 'Roles', 'Users', 'Leave jobs', 'Audit log']);
     expect(await screen.findByRole('table', { name: 'Departments' })).toBeInTheDocument();
   });
 });
