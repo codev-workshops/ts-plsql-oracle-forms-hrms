@@ -179,8 +179,8 @@ values (10036, 9001, 31, 200, 'DEDUCTION', -700.00, -3500.00, 'CALCULATED', 'SYS
 insert into payroll_details (detail_id, run_id, emp_id, element_id, element_type, amount, ytd_amount, status, created_by, created_date)
 values (10037, 9001, 31, 201, 'BENEFIT', -250.00, -1250.00, 'CALCULATED', 'SYSTEM', DATE '2024-05-28');
 
-insert into payroll_details (detail_id, run_id, emp_id, element_id, element_type, amount, ytd_amount, status, error_message, created_by, created_date)
-values (10038, 9001, 31, 205, 'DEDUCTION', 0, -600.00, 'ERROR', 'HSA election missing for 2024', 'SYSTEM', DATE '2024-05-28');
+insert into payroll_details (detail_id, run_id, emp_id, element_id, element_type, amount, ytd_amount, status, error_code, error_message, created_by, created_date)
+values (10038, 9001, 31, 205, 'DEDUCTION', 0, -600.00, 'ERROR', 'INTERNAL_ERROR', 'HSA election missing for 2024', 'SYSTEM', DATE '2024-05-28');
 
 -- run 9002 / emp 2 (run not approved, must not appear in VW_PAYROLL_LATEST)
 insert into payroll_details (detail_id, run_id, emp_id, element_id, element_type, amount, ytd_amount, status, created_by, created_date)

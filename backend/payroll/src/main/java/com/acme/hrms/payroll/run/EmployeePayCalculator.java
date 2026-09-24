@@ -8,8 +8,8 @@ import com.acme.hrms.payroll.run.EmployeePayInputRepository.TaxInfo;
 import com.acme.hrms.payroll.run.PayrollDetailRepository.NewDetail;
 import com.acme.hrms.payroll.tax.TaxEngine;
 import com.acme.hrms.payroll.tax.TaxRules;
+import com.acme.hrms.salary.SalaryAsOfReader;
 import com.acme.hrms.salary.SalaryDtos.SalaryRecord;
-import com.acme.hrms.salary.SalaryRecordRepository;
 import com.acme.hrms.validation.dto.payroll.PayrollConstants;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * calculate_employee_pay for one employee: produces the full signed row set, or a single sentinel
- * ERROR row when anything fails (the run continues). Nothing is written here.
+ * ERROR row when anything fails (the run continues). Nothing is written here. Salary is read only
+ * through the salary-module boundary {@link SalaryAsOfReader} (ARCH-01).
  */
 @Component
 public class EmployeePayCalculator {
@@ -30,13 +31,13 @@ public class EmployeePayCalculator {
   private static final Logger log = LoggerFactory.getLogger(EmployeePayCalculator.class);
   private static final int MESSAGE_MAX = 4000;
 
-  private final SalaryRecordRepository salaries;
+  private final SalaryAsOfReader salaries;
   private final EmployeePayInputRepository inputs;
   private final PayrollDetailRepository details;
   private final TaxEngine taxEngine;
 
   public EmployeePayCalculator(
-      SalaryRecordRepository salaries,
+      SalaryAsOfReader salaries,
       EmployeePayInputRepository inputs,
       PayrollDetailRepository details,
       TaxEngine taxEngine) {
@@ -68,7 +69,7 @@ public class EmployeePayCalculator {
       long runId, PeriodCore period, TaxRules rules, long empId, String user) {
     BigDecimal annual =
         salaries
-            .findEffectiveOn(empId, period.periodEndDate())
+            .effectiveOn(empId, period.periodEndDate())
             .map(SalaryRecord::baseSalary)
             .map(BigDecimal::new)
             .orElse(BigDecimal.ZERO);

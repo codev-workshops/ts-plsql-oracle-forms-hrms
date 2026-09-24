@@ -58,8 +58,8 @@ public class SalaryRecordRepository {
 
   /**
    * Salary in force on {@code asOf} (PKG_PAYROLL.get_salary_as_of): latest effective_date not after
-   * the date whose end_date is null or not before it. The payroll module's only way to read
-   * SALARY_RECORDS.
+   * the date whose end_date is null or not before it. Exposed to other modules only through {@link
+   * SalaryAsOfReader}.
    */
   public Optional<SalaryRecord> findEffectiveOn(long empId, LocalDate asOf) {
     return jdbc

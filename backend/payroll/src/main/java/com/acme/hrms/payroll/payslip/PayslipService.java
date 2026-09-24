@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * PKG_PAYROLL.get_payslip on PostgreSQL. Detail lines keep the stored sign; the aggregate fields
  * are positive magnitudes except {@code netPay}; YTD is the reporting YTD over APPROVED/PAID runs
- * (BUG-06 fixed).
+ * (BUG-06 fixed). An employee with any ERROR row in the run has no payslip: error-codes.md §1.1
+ * re-raises that row's code as 422 (a row without a stored code maps to INTERNAL_ERROR).
  */
 @Service
 public class PayslipService {
@@ -65,12 +66,13 @@ public class PayslipService {
           "Employee " + empId + " has no payslip in run " + runId,
           null);
     }
-    List<PayrollDetail> calculated =
-        lines.stream().filter(l -> !"ERROR".equals(l.status())).toList();
-    if (calculated.isEmpty()) {
-      PayrollDetail error = lines.get(0);
-      throw new PayslipCalculationFailedException(error.errorCode(), error.errorMessage());
+    Optional<PayrollDetail> error =
+        lines.stream().filter(l -> "ERROR".equals(l.status())).findFirst();
+    if (error.isPresent()) {
+      throw new PayslipCalculationFailedException(
+          error.get().errorCode(), error.get().errorMessage());
     }
+    List<PayrollDetail> calculated = lines;
 
     BigDecimal gross = sum(calculated, "EARNING", null);
     BigDecimal fed = magnitude(calculated, PayrollConstants.FED_TAX_ELEMENT_ID);
