@@ -105,4 +105,3 @@ PTO row out of the name-ordered `GET /api/leave/balances/mine` list).
 
 Run the scenarios in registry order: `payroll.payslip.ytd` approves a 202406 run last, and the
 payroll set runs before `employee.*` (see "Registry order is a fixture" above).
-
