@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { SEED_ACCOUNTS } from '../../../../e2e/seed-accounts';
 import { setAccessToken } from '../../../api/http';
@@ -8,6 +9,8 @@ import { server } from '../../../mocks/server';
 import { renderWithProviders } from '../../../test/render';
 import { plusYears, zodFor } from '../../../validation/schema';
 import { AdminPage } from '../AdminPage';
+import { ladderGapsKey, taxBracketsConfig } from '../payrollReferenceDefinitions';
+import { USERS_PAGE_SIZE } from '../UsersTab';
 
 const executive = SEED_ACCOUNTS.executive.email; // ADMIN:VIEW + ADMIN:EDIT
 const manager = SEED_ACCOUNTS.manager.email; // ADMIN:VIEW only
@@ -174,6 +177,26 @@ describe('Tax brackets', () => {
     await waitFor(() => expect(screen.getByTestId('ladder-gaps')).not.toHaveTextContent('50000.00'));
     expect(bodies.at(-1)?.body).toMatchObject({ bracketMin: '50000.00', bracketMax: '60000.00', taxRate: '0.2200' });
   });
+
+  it('invalidates the ladder-gaps query on bracket writes so deactivating a step reopens the gap', async () => {
+    expect(taxBracketsConfig().invalidates).toContainEqual(ladderGapsKey);
+    const user = userEvent.setup();
+    renderAdminAs(executive, '/admin/tax-brackets');
+    await screen.findByRole('table', { name: 'Tax brackets' });
+    await user.clear(screen.getByLabelText('Tax year'));
+    await user.type(screen.getByLabelText('Tax year'), '2024');
+    const gaps = await screen.findByTestId('ladder-gaps');
+    expect(gaps).not.toHaveTextContent('[0.00,');
+    const gapRequests: string[] = [];
+    server.events.on('request:start', ({ request }) => {
+      if (request.url.includes('/api/admin/tax-brackets/ladder-gaps')) gapRequests.push(request.url);
+    });
+
+    await user.click(screen.getByRole('button', { name: /^Deactivate 2024 Federal Single from 0\.00$/ }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Deactivate' }));
+    await waitFor(() => expect(screen.getByTestId('ladder-gaps')).toHaveTextContent('[0.00,'));
+    expect(gapRequests.length).toBeGreaterThan(0);
+  });
 });
 
 describe('Roles', () => {
@@ -264,6 +287,53 @@ describe('Users', () => {
     expect(await screen.findByText(/david.martinez@company.com saved · 1 session\(s\) revoked/)).toBeInTheDocument();
     expect(bodies[0].body).toEqual({ status: 'DISABLED', reason: 'Contract ended' });
     await waitFor(() => expect(within(within(screen.getByRole('table', { name: 'User accounts' })).getByText('david.martinez@company.com').closest('tr')!).getByText('Disabled')).toBeInTheDocument());
+  });
+
+  it('pages through /api/admin/users with Previous/Next and resets to the first page when filters change', async () => {
+    const many = Array.from({ length: USERS_PAGE_SIZE + 1 }, (_, i) => ({
+      userId: 5000 + i,
+      username: `bulk${String(i).padStart(2, '0')}@company.com`,
+      empId: 5000 + i,
+      empNumber: `B${5000 + i}`,
+      fullName: `Bulk User ${i}`,
+      status: 'ACTIVE',
+      locked: false,
+      roles: [],
+      authorities: [],
+      createdBy: '1',
+      createdDate: '2024-01-01T00:00:00Z',
+      modifiedBy: null,
+      modifiedDate: null,
+    }));
+    const seen: URL[] = [];
+    server.use(
+      http.get('*/api/admin/users', ({ request }) => {
+        const url = new URL(request.url);
+        seen.push(url);
+        const page = Number(url.searchParams.get('page') ?? 0);
+        const size = Number(url.searchParams.get('size') ?? 50);
+        const rows = url.searchParams.get('q') ? many.slice(0, 1) : many;
+        return HttpResponse.json({ content: rows.slice(page * size, (page + 1) * size), page: { page, size, totalElements: rows.length, totalPages: Math.ceil(rows.length / size) } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderAdminAs(executive, '/admin/users');
+    await screen.findByRole('table', { name: 'User accounts' });
+    expect(seen[0].searchParams.get('page')).toBe('0');
+    expect(seen[0].searchParams.get('size')).toBe(String(USERS_PAGE_SIZE));
+    expect(screen.getByText(`Page 1 of 2 · ${USERS_PAGE_SIZE + 1} accounts`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText(`bulk${USERS_PAGE_SIZE}@company.com`)).toBeInTheDocument();
+    expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Assign roles to bulk20@company.com' })).toBeEnabled();
+
+    await user.type(screen.getByLabelText('Search'), 'bulk');
+    await waitFor(() => expect(seen.at(-1)!.searchParams.get('q')).toBe('bulk'));
+    expect(seen.at(-1)!.searchParams.get('page')).toBe('0');
+    await waitFor(() => expect(screen.getByText(/Page 1 of 1/)).toBeInTheDocument());
   });
 
   it('hides role/status controls without ADMIN:EDIT', async () => {

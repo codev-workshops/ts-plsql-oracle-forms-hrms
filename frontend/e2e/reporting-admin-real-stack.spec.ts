@@ -48,10 +48,17 @@ async function getJson<T>(request: APIRequestContext, token: string, url: string
   return (await response.json()) as T;
 }
 
-/** Picks a holiday date that no seeded/leftover row occupies: next year, first free day of the year. */
+/** JWT `sub` (user-account id) of an access token; the canonical P5 audit actor. */
+function jwtSub(token: string): string {
+  const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { sub: string };
+  return payload.sub;
+}
+
+/** Picks a January date next year with no active company-wide holiday (active or not, any location, is listed; only active company-wide rows collide). */
 async function freeHolidayDate(request: APIRequestContext, token: string): Promise<string> {
   const year = new Date().getUTCFullYear() + 1;
-  const taken = new Set((await getJson<Holiday[]>(request, token, `/api/admin/holidays?year=${year}&active=false`)).map((h) => h.holidayDate));
+  const rows = await getJson<Holiday[]>(request, token, `/api/admin/holidays?year=${year}`);
+  const taken = new Set(rows.filter((h) => h.activeFlag && h.locationCode == null).map((h) => h.holidayDate));
   for (let day = 2; day <= 28; day += 1) {
     const iso = `${year}-01-${String(day).padStart(2, '0')}`;
     if (!taken.has(iso)) return iso;
@@ -142,7 +149,8 @@ test.describe('P5 PostgreSQL-backed reporting + admin flows', () => {
       await expect(page.getByRole('row', { name: new RegExp(`${name} renamed`) })).toBeVisible();
       const afterEdit = await getJson<Holiday>(request, token, `/api/admin/holidays/${created.holidayId}`);
       expect(afterEdit.holidayName).toBe(`${name} renamed`);
-      expect(afterEdit.modifiedBy).toBeTruthy();
+      expect(afterEdit.modifiedBy, 'HOLIDAYS has no modified_by column').toBeNull();
+      expect(afterEdit.modifiedDate).toBeNull();
 
       await page.getByRole('row', { name: new RegExp(`${name} renamed`) }).getByRole('button', { name: /^Deactivate/ }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Deactivate' }).click();
@@ -158,7 +166,8 @@ test.describe('P5 PostgreSQL-backed reporting + admin flows', () => {
       const auditPage = (await (await audit).json()) as AuditLogPage;
       const actions = auditPage.content.map((a) => a.actionType);
       expect(actions).toEqual(expect.arrayContaining(['INSERT', 'UPDATE']));
-      for (const entry of auditPage.content) expect(entry.changedBy, 'audit actor is the JWT sub (user-account id)').toBeTruthy();
+      const actor = jwtSub(token);
+      for (const entry of auditPage.content) expect(entry.changedBy, 'audit actor is the JWT sub (user-account id)').toBe(actor);
       await expect(page.getByRole('table', { name: 'Audit log' }).getByRole('row')).toHaveCount(auditPage.content.length + 1);
     } finally {
       if (created && (await request.get(`/api/admin/holidays/${created.holidayId}`, { headers: bearer(token) })).ok()) {

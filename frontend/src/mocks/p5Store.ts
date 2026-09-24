@@ -274,7 +274,7 @@ function fresh(): P5State {
     audit: seedAudit(),
     jobs: [],
     files: seedFiles(),
-    seq: 100,
+    seq: 1000,
   };
 }
 

@@ -13,7 +13,9 @@ const STATUS_FIELDS: FieldConfig[] = [
   { name: 'reason', label: 'Reason', hint: 'Recorded in the audit log' },
 ];
 
-export const usersKey = (params: { q?: string; status?: AccountStatus }) => ['admin', 'users', params] as const;
+export const USERS_PAGE_SIZE = 20;
+
+export const usersKey = (params: { q?: string; status?: AccountStatus; page?: number; size?: number }) => ['admin', 'users', params] as const;
 
 /**
  * User-account administration (`/api/admin/users`): role assignment (schema v1 carries no array
@@ -29,10 +31,11 @@ export function UsersTab() {
   const { push } = useToast();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<'' | AccountStatus>('');
+  const [page, setPage] = useState(0);
   const [rolesFor, setRolesFor] = useState<UserAccount | null>(null);
   const [statusFor, setStatusFor] = useState<UserAccount | null>(null);
 
-  const params = { ...(q ? { q } : {}), ...(status ? { status } : {}) };
+  const params = { ...(q ? { q } : {}), ...(status ? { status } : {}), page, size: USERS_PAGE_SIZE };
   const users = useQuery({ queryKey: usersKey(params), queryFn: () => api.admin.searchUsers(params), placeholderData: (prev) => prev });
   const roles = useQuery({ queryKey: rolesKey, queryFn: () => api.admin.listRoles(), enabled: canEdit });
   const refresh = () => {
@@ -53,9 +56,9 @@ export function UsersTab() {
       </p>
       <form className="toolbar" onSubmit={(e) => e.preventDefault()} aria-label="User filters">
         <label htmlFor="userSearch">Search</label>
-        <input id="userSearch" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Username, employee number or name" />
+        <input id="userSearch" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} placeholder="Username, employee number or name" />
         <label htmlFor="userStatus">Status</label>
-        <select id="userStatus" value={status} onChange={(e) => setStatus(e.target.value as '' | AccountStatus)}>
+        <select id="userStatus" value={status} onChange={(e) => { setStatus(e.target.value as '' | AccountStatus); setPage(0); }}>
           <option value="">All</option>
           <option value="ACTIVE">Active</option>
           <option value="DISABLED">Disabled</option>
@@ -70,6 +73,7 @@ export function UsersTab() {
       )}
       {users.data && users.data.content.length === 0 && <p role="status">No user accounts found.</p>}
       {users.data && users.data.content.length > 0 && (
+        <>
         <table className="grid" aria-label="User accounts">
           <thead>
             <tr>
@@ -123,6 +127,18 @@ export function UsersTab() {
             })}
           </tbody>
         </table>
+        <div className="toolbar-pagination">
+          <button type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={users.data.page.page === 0}>
+            Previous
+          </button>
+          <span>
+            Page {users.data.page.page + 1} of {Math.max(1, users.data.page.totalPages)} · {users.data.page.totalElements} accounts
+          </span>
+          <button type="button" onClick={() => setPage((p) => p + 1)} disabled={users.data.page.page + 1 >= users.data.page.totalPages}>
+            Next
+          </button>
+        </div>
+        </>
       )}
 
       {rolesFor && <RolesDialog account={rolesFor} roles={roles.data ?? []} onClose={() => setRolesFor(null)} onSaved={saved} />}

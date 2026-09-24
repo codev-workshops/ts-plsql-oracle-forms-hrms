@@ -88,6 +88,8 @@ export function payElementsConfig(): ReferenceDataConfig<PayElement, PayElementR
   };
 }
 
+export const ladderGapsKey = ['admin', 'tax-brackets', 'ladder-gaps'] as const;
+
 export function taxBracketsConfig(): ReferenceDataConfig<TaxBracket, TaxBracketRequest, number> {
   return {
     id: 'tax-brackets',
@@ -120,6 +122,7 @@ export function taxBracketsConfig(): ReferenceDataConfig<TaxBracket, TaxBracketR
     update: api.admin.updateTaxBracket,
     deactivate: api.admin.deactivateTaxBracket,
     rowLocked: (r) => (r.locked ? 'Locked by an approved payroll run' : null),
+    invalidates: [ladderGapsKey],
   };
 }
 
@@ -128,7 +131,7 @@ export function TaxBracketsTab() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const taxYear = Number(year);
   const valid = Number.isInteger(taxYear) && taxYear >= 2000 && taxYear <= 2100;
-  const gaps = useQuery({ queryKey: ['admin', 'tax-brackets', 'ladder-gaps', taxYear], queryFn: () => api.admin.taxLadderGaps(taxYear), enabled: valid });
+  const gaps = useQuery({ queryKey: [...ladderGapsKey, taxYear], queryFn: () => api.admin.taxLadderGaps(taxYear), enabled: valid });
   return (
     <ReferenceDataTab config={taxBracketsConfig()}>
       <section aria-labelledby="ladder-gaps-title" className="panel">
