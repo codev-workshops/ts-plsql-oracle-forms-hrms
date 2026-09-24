@@ -130,6 +130,21 @@ function todayUtcDay(): number {
   return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS);
 }
 
+const HOLIDAY_FLOOR = '1990-01-01';
+
+/** `LocalDate.plusYears(n)` on the given ISO date: calendar years, 29 Feb clamps to 28 Feb. */
+export function plusYears(iso: string, years: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const target = new Date(Date.UTC(y + years, m - 1, 1));
+  const lastDay = new Date(Date.UTC(y + years, m, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+function todayIso(): string {
+  return new Date(todayUtcDay() * DAY_MS).toISOString().slice(0, 10);
+}
+
 /**
  * Object-level evaluation of the exported `custom` rules whose operands live outside the field
  * itself. The rule id names the semantics, `rule.value` carries the operand (a sibling field for
@@ -155,6 +170,8 @@ export function evaluateCustomRule(rule: FieldRule, value: unknown, values: Reco
       return day <= todayUtcDay() + Number(rule.parameter ? getParameter(rule.parameter) : rule.value);
     case 'employee.dateNotFuture':
       return day <= todayUtcDay();
+    case 'holiday.dateWindow':
+      return value >= HOLIDAY_FLOOR && value <= plusYears(todayIso(), Number(rule.value));
     default:
       return true;
   }
