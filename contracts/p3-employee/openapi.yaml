@@ -571,7 +571,7 @@ paths:
         `change_pct` is always the **exact** rounded formula value: it is never clipped,
         capped or rejected, and no magnitude of raise or cut is a validation error (only
         `baseSalary <= 0` is, `-20101`). With `Money` bounded to `0.01 .. 9999999999.99`, the
-        result lies in `[-100.00, 99999999999800.00]` (at most 14 integer digits), so the
+        result lies in `[-100.00, 99999999999799.98]` (at most 14 integer digits), so the
         `salary_records.change_pct` column is PostgreSQL `NUMERIC(16,2)`; the legacy Oracle
         `CHANGE_PCT NUMBER(5,2)` width (overflow above `999.99`) is a storage limit of the
         legacy schema, not a business rule, and is **not** reproduced (README.md).
@@ -1425,7 +1425,7 @@ components:
 
     SalaryRecord:
       type: object
-      description: "`SALARY_RECORDS` row (salary-module). `changePct` as an exact two-decimal string (PostgreSQL `NUMERIC(16,2)`, wider than the legacy Oracle `NUMBER(5,2)`), e.g. `\"5.00\"` or `\"1413.63\"`."
+      description: "`SALARY_RECORDS` row (salary-module). `changePct` as an exact two-decimal string (PostgreSQL `NUMERIC(16,2)`, wider than the legacy Oracle `NUMBER(5,2)`), e.g. `\"5.00\"` or `\"1415.15\"`."
       required: [salaryId, empId, effectiveDate, baseSalary, currencyCode, payFrequency, salaryBasis, active, outOfGradeBand, createdBy, createdDate]
       additionalProperties: false
       properties:
@@ -1444,7 +1444,7 @@ components:
         changePct:
           type: [string, 'null']
           pattern: '^-?[0-9]+\.[0-9]{2}$'
-          description: "Exact `ROUND((new - old) / old * 100, 2)` for the whole valid `Money` range - never clipped or rejected, range `[-100.00, 99999999999800.00]`; `null` for the first record (no prior salary)."
+          description: "Exact `ROUND((new - old) / old * 100, 2)` for the whole valid `Money` range - never clipped or rejected, range `[-100.00, 99999999999799.98]`; `null` for the first record (no prior salary)."
         active: { type: boolean, description: "`ACTIVE_FLAG='Y'` - exactly one per employee." }
         outOfGradeBand: { type: boolean, description: "`baseSalary` outside `[gradeMinSalary, gradeMaxSalary]` of the employee's job grade at creation time (advisory)." }
         createdBy: { type: string }

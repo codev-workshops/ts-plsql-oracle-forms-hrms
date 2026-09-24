@@ -72,10 +72,10 @@ the **exact** `ROUND((new - old) / old * 100, 2)` for every valid pair of prior 
 `baseSalary` – never clipped, capped or rejected; `null` only when there is no prior salary
 (`old = 0` or no previous row). Since `Money` is a two-decimal string bounded by
 `@Digits(integer = 10, fraction = 2)` (`0.01 .. 9999999999.99`), the result lies in
-`[-100.00, 99999999999800.00]`, so `salary_records.change_pct` is PostgreSQL `NUMERIC(16,2)` (14
+`[-100.00, 99999999999799.98]`, so `salary_records.change_pct` is PostgreSQL `NUMERIC(16,2)` (14
 integer digits – sufficient for all valid prior / current money bounds). The legacy Oracle
 `SALARY_RECORDS.CHANGE_PCT NUMBER(5,2)` (DATA_DICTIONARY.md) overflows above `999.99` (e.g. a
-valid raise `66000.00 → 999999.00` = `1413.63`); that width is a storage artefact of the legacy
+valid raise `66000.00 → 999999.00` = `1415.15`); that width is a storage artefact of the legacy
 schema, not a business rule, and is not reproduced. The `NUMBER(5,2)` wording previously in the
 `SalaryRecord` description was contradictory and has been corrected. The matching Flyway
 migration and `salary-module` change are backend remediation, not part of this contract.
