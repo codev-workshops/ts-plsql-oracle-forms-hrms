@@ -27,10 +27,12 @@ info:
       - `integration-module` – owns `INTEGRATION_LOG` (new, PostgreSQL only) and
         `integration_files` (new; feed metadata + object-storage key). It reads payroll /
         employee / benefits data through the owning modules' Java service interfaces.
-    * Identity comes from the JWT (`empId`, `username`, `authorities[]`). No route takes
-      an actor `empId` or `p_user`; `createdBy` / `modifiedBy` / `changedBy` /
-      `INTEGRATION_LOG.created_by` are always `jwt.username`. Route `{empId}` never
-      appears in this module.
+    * Identity comes from the P0 JWT (`sub` = `user_accounts.user_id` as a string, `empId`,
+      `authorities[]`; there is **no** `username` claim). No route takes an actor `empId`
+      or `p_user`; `createdBy` / `modifiedBy` / `changedBy` / `startedBy` /
+      `INTEGRATION_LOG.created_by` are always `jwt.sub` (`CurrentCaller.userId()`, as in
+      P3); `jwt.empId` is used only for subject scoping (`mine=true`, manager inbox,
+      employee lookup). Route `{empId}` never appears in this module.
     * Every failure body is `ApiError {code, message, field?, traceId}`; `code` is the
       legacy `-20xxx` number as a string (see `error-codes.md`) or a framework code.
     * Validation lives once in `hrms-validation` (`dto/admin/*`, `dto/reporting/*`,
@@ -73,7 +75,7 @@ info:
       `ACTIVE_FLAG`); `DELETE` = deactivate (`activeFlag=N`) and is refused with `-20602`
       while active dependants exist. Codes are immutable after creation (`-20601` on a
       duplicate). Every write appends an `AUDIT_LOG` row (`action_type` INSERT / UPDATE /
-      STATUS_CHANGE, `changed_by = jwt.username`) from Java – no trigger.
+      STATUS_CHANGE, `changed_by = jwt.sub`) from Java – no trigger.
     * `POST /api/admin/leave/accrual` and `/api/admin/leave/carryover` are the mounted
       form of the routes P2 declared as `x-deferred` (`/api/leave/admin/accrual/run`,
       `/api/leave/admin/carryover/run`); the P2 paths become **301 aliases** to these.
@@ -575,7 +577,7 @@ paths:
         `deptId` from `seq_departments` (server). `parentDeptId` must be an existing
         **active** department (`-20003`) and must not create a cycle (`-20605`);
         `managerEmpId` must be an active employee (`-20001`); `locationCode` must be an
-        active location (`-20604`). `createdBy = jwt.username`.
+        active location (`-20604`). `createdBy = jwt.sub`.
       x-preauthorize: hasAuthority('ADMIN:EDIT')
       requestBody:
         required: true
@@ -627,7 +629,7 @@ paths:
       description: |
         `deptCode` in the body must equal the stored code (`-20601` otherwise – codes are
         immutable because `EMPLOYEES`, `ORG_HIERARCHY` paths and the GL feed key on them).
-        Same referential rules as create. `modifiedBy = jwt.username`; `AUDIT_LOG` UPDATE
+        Same referential rules as create. `modifiedBy = jwt.sub`; `AUDIT_LOG` UPDATE
         row with old/new JSON.
       x-preauthorize: hasAuthority('ADMIN:EDIT')
       requestBody:
@@ -1385,7 +1387,8 @@ paths:
         Filters are ANDed. `tableName` is the PostgreSQL lower-case name
         (`employees`, `salary_records`, …); `from`/`to` bound `changedDate` inclusive
         (`to >= from` else `-20210`-style `VALIDATION_FAILED`, `field=to`); `changedBy`
-        matches `AUDIT_LOG.CHANGED_BY` exactly (a username). `oldValues` / `newValues`
+        matches `AUDIT_LOG.CHANGED_BY` exactly (the actor's `jwt.sub` user-account id as
+        a string for target-written rows). `oldValues` / `newValues`
         are returned verbatim (JSON text, may contain **masked** SSN/bank fields – the
         P3 employee module already masks before writing). Sorted `changedDate desc,
         auditId desc`. Max range 366 days.
@@ -1453,7 +1456,7 @@ paths:
         (`UNASSIGNED` when null – legacy emitted an empty field; documented divergence).
         Only `APPROVED`/`PAID` runs are exportable (`-20701`). Re-running for the same
         run creates a **new** file version (legacy overwrote); `INTEGRATION_LOG` row
-        `GL_JOURNAL` `SUCCESS|FAILED` with `created_by = jwt.username`.
+        `GL_JOURNAL` `SUCCESS|FAILED` with `created_by = jwt.sub`.
       x-preauthorize: hasAuthority('PAYROLL:APPROVE')
       requestBody:
         required: true
@@ -1696,7 +1699,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: P0 access token; claims `empId`, `username`, `authorities[]`.
+      description: P0 access token; claims `sub` (user-account id, string), `empId`, `authorities[]`.
 
   parameters:
     AsOf:
@@ -2244,7 +2247,7 @@ components:
         deptName: { type: string, minLength: 1, maxLength: 100 }
         parentDeptId: { type: [integer, 'null'], format: int64, minimum: 1 }
         costCenter: { type: [string, 'null'], maxLength: 20, pattern: '^[A-Z0-9_-]+$' }
-        managerEmpId: { type: [integer, 'null'], format: int64, minimum: 1, description: The department head (a subject, never the actor). }
+        managerEmpId: { type: [integer, 'null'], format: int64, minimum: 1, description: "The department head (a subject, never the actor)." }
         locationCode: { type: [string, 'null'], maxLength: 10, pattern: '^[A-Z0-9_-]+$' }
         activeFlag: { type: boolean, default: true }
     Department:
@@ -2413,7 +2416,7 @@ components:
         failed: { type: integer, minimum: 0 }
         startedAt: { type: string, format: date-time }
         finishedAt: { type: [string, 'null'], format: date-time }
-        startedBy: { type: string, description: "`jwt.username`" }
+        startedBy: { type: string, description: "`jwt.sub` (user-account id as a string)" }
         message: { type: [string, 'null'] }
 
     # --- audit -------------------------------------------------------------------
@@ -2425,8 +2428,8 @@ components:
         tableName: { type: string }
         recordId: { type: integer, format: int64 }
         actionType: { type: string, enum: [INSERT, UPDATE, DELETE, STATUS_CHANGE, LOGIN, LOGOUT] }
-        oldValues: { type: [string, 'null'], description: JSON text, verbatim. }
-        newValues: { type: [string, 'null'], description: JSON text, verbatim. }
+        oldValues: { type: [string, 'null'], description: "JSON text, verbatim." }
+        newValues: { type: [string, 'null'], description: "JSON text, verbatim." }
         changedBy: { type: string }
         changedDate: { type: string, format: date-time }
         ipAddress: { type: [string, 'null'] }

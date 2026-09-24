@@ -13,11 +13,14 @@ or an RFC 4180 UTF-8 stream with the frozen header order (`text/csv`); `admin-mo
 read-only and delegates), `integration-module` owns `INTEGRATION_LOG` and `integration_files` (staged
 time-attendance rows included), and the leave batch triggers (`POST /api/admin/leave/accrual`,
 `…/carryover`) are the mounted form of the P2 `x-deferred` routes and call the P2
-`leave-module` services (no second implementation); identity is the JWT (`empId`,
-`authorities[]`: `REPORTS:VIEW` / `PAYROLL:VIEW` reads, `ADMIN:VIEW` / `ADMIN:EDIT` reference
-data + audit, `LEAVE:ADMIN` batch triggers, `PAYROLL:APPROVE` GL, `PAYROLL:EDIT` benefits +
-time-attendance), actor = `jwt.empId` always, `mine=true` and every `changedBy`/`requestedBy`
-are derived server-side and never accepted from the client; request validation is
+`leave-module` services (no second implementation); identity is the P0 JWT (`sub` =
+`user_accounts.user_id` as a string, `empId`, `authorities[]`: `REPORTS:VIEW` / `PAYROLL:VIEW`
+reads, `ADMIN:VIEW` / `ADMIN:EDIT` reference data + audit, `LEAVE:ADMIN` batch triggers,
+`PAYROLL:APPROVE` GL, `PAYROLL:EDIT` benefits + time-attendance; no `username` claim), the
+audit actor written to `createdBy` / `modifiedBy` / `changedBy` / `requestedBy` / `startedBy` /
+`created_by` is always `jwt.sub` (`CurrentCaller.userId()`, as in P3), `jwt.empId` is only the
+subject for self-scoping (`mine=true`, manager inbox, employee lookup), and `mine=true` and
+every actor value are derived server-side and never accepted from the client; request validation is
 `hrms-validation` `dto/{reporting,admin,integration}/*` exported as module
 `p5-reporting-decommission` of `frontend/src/generated/validation-schema.json` (guarded by
 `ValidationSchemaExporterTest#p5ReportingDecommissionDtosPinContractRules` and
