@@ -1880,9 +1880,12 @@ paths:
       operationId: adminCreateRole
       summary: Create a custom role
       description: |
-        `roleId` = `nextval('seq_role')`, a forward-migration sequence started **after** the
-        seeded ids (`start with 1000`; V2 seeds 1–3 without a sequence, so `max+1` is not
-        allowed – it collides under concurrency). `roleCode` unique case-insensitively (`uk_roles_code`, `-20801`);
+        `roleId` = `nextval('seq_role')`. The sequence already exists from V2 (`start with 1`,
+        never called; V2 seeds 1–3 with literal ids), so the forward V12 migration does **not**
+        create it: it advances it with `setval('seq_role', greatest(1000, max(role_id)+1,
+        last_value+1), false)` so the next id is `>= 1000` and greater than every existing
+        `role_id` and the prior sequence value, on fresh and upgraded databases alike.
+        `max(role_id)+1` in Java is not allowed – it collides under concurrency. `roleCode` unique case-insensitively (`uk_roles_code`, `-20801`);
         `maxGrade >= minGrade` (`chk_roles_grade`, `-20603` `field=maxGrade`);
         `permissions[]` non-empty, distinct, each in the vocabulary (`VALIDATION_FAILED`).
         **Least privilege:** the caller must hold every authority in `permissions[]`,
