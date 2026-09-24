@@ -383,13 +383,8 @@ class EmployeeApiTest extends AuthApiTestBase {
         .isEqualTo(1);
   }
 
-  /**
-   * -20004 names the request property that carried the manager: {@code managerEmpId} on
-   * create/update, {@code newManagerEmpId} on transfer (error-codes.md, -20004 row).
-   */
   @Test
   void invalidManagerFieldFollowsTheRequestProperty() throws Exception {
-    // 99 is TERMINATED in the seed; emp 1 is the root of the chain, so 3 (reports to 1) is circular
     Map<String, Object> inactive = newEmployee("api.manager@company.com");
     inactive.put("managerEmpId", 99);
     mvc.perform(json(post("/api/employees"), exec, inactive))

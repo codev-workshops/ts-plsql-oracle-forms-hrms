@@ -244,7 +244,6 @@ class EmployeeServiceTest {
             ErrorCode.INVALID_MANAGER)
         .hasMessage("Invalid or inactive manager: 99")
         .hasFieldOrPropertyWithValue("field", "managerEmpId");
-    // transfer carries the manager in newManagerEmpId, and the error field names it
     EmployeeTransferRequest t = transfer(30);
     t.setNewManagerEmpId(99);
     expect(() -> service.transfer(30, t, HR), ErrorCode.INVALID_MANAGER)

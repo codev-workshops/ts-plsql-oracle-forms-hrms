@@ -596,8 +596,7 @@ public class EmployeeService {
 
   /**
    * {@code validate_manager}: the manager must be active ({@code -20004}) and, for an existing
-   * subject, must not be the subject or anyone reporting (transitively) to the subject. {@code
-   * field} names the request property carrying the manager id in the resulting {@code ApiError}.
+   * subject, must not be the subject or anyone reporting (transitively) to the subject.
    */
   void requireManager(long managerEmpId, @Nullable Long subjectEmpId, String field) {
     if (!employees.managerActive(managerEmpId)) {
