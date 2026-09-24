@@ -80,7 +80,6 @@ function page<T>(items: T[], url: URL, maxSize: number): { content: T[]; page: n
   return { content: items.slice(p * size, (p + 1) * size), page: p, size, totalElements: items.length, totalPages: Math.max(1, Math.ceil(items.length / size)) };
 }
 
-/** `PAY_REGISTER_{runId}_{yyyyMMdd_HHmmss}.csv` (contracts/p4-payroll/openapi.yaml), stamped with the fixed mock clock. */
 function csvFilename(runId: number) {
   const stamp = NOW.replace(/[-:]/g, '').replace('T', '_').slice(0, 15);
   return `PAY_REGISTER_${runId}_${stamp}.csv`;

@@ -103,9 +103,17 @@ test.describe('P4 PostgreSQL-backed payroll flows', () => {
     await expect(page.getByTestId('payslip-gross')).toHaveText('9,166.67');
     await expect(page.getByTestId('payslip-net')).toHaveText('5,512.09');
 
-    // ERROR-only employee → -20104 inline; server-side authority checks independent of the UI.
+    // error-codes.md §1.1: an employee with an ERROR detail row gets 422 with ApiError.code = the row's errorCode.
+    const errorRows = await request.get(`/api/payroll/runs/${SEEDED.approvedRun}/details?empId=${SEEDED.errorEmpId}&status=ERROR`, { headers: bearer(token) });
+    const [errorRow] = (await errorRows.json() as { content: PayrollDetail[] }).content;
+    expect(errorRow?.errorCode).toBeTruthy();
     const errorSlip = await request.get(`/api/payroll/runs/${SEEDED.approvedRun}/payslips/${SEEDED.errorEmpId}`, { headers: bearer(token), failOnStatusCode: false });
-    expect([200, 422]).toContain(errorSlip.status());
+    expect(errorSlip.status()).toBe(422);
+    expect((await errorSlip.json() as { code: string }).code).toBe(errorRow.errorCode);
+    await page.goto(`/payroll/runs/${SEEDED.approvedRun}/payslips/${SEEDED.errorEmpId}`);
+    await expect(page.getByTestId('payslip-error')).toContainText(errorRow.errorCode!);
+
+    // Server-side authority checks independent of the UI.
     const create = await request.post(`/api/payroll/periods/${SEEDED.openPeriod}/runs`, { headers: bearer(token), data: { runType: 'REGULAR' }, failOnStatusCode: false });
     expect(create.status()).toBe(403);
     const bank = await request.get(`/api/payroll/runs/${SEEDED.approvedRun}/register.csv?includeBank=true`, { headers: bearer(token), failOnStatusCode: false });
