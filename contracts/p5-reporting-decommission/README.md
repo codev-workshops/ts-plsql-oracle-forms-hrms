@@ -74,8 +74,11 @@ writes** of `HOLIDAYS`, `PAY_ELEMENTS`, `TAX_BRACKETS` (`/api/admin/{holidays,pa
 max-age=300` + ETag for its four lists). Domain readers stay decoupled and uncached –
 `BusinessCalendar` (`hrms-common`, active `holidays`), `TaxRuleRepository` and
 `EmployeePayInputRepository` (`payroll`) read the tables per request, so a write is visible to
-the next leave/payroll request with **no** cache invalidation to implement; admin-module must not
-call payroll/leave and payroll/leave must not call admin. `roles`, `role_permissions`,
+the next leave/payroll request with **no** cache invalidation to implement. The **new**
+reference-maintenance services (`HolidayService`, `PayElementService`, `TaxBracketService`)
+must not call payroll/leave, and payroll/leave must not call admin; the existing
+`admin -> leave` edge (`admin/pom.xml`, `AdminLeaveJobController` driving the frozen
+`POST /api/leave/admin/{accrual,carryover}/run` batch jobs) is unchanged and stays allowed. `roles`, `role_permissions`,
 `user_roles`, `user_accounts` stay **auth-owned** (V2, `UserAccountRepository` header). Because
 `backend/auth/pom.xml` already depends on `backend/admin` (and on every other module), an
 `admin -> auth` dependency is forbidden: the role-management controllers/services
@@ -96,7 +99,11 @@ is introduced for that (the audit row is the record of the actor). `user_roles.g
 
 **Validation rules (server, `-20603` / `VALIDATION_FAILED`; cross-field = `@AssertTrue`).**
 Holidays: date in `[1990-01-01, today+10y]`; `locationCode` null or active location (`-20604`);
-one active row per `(date, location|company-wide)` (`-20601`); response adds derived
+one active row per `(date, location|company-wide)` (`-20601`), guaranteed by a forward
+migration (`V12__p5_admin_expansion.sql`, next free version after V11) adding
+`create unique index uk_holidays_active_date_loc on holidays (holiday_date,
+coalesce(location_code,'*')) where active_flag = 'Y'` – the Java pre-check gives the friendly
+message, the index wins races, and its violation maps to the same `-20601`; response adds derived
 `observedDate` (weekend shift identical to `BusinessCalendar`). Pay elements: `elementType`
 never `ERROR`, never `TAX` on create (`-20607`); `calculationType` × defaults (`FLAT`/`HOURS` →
 `defaultAmount >= 0`, `PERCENTAGE` → `0 < defaultPercentage <= 100`, `FORMULA` → none);
@@ -117,8 +124,15 @@ Frozen rules: (1) seeded roles `1`–`3` are read-only (`-20802`) so the P0 gate
 `TEST_STRATEGY.md §5 row 0` keeps holding; (2) **least privilege** – nobody grants an authority
 they do not hold themselves (`-20806`); (3) **no self-service** – `jwt.sub == userId` is refused
 on roles/status (`-20804`); (4) **last admin** – no write may leave zero `ACTIVE` accounts with
-`ADMIN:EDIT` (`-20805`, checked inside the transaction); (5) assignment limit `1..5` roles per
-account, `<= 40` authorities per role; (6) roles are deleted physically only when unassigned
+`ADMIN:EDIT` (`-20805`). Because that invariant spans every account, all three mutations that
+can lower the holder count (`PUT …/users/{id}/roles`, `PUT …/users/{id}/status`,
+`PUT …/roles/{id}`) serialize on one transaction-scoped
+`pg_advisory_xact_lock(hashtext('hrms.admin_edit_guard'))`, write, then re-count active
+`ADMIN:EDIT` holders and roll back on zero – per-row `select … for update` is explicitly **not**
+sufficient; (5) no arbitrary size caps: `roleIds` and `permissions` are non-empty and distinct,
+bounded only by the existing roles / the finite authority vocabulary; new `roles.role_id`
+values come from `seq_role` (`create sequence seq_role start with 1000`, same V12 forward
+migration, past the seeded 1–3) – never `max(role_id)+1`; (6) roles are deleted physically only when unassigned
 (`-20803`; `ROLES` has no `active_flag`); (7) **tokens** – every successful role/status write
 calls `SessionRevoker` for each affected user (all sessions: refresh tokens revoked, current
 access-token `jti` revoked), the response reports `sessionsRevoked`; the target's next
@@ -144,9 +158,11 @@ pre-expansion baseline).
 (status matrix incl. `401`/`403` per authority) – its pinned counts move from 55 P5 / 122 total
 operations to **81 P5 / 148 total**, and `ErrorCodeTest#statusesMatchErrorCodesMd` requires
 `ErrorCode` entries for `-20607`…`-20609`, `-20801`…`-20807`, `ROLE_NOT_FOUND`, `USER_NOT_FOUND`
-(both tests fail on this contract-only commit by design until the backend child lands); admin `ReferenceOwnershipTest` asserts no
-class outside `backend/admin` issues SQL on `holidays|pay_elements|tax_brackets` and no class
-outside `backend/auth` on `roles|role_permissions|user_roles|user_accounts`; `mvn` reactor has
+(both tests fail on this contract-only commit by design until the backend child lands); admin `ReferenceOwnershipTest` asserts **exclusive
+writes**: no `insert|update|delete` on `holidays|pay_elements|tax_brackets` outside
+`backend/admin` and none on `roles|role_permissions|user_roles|user_accounts` outside
+`backend/auth` – read-only domain readers (`BusinessCalendar`, `TaxRuleRepository`,
+`EmployeePayInputRepository`, `UserAccountRepository.authorities`) are permitted and expected; `mvn` reactor has
 no `admin -> auth` edge; `TaxBracketServiceTest` overlap/lock/shape; `PayElementServiceTest`
 reserved-row matrix; `RoleAdminServiceTest` / `UserAdminServiceTest` rules (1)–(7) including a
 Testcontainers assertion that a revoked user's refresh is `401`. Frontend: pages
@@ -158,6 +174,8 @@ these grids is `untested-live` (`legacy_source=none`).
 **Unresolved policy decisions (defaults frozen above, flagged for the parent):**
 (a) least-privilege model is "caller must hold each granted authority" rather than role-hierarchy;
 (b) tax-year lock threshold is `APPROVED`/`PAID` (a `CALCULATED` run does not lock);
-(c) role assignment limit `5` and role size `40` are contract constants without legacy source;
+(c) role-assignment and permission-set sizes are deliberately uncapped (vocabulary +
+distinctness bound them);
 (d) account creation/password reset by admins is deferred; (e) `HOLIDAYS`/`TAX_BRACKETS`
-`modified_by` columns are not added (audit row instead).
+`modified_by` columns are not added (audit row instead); (f) V12 is the only forward migration
+(unique index + `seq_role`); V1–V11 stay untouched.

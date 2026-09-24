@@ -1425,8 +1425,12 @@ paths:
         `[1990-01-01, today + 10 years]` (`VALIDATION_FAILED`); `locationCode` null
         (company-wide) or an **active** `LOCATIONS` row (`-20604`); the pair
         `(holidayDate, coalesce(locationCode,'*'))` must not exist as an **active** row
-        (`-20601`, `field=holidayDate` – no DB unique index, enforced in Java inside the
-        write transaction). Weekend dates are accepted: `BusinessCalendar` shifts the
+        (`-20601`, `field=holidayDate`). The check is a Java pre-check **plus** a forward
+        migration adding the partial unique expression index
+        `uk_holidays_active_date_loc on holidays (holiday_date, coalesce(location_code,'*'))
+        where active_flag = 'Y'`; a concurrent insert losing the race surfaces as
+        `DataIntegrityViolationException` on that constraint and is mapped to the same
+        `-20601`. Weekend dates are accepted: `BusinessCalendar` shifts the
         observed date exactly like `PKG_LEAVE.calculate_business_days`.
       x-preauthorize: hasAuthority('ADMIN:EDIT')
       requestBody:
@@ -1876,8 +1880,9 @@ paths:
       operationId: adminCreateRole
       summary: Create a custom role
       description: |
-        `roleId` = `max(role_id) + 1` inside the transaction (V2 seeds 1–3 without a
-        sequence). `roleCode` unique case-insensitively (`uk_roles_code`, `-20801`);
+        `roleId` = `nextval('seq_role')`, a forward-migration sequence started **after** the
+        seeded ids (`start with 1000`; V2 seeds 1–3 without a sequence, so `max+1` is not
+        allowed – it collides under concurrency). `roleCode` unique case-insensitively (`uk_roles_code`, `-20801`);
         `maxGrade >= minGrade` (`chk_roles_grade`, `-20603` `field=maxGrade`);
         `permissions[]` non-empty, distinct, each in the vocabulary (`VALIDATION_FAILED`).
         **Least privilege:** the caller must hold every authority in `permissions[]`,
@@ -1938,7 +1943,8 @@ paths:
         are **read-only**: any differing field → `-20802`. For custom roles the permission
         diff is applied as `delete`/`insert` on `role_permissions`; least-privilege
         (`-20806`) applies to every authority **added**. Removing an authority that would
-        leave no `ACTIVE` account with `ADMIN:EDIT` → `-20805`. All sessions of every user
+        leave no `ACTIVE` account with `ADMIN:EDIT` → `-20805`, evaluated under the common
+        admin-guard lock (see `UserRolesRequest` description). All sessions of every user
         holding the role are revoked; `sessionsRevoked` is returned.
       x-preauthorize: hasAuthority('ADMIN:EDIT')
       requestBody:
@@ -2052,12 +2058,17 @@ paths:
       summary: Replace the account's role set
       description: |
         Idempotent set replacement on `user_roles` (`granted_by = jwt.sub` on inserted rows).
-        Rules: `1 <= roleIds.length <= 5`, distinct, every id exists (`-20807`
+        Rules: `roleIds` non-empty, distinct, every id exists (`-20807`
         `field=roleIds`); the caller may not change **their own** account
         (`jwt.sub == userId`, `-20804`); **least privilege** – every authority granted by the
         new set that the target does not already hold must be held by the caller (`-20806`);
         **last admin** – the result must leave at least one `ACTIVE` account with
-        `ADMIN:EDIT` (`-20805`). Then all sessions of the target are revoked
+        `ADMIN:EDIT` (`-20805`). Because the invariant spans *all* accounts, every mutation
+        that can lower the `ADMIN:EDIT` holder count (`PUT …/roles`, `PUT …/status`,
+        `PUT /api/admin/roles/{roleId}`) first takes the same transaction-scoped
+        `pg_advisory_xact_lock(hashtext('hrms.admin_edit_guard'))`, then applies the write,
+        then re-counts `ACTIVE` accounts holding `ADMIN:EDIT` and rolls back with `-20805`
+        if zero; row locks alone are insufficient. Then all sessions of the target are revoked
         (`SessionRevoker`): the target's next `/api/auth/refresh` returns `401 TOKEN_INVALID`
         and they must log in again; `UserAccount.authorities` shows the new effective set.
       x-preauthorize: hasAuthority('ADMIN:EDIT')
@@ -2940,8 +2951,8 @@ components:
         permissions:
           type: array
           minItems: 1
-          maxItems: 40
           uniqueItems: true
+          description: "Bounded only by the finite assignable vocabulary (`GET /api/admin/authorities`) and distinctness; no arbitrary cap."
           items: { $ref: '#/components/schemas/Authority' }
     Role:
       allOf:
@@ -3012,8 +3023,8 @@ components:
         roleIds:
           type: array
           minItems: 1
-          maxItems: 5
           uniqueItems: true
+          description: "Bounded only by the set of existing roles and distinctness; no arbitrary cap."
           items: { type: integer, minimum: 1 }
     UserStatusRequest:
       type: object
