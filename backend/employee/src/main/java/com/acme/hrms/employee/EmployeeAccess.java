@@ -82,6 +82,7 @@ public class EmployeeAccess {
     }
     if (body instanceof StrictRequest strict) {
       strict.requireNoUnknownProperties();
+      strict.requireNoMalformedProperties();
     }
     Set<ConstraintViolation<T>> violations = validator.validate(body);
     if (!violations.isEmpty()) {

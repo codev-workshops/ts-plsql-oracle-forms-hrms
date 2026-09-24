@@ -2,6 +2,7 @@ package com.acme.hrms.validation.dto.employee;
 
 import com.acme.hrms.validation.meta.AllowedValues;
 import com.acme.hrms.validation.meta.FieldMeta;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -22,6 +23,7 @@ public class SalaryChangeRequest extends StrictRequest {
   private LocalDate effectiveDate;
 
   @NotNull
+  @JsonDeserialize(using = MoneyDeserializer.class)
   @DecimalMin(value = "0.01")
   @Digits(integer = 10, fraction = 2)
   @FieldMeta(

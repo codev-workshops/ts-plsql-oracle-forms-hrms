@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.acme.hrms.salary.SalaryRecordRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -85,7 +86,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 0,
+                    "baseSalary", "0.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("-20101"))
@@ -98,7 +99,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 110000,
+                    "baseSalary", "110000.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.baseSalary").value("110000.00"))
@@ -123,7 +124,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2026-01-01",
-                    "baseSalary", 999999,
+                    "baseSalary", "999999.00",
                     "changeReason", "PROMOTION")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.outOfGradeBand").value(true));
@@ -145,7 +146,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 100000,
+                    "baseSalary", "100000.00",
                     "changeReason", "INITIAL")))
         .andExpect(status().isCreated());
     mvc.perform(
@@ -153,7 +154,12 @@ class SalaryApiTest extends AuthApiTestBase {
                 post("/api/employees/1/salary"),
                 exec,
                 Map.of(
-                    "effectiveDate", "2025-06-01", "baseSalary", 110000, "changeReason", reason)))
+                    "effectiveDate",
+                    "2025-06-01",
+                    "baseSalary",
+                    "110000.00",
+                    "changeReason",
+                    reason)))
         .andExpect(status().isCreated());
     // rejected (before hire date / previous effective date): nothing written
     mvc.perform(
@@ -162,7 +168,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-15",
-                    "baseSalary", 120000,
+                    "baseSalary", "120000.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isBadRequest());
 
@@ -243,7 +249,7 @@ class SalaryApiTest extends AuthApiTestBase {
                             Map.entry("locationCode", "CHI"),
                             Map.entry("employmentType", "FULL_TIME"),
                             Map.entry("ssn", "123-45-6789"),
-                            Map.entry("initialSalary", 85000))))
+                            Map.entry("initialSalary", "85000.00"))))
                 .andExpect(status().isCreated())
                 .andReturn())
             .get("id")
@@ -324,7 +330,7 @@ class SalaryApiTest extends AuthApiTestBase {
                         exec,
                         Map.of(
                             "effectiveDate", "2025-01-01",
-                            "baseSalary", 110000,
+                            "baseSalary", "110000.00",
                             "changeReason", "MERIT")))
                 .andReturn();
     ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -367,7 +373,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2023-01-01",
-                    "baseSalary", 110000,
+                    "baseSalary", "110000.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -378,7 +384,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 110000,
+                    "baseSalary", "110000.00",
                     "currencyCode", "usd",
                     "changeReason", "MERIT")))
         .andExpect(status().isBadRequest())
@@ -391,10 +397,96 @@ class SalaryApiTest extends AuthApiTestBase {
                 exec,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 110000,
+                    "baseSalary", "110000.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("-20001"));
+  }
+
+  /** openapi.yaml {@code Money}: a string matching {@code ^-?[0-9]+\.[0-9]{2}$}, never a number. */
+  @Test
+  void moneyMustBeATwoDecimalStringOnBothWriteRoutes() throws Exception {
+    int salaries = jdbc.queryForObject("select count(*) from salary_records", Integer.class);
+    int employees = jdbc.queryForObject("select count(*) from employees", Integer.class);
+    for (Object bad : List.of(110000, 110000.5, "110000", "110000.0", "110000.000", " 110000.00")) {
+      mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange(bad)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+          .andExpect(jsonPath("$.field").value("baseSalary"))
+          .andExpect(jsonPath("$.details[0].field").value("baseSalary"))
+          .andExpect(jsonPath("$.details[0].code").value("InvalidFormat"));
+      mvc.perform(json(post("/api/employees"), exec, hire("money.bad@company.com", bad)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+          .andExpect(jsonPath("$.field").value("initialSalary"))
+          .andExpect(jsonPath("$.details[0].code").value("InvalidFormat"));
+    }
+    // a malformed salary wins over Bean Validation of the other properties ...
+    Map<String, Object> malformedAndIncomplete = new HashMap<>(salaryChange(110000));
+    malformedAndIncomplete.remove("changeReason");
+    mvc.perform(json(post("/api/employees/1/salary"), exec, malformedAndIncomplete))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.field").value("baseSalary"));
+    // ... but authority, module flag and authentication keep their precedence
+    mvc.perform(json(post("/api/employees/1/salary"), staff, salaryChange(110000)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(json(post("/api/employees/1/salary"), null, salaryChange(110000)))
+        .andExpect(status().isUnauthorized());
+    assertThat(jdbc.queryForObject("select count(*) from salary_records", Integer.class))
+        .isEqualTo(salaries);
+    assertThat(jdbc.queryForObject("select count(*) from employees", Integer.class))
+        .isEqualTo(employees);
+
+    // well-formed but not positive is still the legacy code
+    for (String notPositive : List.of("0.00", "-1.00")) {
+      mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange(notPositive)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("-20101"))
+          .andExpect(jsonPath("$.field").value("baseSalary"));
+      mvc.perform(json(post("/api/employees"), exec, hire("money.neg@company.com", notPositive)))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("-20101"))
+          .andExpect(jsonPath("$.field").value("initialSalary"));
+    }
+    mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("-1.00")))
+        .andExpect(jsonPath("$.message").value("Salary must be positive: -1"));
+
+    mvc.perform(json(post("/api/employees/1/salary"), exec, salaryChange("110000.50")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.baseSalary").value("110000.50"));
+    long id =
+        body(mvc.perform(
+                    json(post("/api/employees"), exec, hire("money.ok@company.com", "85000.25")))
+                .andExpect(status().isCreated())
+                .andReturn())
+            .get("id")
+            .asLong();
+    mvc.perform(get("/api/employees/" + id + "/salary").header("Authorization", "Bearer " + exec))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.baseSalary").value("85000.25"));
+    mvc.perform(json(post("/api/employees"), exec, hire("money.none@company.com", null)))
+        .andExpect(status().isCreated());
+  }
+
+  private static Map<String, Object> salaryChange(Object baseSalary) {
+    return Map.of("effectiveDate", "2025-01-01", "baseSalary", baseSalary, "changeReason", "MERIT");
+  }
+
+  private static Map<String, Object> hire(String email, Object initialSalary) {
+    Map<String, Object> m = new HashMap<>();
+    m.put("firstName", "Money");
+    m.put("lastName", "Wire");
+    m.put("email", email);
+    m.put("hireDate", "2025-06-02");
+    m.put("deptId", 30);
+    m.put("jobId", 50);
+    m.put("managerEmpId", 31);
+    m.put("locationCode", "CHI");
+    m.put("employmentType", "FULL_TIME");
+    m.put("initialSalary", initialSalary);
+    return m;
   }
 
   @Test
@@ -405,7 +497,7 @@ class SalaryApiTest extends AuthApiTestBase {
                 staff,
                 Map.of(
                     "effectiveDate", "2025-01-01",
-                    "baseSalary", 110000,
+                    "baseSalary", "110000.00",
                     "changeReason", "MERIT")))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
