@@ -100,7 +100,8 @@ parent route ends in `/*`), and put API calls in `features/<module>/api.ts` usin
 | Permission check | `security.PermissionService.require(user, Module.X, Action.Y)` / `hasPermission(grade, module, action)` (grade ≥ 8 all, ≥ 5 view all) |
 | Errors | `throw new error.ApiException(ErrorCode.X, "...")` → JSON `{code,message,details}` with the mapped HTTP status. Every legacy code of every module is already in `ErrorCode` (e.g. `EMPLOYEE_DUPLICATE_EMAIL` -20502, `PAYROLL_WRONG_STATUS` -20103, `PERFORMANCE_INVALID_RATING` -20403); generic `NOT_FOUND` -20990 / `CONFLICT` -20991 for modern-only cases |
 | Employee reads | `employee.EmployeeLookup` (`findById`, `findActiveByEmail`, `directReports`, `activeEmployees`, `isManagerOf`) — read-only; only the Employee slice writes `employees` |
-| Salary | `salary.SalaryRecordService` (`current`, `history`, `changeSalary`) — Employee (hire/promote/rehire) and Payroll both call this; nobody else writes `salary_records` |
+| Location ids | `employee.LocationLookup` (`codeForId`, `idForCode`) — contract `locationId` is `locations.location_id` (V3: CHI=1, HQ=2, SF=3); FKs still use `location_code` |
+| Salary | `salary.SalaryRecordService` (`current`, `history`, `changeSalary`, `endActive` for terminate: end-dates active salary + pay elements, audited) — Employee (hire/promote/rehire/terminate) and Payroll both call this; nobody else writes `salary_records` |
 | Audit write | `audit.AuditService.record(table, id, Action, old, new, user)` — replaces all legacy audit triggers; call it in the same transaction |
 | Notifications | `notification.NotificationService.queue(empId, subject, body, refType, refId, user)` (log sender, decision 10) |
 | Parameters | `param.ParameterService.get/getInt/getDecimal(group, code[, default])` (`system_parameters`) |

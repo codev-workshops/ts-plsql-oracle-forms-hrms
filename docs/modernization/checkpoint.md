@@ -75,7 +75,7 @@ Additional Phase 2 decisions:
   Base `/api/v1`, bearer token from `POST /auth/login`, error body `{code, message, details}` with
   legacy codes. Frozen: Phase 3 slices implement it as written; `OpenApiContractTest` fails the
   build if an implemented route is missing from the contract.
-* Shared services (read-only for Phase 3): `EmployeeLookup`, `SalaryRecordService`, `AuditService`,
+* Shared services (read-only for Phase 3): `EmployeeLookup`, `LocationLookup`, `SalaryRecordService`, `AuditService`,
   `NotificationService`, `ParameterService`, `BusinessDayCalendar`, `PermissionService`,
   `Validators`, `SessionService`/`AuthService`, `ErrorCode`/`ApiException`.
 * Pre-registered: backend packages `com.hrms.{employee,payroll,performance,audit,reporting}`
@@ -83,6 +83,20 @@ Additional Phase 2 decisions:
   `/employees/*`, `/payroll/*`, `/performance/*`, `/audit/*`, `/reports/*` with nav entries
   (`frontend/src/app/modules.ts`) rendering `features/<module>/index.tsx` placeholders.
 * How to build a slice: **`docs/modernization/slice-recipe.md`** (owned paths, ranges, checks, DoD).
+
+## Shared change between Phase 3 modules (user-approved, 2026-11-19)
+
+Contract v1 (`openapi-v1.yaml`) is **unchanged**. User decision: **locations: keep numeric
+locationId with shared location_id column**.
+
+* `V3__location_ids.sql` (platform): `locations.location_id` BIGINT, NOT NULL, unique; seeded rows
+  numbered in `location_code` order (CHI=1, HQ=2, SF=3); new rows get identity values from 100.
+  `location_code` stays the primary key; all FKs unchanged. Contract `locationId` = `location_id`.
+* `platform.employee.LocationLookup`: `codeForId(locationId)` / `idForCode(locationCode)`.
+* `platform.salary.SalaryRecordService.endActive(empId, endDate, user)`: for employee terminate —
+  end-dates active `salary_records` and active `employee_pay_elements` (`end_date`, `active_flag='N'`),
+  one `AuditService` UPDATE row per changed row; returns rows changed (idempotent).
+* Tests: `PlatformServicesTest` (location ids, uniqueness, `endActive`).
 
 ## Contract change requests
 

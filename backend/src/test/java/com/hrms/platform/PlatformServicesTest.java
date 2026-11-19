@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hrms.platform.calendar.BusinessDayCalendar;
 import com.hrms.platform.employee.EmployeeLookup;
+import com.hrms.platform.employee.LocationLookup;
 import com.hrms.platform.notification.NotificationService;
 import com.hrms.platform.param.ParameterService;
 import com.hrms.platform.salary.SalaryRecordService;
@@ -25,6 +26,7 @@ class PlatformServicesTest extends IntegrationTest {
     @Autowired BusinessDayCalendar calendar;
     @Autowired EmployeeLookup employees;
     @Autowired SalaryRecordService salaries;
+    @Autowired LocationLookup locations;
     @Autowired PermissionService permissions;
     @Autowired ParameterService params;
     @Autowired NotificationService notifications;
@@ -78,6 +80,73 @@ class PlatformServicesTest extends IntegrationTest {
         assertThat(salaries.current(22)).get().extracting(s -> s.salaryId()).isEqualTo(id);
         assertThat(salaries.history(22)).hasSizeGreaterThanOrEqualTo(2);
         assertThat(salaries.history(22).get(1).endDate()).isEqualTo(LocalDate.of(2026, 11, 30));
+    }
+
+    @Test
+    void locationIdsNumberSeededCodesAndStartNewRowsAt100() {
+        assertThat(jdbc.queryForList("SELECT location_id FROM locations ORDER BY location_code", Long.class))
+                .containsExactly(1L, 2L, 3L);
+        assertThat(locations.codeForId(1)).contains("CHI");
+        assertThat(locations.codeForId(2)).contains("HQ");
+        assertThat(locations.idForCode("SF")).contains(3L);
+        assertThat(locations.codeForId(99)).isEmpty();
+        assertThat(locations.idForCode("NOPE")).isEmpty();
+        Long id = jdbc.queryForObject("INSERT INTO locations (location_code, location_name, created_by)"
+                + " VALUES ('TST', 'Test', 'T') RETURNING location_id", Long.class);
+        assertThat(id).isGreaterThanOrEqualTo(100L);
+        assertThat(locations.idForCode("TST")).contains(id);
+        assertThat(jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns"
+                + " WHERE table_name = 'locations' AND column_name = 'location_id'", String.class)).isEqualTo("NO");
+    }
+
+    @Test
+    void locationIdIsUnique() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
+                "INSERT INTO locations (location_code, location_name, location_id, created_by)"
+                        + " VALUES ('DUP', 'Dup', 1, 'T')"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void endActiveEndDatesSalaryAndPayElementsWithAudit() {
+        LocalDate end = LocalDate.of(2026, 11, 30);
+        Long active = jdbc.queryForObject("INSERT INTO employee_pay_elements (emp_id, element_id, effective_date,"
+                + " amount, active_flag, created_by) VALUES (22, 1, DATE '2025-01-01', 100, 'Y', 'T')"
+                + " RETURNING emp_element_id", Long.class);
+        Long closed = jdbc.queryForObject("INSERT INTO employee_pay_elements (emp_id, element_id, effective_date,"
+                + " end_date, amount, active_flag, created_by) VALUES (22, 1, DATE '2024-01-01', DATE '2024-12-31',"
+                + " 50, 'N', 'T') RETURNING emp_element_id", Long.class);
+        Long other = jdbc.queryForObject("INSERT INTO employee_pay_elements (emp_id, element_id, effective_date,"
+                + " amount, active_flag, created_by) VALUES (23, 1, DATE '2025-01-01', 100, 'Y', 'T')"
+                + " RETURNING emp_element_id", Long.class);
+        long salaryId = salaries.current(22).orElseThrow().salaryId();
+        BigDecimal otherSalary = salaries.current(23).orElseThrow().baseSalary();
+
+        assertThat(salaries.endActive(22, end, "hr.admin")).isEqualTo(2);
+
+        assertThat(salaries.current(22)).isEmpty();
+        assertThat(salaries.history(22).get(0)).satisfies(s -> {
+            assertThat(s.salaryId()).isEqualTo(salaryId);
+            assertThat(s.endDate()).isEqualTo(end);
+            assertThat(s.active()).isFalse();
+        });
+        assertThat(jdbc.queryForMap("SELECT end_date, active_flag, modified_by FROM employee_pay_elements"
+                + " WHERE emp_element_id = ?", active))
+                .containsEntry("active_flag", "N").containsEntry("modified_by", "hr.admin")
+                .containsEntry("end_date", java.sql.Date.valueOf(end));
+        assertThat(jdbc.queryForObject("SELECT end_date FROM employee_pay_elements WHERE emp_element_id = ?",
+                LocalDate.class, closed)).isEqualTo(LocalDate.of(2024, 12, 31));
+        assertThat(jdbc.queryForObject("SELECT active_flag FROM employee_pay_elements WHERE emp_element_id = ?",
+                String.class, other)).isEqualTo("Y");
+        assertThat(salaries.current(23)).get().extracting(s -> s.baseSalary()).isEqualTo(otherSalary);
+
+        assertThat(jdbc.queryForList("SELECT table_name || ':' || record_id FROM audit_log"
+                + " WHERE changed_by = 'hr.admin' AND action_type = 'UPDATE' ORDER BY table_name", String.class))
+                .containsExactly("EMPLOYEE_PAY_ELEMENTS:" + active, "SALARY_RECORDS:" + salaryId);
+        assertThat(jdbc.queryForObject("SELECT new_values FROM audit_log WHERE table_name = 'SALARY_RECORDS'"
+                + " AND changed_by = 'hr.admin'", String.class)).contains("2026-11-30");
+
+        assertThat(salaries.endActive(22, end, "hr.admin")).isZero();
     }
 
     @Test
