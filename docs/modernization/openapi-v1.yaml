@@ -1,0 +1,1283 @@
+openapi: 3.0.3
+info:
+  title: HRMS API
+  version: 1.0.0
+  description: |
+    Contract v1 for the modernized HRMS (Spring Boot backend, React frontend, local Postgres).
+    Frozen after Phase 2: Phase 3 slices implement their module's paths exactly as written here
+    and must not edit this file (raise a contract change with the coordinator instead).
+
+    Conventions
+    * Base path `/api/v1`; JSON; dates `YYYY-MM-DD`, timestamps ISO-8601 local time.
+    * Auth: `POST /auth/login` returns a bearer token; send `Authorization: Bearer <token>`
+      on every other call except `/health`.
+    * Errors: `Error` body; `code` keeps the legacy Oracle `-20xxx` number (inventory §4).
+      400 validation (`-20000`), 401 auth/session (`-20301`/`-20302`/`-20303`),
+      403 permission or record ownership, 404 not found, 409 state conflict, 422 business rule.
+    * Permissions (PermissionService, decision 8): grade ≥ 8 everything; grade ≥ 5 view all
+      modules; any user: own Leave create/view, Employee view, own Performance review.
+    * Lists are unpaged arrays unless a `limit` parameter is defined.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: dev proxy
+  - url: http://localhost:8080/api/v1
+    description: backend direct
+security:
+  - bearer: []
+tags:
+  - { name: platform, description: Auth, session, shared reference data (Phase 2, implemented) }
+  - { name: leave, description: Leave pilot (Phase 2, implemented) }
+  - { name: employee, description: Employee slice (Phase 3) }
+  - { name: payroll, description: Payroll slice incl. PKG_INTEGRATION exports (Phase 3) }
+  - { name: performance, description: Performance slice (Phase 3) }
+  - { name: audit, description: Audit viewer slice (Phase 3) }
+  - { name: reporting, description: Reporting slice (Phase 3) }
+
+paths:
+  # ------------------------------------------------------------------ platform
+  /health:
+    get:
+      tags: [platform]
+      operationId: health
+      security: []
+      responses:
+        '200': { description: Up, content: { application/json: { schema: { type: object, properties: { status: { type: string, example: UP } } } } } }
+  /auth/login:
+    post:
+      tags: [platform]
+      operationId: login
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+      responses:
+        '200': { description: Session created, content: { application/json: { schema: { $ref: '#/components/schemas/LoginResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [platform]
+      operationId: logout
+      responses:
+        '204': { description: Session closed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      tags: [platform]
+      operationId: currentUser
+      responses:
+        '200': { description: Current user, content: { application/json: { schema: { $ref: '#/components/schemas/CurrentUser' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/password:
+    post:
+      tags: [platform]
+      operationId: changePassword
+      description: Policy -20310 min length (SECURITY.PASSWORD_MIN_LENGTH), -20311 uppercase, -20312 digit.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } } } }
+      responses:
+        '204': { description: Changed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /holidays:
+    get:
+      tags: [platform]
+      operationId: listHolidays
+      parameters:
+        - { name: year, in: query, required: true, schema: { type: integer } }
+        - { name: locationCode, in: query, schema: { type: string }, description: Global holidays plus this location's }
+      responses:
+        '200': { description: Holidays, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Holiday' } } } } }
+  /lookups/{type}:
+    get:
+      tags: [platform]
+      operationId: listLookups
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string }, description: 'LOOKUP_VALUES.LOOKUP_TYPE, case-insensitive (e.g. leave_status, employment_status, gender)' }
+      responses:
+        '200': { description: Active values ordered by display order, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LookupValue' } } } } }
+
+  # ------------------------------------------------------------------ leave
+  /leave/types:
+    get:
+      tags: [leave]
+      operationId: listLeaveTypes
+      responses:
+        '200': { description: Active leave types, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LeaveType' } } } } }
+  /leave/balances:
+    get:
+      tags: [leave]
+      operationId: myLeaveBalances
+      parameters:
+        - { name: year, in: query, schema: { type: integer }, description: Defaults to the current year; missing rows are initialised }
+      responses:
+        '200': { description: Caller's balances, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LeaveBalance' } } } } }
+  /leave/business-days:
+    get:
+      tags: [leave]
+      operationId: countBusinessDays
+      description: Weekdays minus active global + caller-location holidays.
+      parameters:
+        - { $ref: '#/components/parameters/StartDate' }
+        - { $ref: '#/components/parameters/EndDate' }
+      responses:
+        '200': { description: Count, content: { application/json: { schema: { $ref: '#/components/schemas/BusinessDays' } } } }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /leave/requests:
+    get:
+      tags: [leave]
+      operationId: myLeaveRequests
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/LeaveStatus' } }
+      responses:
+        '200': { description: Caller's requests, newest first, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LeaveRequest' } } } } }
+    post:
+      tags: [leave]
+      operationId: submitLeaveRequest
+      description: |
+        PKG_LEAVE.submit_request. -20203 inactive type / tenure, -20210 start > end, -20211 backdated more
+        than LEAVE.MAX_BACKDATE_DAYS (5), -20212 no business days, -20202 overlaps PENDING/APPROVED,
+        -20201 insufficient balance (accrual types). Approval types → PENDING (+pending, manager notified);
+        others → APPROVED (+used).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SubmitLeaveRequest' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /leave/requests/{requestId}:
+    get:
+      tags: [leave]
+      operationId: getLeaveRequest
+      description: Owner, the requester's manager, or LEAVE/VIEW (grade ≥ 5).
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      responses:
+        '200': { description: Request, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /leave/requests/{requestId}/cancel:
+    post:
+      tags: [leave]
+      operationId: cancelLeaveRequest
+      description: Owner (-20206 otherwise) or grade ≥ 8; PENDING/APPROVED only (-20204). Releases pending or used days.
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CancelRequest' } } } }
+      responses:
+        '200': { description: Cancelled, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /leave/requests/{requestId}/approve:
+    post:
+      tags: [leave]
+      operationId: approveLeaveRequest
+      description: Requester's manager or LEAVE/APPROVE (grade ≥ 8), never own request (-20205); PENDING only (-20204). Pending → used.
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/DecisionRequest' } } } }
+      responses:
+        '200': { description: Approved, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /leave/requests/{requestId}/reject:
+    post:
+      tags: [leave]
+      operationId: rejectLeaveRequest
+      description: Same authorisation as approve; comments required. Releases pending days.
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RejectRequest' } } } }
+      responses:
+        '200': { description: Rejected, content: { application/json: { schema: { $ref: '#/components/schemas/LeaveRequest' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /leave/approvals:
+    get:
+      tags: [leave]
+      operationId: pendingLeaveApprovals
+      description: PENDING requests whose approver is the caller.
+      responses:
+        '200': { description: Pending approvals, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LeaveRequest' } } } } }
+  /leave/team-calendar:
+    get:
+      tags: [leave]
+      operationId: teamLeaveCalendar
+      description: APPROVED/TAKEN leave of the caller's direct reports overlapping the range.
+      parameters:
+        - { $ref: '#/components/parameters/StartDate' }
+        - { $ref: '#/components/parameters/EndDate' }
+      responses:
+        '200': { description: Team leave, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LeaveRequest' } } } } }
+  /leave/admin/balances/initialize:
+    post:
+      tags: [leave]
+      operationId: initializeLeaveBalances
+      description: Grade ≥ 8 (-20304). Idempotent; creates missing rows for every active leave type.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/InitializeBalancesRequest' } } } }
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /leave/admin/accruals:
+    post:
+      tags: [leave]
+      operationId: runMonthlyAccrual
+      description: Grade ≥ 8. One accrual per employee/type/month (idempotent via LEAVE_ACCRUAL_LOG), capped at MAX_BALANCE.
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/AccrualRunRequest' } } } }
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /leave/admin/carryover:
+    post:
+      tags: [leave]
+      operationId: processCarryover
+      description: Grade ≥ 8. Moves min(available, CARRYOVER_MAX) into next year's balance with expiry.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CarryoverRequest' } } } }
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /leave/admin/carryover/expire:
+    post:
+      tags: [leave]
+      operationId: expireCarryover
+      description: Grade ≥ 8. Removes carried-over days past expiry; idempotent.
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ------------------------------------------------------------------ employee (Phase 3)
+  /employees:
+    get:
+      tags: [employee]
+      operationId: searchEmployees
+      description: PKG_EMPLOYEE.search_employees with bind parameters. Any user may view (decision 8).
+      parameters:
+        - { name: lastName, in: query, schema: { type: string }, description: Case-insensitive prefix }
+        - { name: firstName, in: query, schema: { type: string }, description: Case-insensitive prefix }
+        - { name: deptId, in: query, schema: { type: integer, format: int64 } }
+        - { name: locationId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/EmploymentStatus' } }
+        - { name: hiredFrom, in: query, schema: { type: string, format: date } }
+        - { name: hiredTo, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Matches, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EmployeeSummary' } } } } }
+    post:
+      tags: [employee]
+      operationId: createEmployee
+      description: |
+        Grade ≥ 8. -20010 names required, -20003 dept, -20004 manager, -20011 job, -20501 hire date more
+        than 90 days ahead (decision 3), -20502 duplicate active email. Salary outside grade range is a
+        warning in `warnings` (decision 4). Creates NEW_HIRE salary via SalaryRecordService, HIRE history,
+        audit, notifications.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /employees/{empId}:
+    parameters: [{ $ref: '#/components/parameters/EmpId' }]
+    get:
+      tags: [employee]
+      operationId: getEmployee
+      responses:
+        '200': { description: Employee with current salary (salary only for self, manager chain or grade ≥ 5), content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [employee]
+      operationId: updateEmployee
+      description: Partial update of names/email/phones/address (null = keep). Self or grade ≥ 8.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeUpdate' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /employees/by-number/{empNumber}:
+    get:
+      tags: [employee]
+      operationId: getEmployeeByNumber
+      parameters: [{ name: empNumber, in: path, required: true, schema: { type: string, example: EMP-000022 } }]
+      responses:
+        '200': { description: Employee, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /employees/{empId}/transfer:
+    post:
+      tags: [employee]
+      operationId: transferEmployee
+      description: Grade ≥ 8. ACTIVE only (-20012); dept (-20003), job (-20011) and manager (-20004 incl. circular chain) validated. TRANSFER history + audit.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransferRequest' } } } }
+      responses:
+        '200': { description: Transferred, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /employees/{empId}/promote:
+    post:
+      tags: [employee]
+      operationId: promoteEmployee
+      description: Grade ≥ 8. New job + PROMOTION salary record (SalaryRecordService) + history.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromoteRequest' } } } }
+      responses:
+        '200': { description: Promoted, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /employees/{empId}/terminate:
+    post:
+      tags: [employee]
+      operationId: terminateEmployee
+      description: Grade ≥ 8. -20005 already terminated. Cancels PENDING leave AND releases pending balance, end-dates salary and pay elements, TERMINATION history, audit, notify manager.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TerminateRequest' } } } }
+      responses:
+        '200': { description: Terminated, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /employees/{empId}/rehire:
+    post:
+      tags: [employee]
+      operationId: rehireEmployee
+      description: Grade ≥ 8. TERMINATED → ACTIVE (the legacy -20503 trigger block is not replicated), new hire date, REHIRE salary + history.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RehireRequest' } } } }
+      responses:
+        '200': { description: Rehired, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /employees/{empId}/direct-reports:
+    get:
+      tags: [employee]
+      operationId: directReports
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      responses:
+        '200': { description: Active direct reports, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EmployeeSummary' } } } } }
+  /employees/{empId}/org-chart:
+    get:
+      tags: [employee]
+      operationId: orgChart
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      responses:
+        '200': { description: Reporting tree below the employee (depth ≤ 10), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/OrgChartNode' } } } } }
+  /employees/{empId}/history:
+    get:
+      tags: [employee]
+      operationId: employeeHistory
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      responses:
+        '200': { description: EMPLOYEE_HISTORY rows newest first, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EmployeeHistory' } } } } }
+  /employees/{empId}/salary-history:
+    get:
+      tags: [employee]
+      operationId: employeeSalaryHistory
+      description: Read via SalaryRecordService.history. Self, manager chain or grade ≥ 5.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      responses:
+        '200': { description: Salary records newest first, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SalaryRecord' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /employees/{empId}/dependents:
+    parameters: [{ $ref: '#/components/parameters/EmpId' }]
+    get:
+      tags: [employee]
+      operationId: listDependents
+      responses:
+        '200': { description: Dependents, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Dependent' } } } } }
+    post:
+      tags: [employee]
+      operationId: addDependent
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Dependent' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Dependent' } } } }
+  /employees/{empId}/dependents/{dependentId}:
+    parameters:
+      - { $ref: '#/components/parameters/EmpId' }
+      - { name: dependentId, in: path, required: true, schema: { type: integer, format: int64 } }
+    put:
+      tags: [employee]
+      operationId: updateDependent
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Dependent' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Dependent' } } } }
+    delete:
+      tags: [employee]
+      operationId: deleteDependent
+      responses:
+        '204': { description: Deleted }
+  /employees/{empId}/emergency-contacts:
+    parameters: [{ $ref: '#/components/parameters/EmpId' }]
+    get:
+      tags: [employee]
+      operationId: listEmergencyContacts
+      responses:
+        '200': { description: Contacts, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EmergencyContact' } } } } }
+    post:
+      tags: [employee]
+      operationId: addEmergencyContact
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmergencyContact' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/EmergencyContact' } } } }
+  /employees/{empId}/emergency-contacts/{contactId}:
+    parameters:
+      - { $ref: '#/components/parameters/EmpId' }
+      - { name: contactId, in: path, required: true, schema: { type: integer, format: int64 } }
+    put:
+      tags: [employee]
+      operationId: updateEmergencyContact
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmergencyContact' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/EmergencyContact' } } } }
+    delete:
+      tags: [employee]
+      operationId: deleteEmergencyContact
+      responses:
+        '204': { description: Deleted }
+  /departments:
+    get:
+      tags: [employee]
+      operationId: listDepartments
+      responses:
+        '200': { description: Active departments (LOV), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RefItem' } } } } }
+  /departments/headcount:
+    get:
+      tags: [employee]
+      operationId: headcountByDepartment
+      parameters: [{ name: asOf, in: query, schema: { type: string, format: date } }]
+      responses:
+        '200': { description: Headcount per department, content: { application/json: { schema: { type: array, items: { type: object, properties: { deptId: { type: integer, format: int64 }, deptName: { type: string }, headcount: { type: integer } } } } } } }
+  /locations:
+    get:
+      tags: [employee]
+      operationId: listLocations
+      responses:
+        '200': { description: Active locations (LOV), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RefItem' } } } } }
+  /job-titles:
+    get:
+      tags: [employee]
+      operationId: listJobTitles
+      responses:
+        '200': { description: Active jobs with grade (LOV), content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RefItem' } } } } }
+
+  # ------------------------------------------------------------------ payroll (Phase 3)
+  /payroll/periods:
+    get:
+      tags: [payroll]
+      operationId: listPayPeriods
+      description: Grade ≥ 5 (PAYROLL/VIEW).
+      parameters:
+        - { name: year, in: query, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [OPEN, CLOSED, PROCESSING] } }
+      responses:
+        '200': { description: Periods, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PayPeriod' } } } } }
+    post:
+      tags: [payroll]
+      operationId: createPayPeriods
+      description: Grade ≥ 8. MONTHLY or BIWEEKLY (PKG_PAYROLL.create_pay_periods); idempotent per year+frequency.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [year, frequency], properties: { year: { type: integer }, frequency: { type: string, enum: [MONTHLY, BIWEEKLY] } } } } } }
+      responses:
+        '201': { description: Created periods, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PayPeriod' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /payroll/periods/current:
+    get:
+      tags: [payroll]
+      operationId: currentPayPeriod
+      responses:
+        '200': { description: OPEN period containing today, content: { application/json: { schema: { $ref: '#/components/schemas/PayPeriod' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /payroll/periods/{periodId}/close:
+    post:
+      tags: [payroll]
+      operationId: closePayPeriod
+      description: Grade ≥ 8; -20102 already closed.
+      parameters: [{ $ref: '#/components/parameters/PeriodId' }]
+      responses:
+        '200': { description: Closed, content: { application/json: { schema: { $ref: '#/components/schemas/PayPeriod' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payroll/runs:
+    get:
+      tags: [payroll]
+      operationId: listPayrollRuns
+      parameters: [{ name: periodId, in: query, schema: { type: integer, format: int64 } }]
+      responses:
+        '200': { description: Runs, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PayrollRun' } } } } }
+    post:
+      tags: [payroll]
+      operationId: createPayrollRun
+      description: Grade ≥ 8; -20102 period closed. Status PENDING.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [periodId], properties: { periodId: { type: integer, format: int64 }, runType: { type: string, enum: [REGULAR, OFF_CYCLE, BONUS, CORRECTION], default: REGULAR } } } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payroll/runs/{runId}:
+    get:
+      tags: [payroll]
+      operationId: getPayrollRun
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: Run with totals, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /payroll/runs/{runId}/calculate:
+    post:
+      tags: [payroll]
+      operationId: calculatePayrollRun
+      description: Grade ≥ 8. PENDING only (server-side guard, -20103). Per-employee errors become ERROR rows; tax from tax_brackets (decision 7).
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: CALCULATED or ERROR, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payroll/runs/{runId}/approve:
+    post:
+      tags: [payroll]
+      operationId: approvePayrollRun
+      description: Grade ≥ 8; CALCULATED only (-20103).
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: APPROVED, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /payroll/runs/{runId}/reverse:
+    post:
+      tags: [payroll]
+      operationId: reversePayrollRun
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: REVERSED, content: { application/json: { schema: { $ref: '#/components/schemas/PayrollRun' } } } }
+  /payroll/runs/{runId}/details:
+    get:
+      tags: [payroll]
+      operationId: payrollRunDetails
+      parameters:
+        - { $ref: '#/components/parameters/RunId' }
+        - { name: empId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: Detail lines, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PayrollDetail' } } } } }
+  /payroll/runs/{runId}/register.csv:
+    get:
+      tags: [payroll]
+      operationId: payRegisterCsv
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: Pay register (replaces UTL_FILE), content: { text/csv: { schema: { type: string } } } }
+  /payroll/runs/{runId}/gl-journal:
+    get:
+      tags: [payroll]
+      operationId: glJournalFile
+      description: PKG_INTEGRATION.generate_gl_journal pipe-delimited file (decision 6).
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200': { description: GL journal, content: { text/plain: { schema: { type: string } } } }
+  /payroll/exports/benefits:
+    get:
+      tags: [payroll]
+      operationId: benefitsFeedFile
+      description: PKG_INTEGRATION.export_benefits_feed fixed-width file (decision 6).
+      responses:
+        '200': { description: Benefits feed, content: { text/plain: { schema: { type: string } } } }
+  /payroll/payslips/{runId}/{empId}:
+    get:
+      tags: [payroll]
+      operationId: getPayslip
+      description: Own payslip, or grade ≥ 5. YTD computed (not placeholder 0).
+      parameters:
+        - { $ref: '#/components/parameters/RunId' }
+        - { $ref: '#/components/parameters/EmpId' }
+      responses:
+        '200': { description: Payslip, content: { application/json: { schema: { $ref: '#/components/schemas/Payslip' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /payroll/employees/{empId}/ytd:
+    get:
+      tags: [payroll]
+      operationId: ytdEarnings
+      parameters:
+        - { $ref: '#/components/parameters/EmpId' }
+        - { name: year, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: YTD totals, content: { application/json: { schema: { type: object, properties: { year: { type: integer }, gross: { type: number }, deductions: { type: number }, taxes: { type: number }, net: { type: number } } } } } }
+  /payroll/employees/{empId}/salary:
+    post:
+      tags: [payroll]
+      operationId: changeSalary
+      description: Grade ≥ 8; -20101 salary ≤ 0. Delegates to shared SalaryRecordService.changeSalary.
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [baseSalary, effectiveDate, changeReason], properties: { baseSalary: { type: number }, effectiveDate: { type: string, format: date }, changeReason: { type: string }, payFrequency: { type: string } } } } } }
+      responses:
+        '201': { description: New salary record, content: { application/json: { schema: { $ref: '#/components/schemas/SalaryRecord' } } } }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /payroll/employees/{empId}/pay-elements:
+    get:
+      tags: [payroll]
+      operationId: employeePayElements
+      parameters: [{ $ref: '#/components/parameters/EmpId' }]
+      responses:
+        '200': { description: Active employee pay elements, content: { application/json: { schema: { type: array, items: { type: object, additionalProperties: true } } } } }
+  /payroll/employees/{empId}/tax-info:
+    get:
+      tags: [payroll]
+      operationId: employeeTaxInfo
+      parameters:
+        - { $ref: '#/components/parameters/EmpId' }
+        - { name: year, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: W-4 data, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /payroll/tax-brackets:
+    get:
+      tags: [payroll]
+      operationId: listTaxBrackets
+      parameters:
+        - { name: year, in: query, required: true, schema: { type: integer } }
+        - { name: filingStatus, in: query, schema: { type: string, enum: [SINGLE, MARRIED_JOINT, MARRIED_SEPARATE, HEAD_OF_HOUSEHOLD] } }
+      responses:
+        '200': { description: Brackets, content: { application/json: { schema: { type: array, items: { type: object, additionalProperties: true } } } } }
+
+  # ------------------------------------------------------------------ performance (Phase 3)
+  /performance/cycles:
+    get:
+      tags: [performance]
+      operationId: listReviewCycles
+      parameters: [{ name: status, in: query, schema: { type: string, enum: [DRAFT, OPEN, IN_PROGRESS, CALIBRATION, CLOSED] } }]
+      responses:
+        '200': { description: Cycles, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ReviewCycle' } } } } }
+    post:
+      tags: [performance]
+      operationId: createReviewCycle
+      description: Grade ≥ 8. DRAFT; start ≤ end validated.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCycle' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCycle' } } } }
+  /performance/cycles/{cycleId}/open:
+    post:
+      tags: [performance]
+      operationId: openReviewCycle
+      description: DRAFT → OPEN (-20401 otherwise).
+      parameters: [{ $ref: '#/components/parameters/CycleId' }]
+      responses:
+        '200': { description: Opened, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCycle' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/cycles/{cycleId}/close:
+    post:
+      tags: [performance]
+      operationId: closeReviewCycle
+      parameters: [{ $ref: '#/components/parameters/CycleId' }]
+      responses:
+        '200': { description: Closed, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCycle' } } } }
+  /performance/cycles/{cycleId}/generate-reviews:
+    post:
+      tags: [performance]
+      operationId: generateReviews
+      description: One review per ACTIVE employee with a manager; idempotent (unique cycle+employee).
+      parameters: [{ $ref: '#/components/parameters/CycleId' }]
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+  /performance/cycles/{cycleId}/rating-distribution:
+    get:
+      tags: [performance]
+      operationId: ratingDistribution
+      parameters:
+        - { $ref: '#/components/parameters/CycleId' }
+        - { name: deptId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: Count per rating label, content: { application/json: { schema: { type: array, items: { type: object, properties: { ratingLabel: { type: string }, count: { type: integer } } } } } } }
+  /performance/reviews:
+    get:
+      tags: [performance]
+      operationId: listReviews
+      description: '`scope=mine` (default) as employee, `scope=team` as reviewer.'
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [mine, team], default: mine } }
+        - { name: cycleId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: Reviews, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PerformanceReview' } } } } }
+    post:
+      tags: [performance]
+      operationId: createReview
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [cycleId, empId], properties: { cycleId: { type: integer, format: int64 }, empId: { type: integer, format: int64 }, reviewerEmpId: { type: integer, format: int64 } } } } } }
+      responses:
+        '201': { description: NOT_STARTED review, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceReview' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/reviews/{reviewId}:
+    get:
+      tags: [performance]
+      operationId: getReview
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      responses:
+        '200': { description: Review with goals, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceReview' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /performance/reviews/{reviewId}/self-assessment:
+    post:
+      tags: [performance]
+      operationId: submitSelfAssessment
+      description: Employee only; NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402).
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [selfAssessment], properties: { selfAssessment: { type: string }, selfRating: { type: number, minimum: 1, maximum: 5 } } } } } }
+      responses:
+        '200': { description: Submitted, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceReview' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/reviews/{reviewId}/manager-review:
+    post:
+      tags: [performance]
+      operationId: submitManagerReview
+      description: Reviewer only; MANAGER_REVIEW → COMPLETED; rating 1.0–5.0 (-20403); label from rating.
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [overallRating], properties: { overallRating: { type: number }, managerComments: { type: string }, strengths: { type: string }, improvements: { type: string } } } } } }
+      responses:
+        '200': { description: Completed, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceReview' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /performance/reviews/{reviewId}/acknowledge:
+    post:
+      tags: [performance]
+      operationId: acknowledgeReview
+      description: Employee only; COMPLETED → ACKNOWLEDGED (409 otherwise, not a silent no-op).
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      responses:
+        '200': { description: Acknowledged, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceReview' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /performance/reviews/{reviewId}/goals:
+    get:
+      tags: [performance]
+      operationId: listGoals
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      responses:
+        '200': { description: Goals, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PerformanceGoal' } } } } }
+    post:
+      tags: [performance]
+      operationId: addGoal
+      parameters: [{ $ref: '#/components/parameters/ReviewId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceGoal' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceGoal' } } } }
+  /performance/goals/{goalId}/progress:
+    post:
+      tags: [performance]
+      operationId: updateGoalProgress
+      description: Status auto-derived (≥100 COMPLETED, >0 IN_PROGRESS) unless given.
+      parameters: [{ name: goalId, in: path, required: true, schema: { type: integer, format: int64 } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [progressPct], properties: { progressPct: { type: number, minimum: 0, maximum: 100 }, status: { type: string } } } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/PerformanceGoal' } } } }
+
+  # ------------------------------------------------------------------ audit (Phase 3)
+  /audit/entries:
+    get:
+      tags: [audit]
+      operationId: searchAuditLog
+      description: Grade ≥ 8 (AUDIT/VIEW is admin-only in the viewer). Newest first.
+      parameters:
+        - { name: tableName, in: query, schema: { type: string } }
+        - { name: recordId, in: query, schema: { type: integer, format: int64 } }
+        - { name: action, in: query, schema: { type: string, enum: [INSERT, UPDATE, DELETE] } }
+        - { name: changedBy, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: Entries, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /audit/entries/{auditId}:
+    get:
+      tags: [audit]
+      operationId: getAuditEntry
+      parameters: [{ name: auditId, in: path, required: true, schema: { type: integer, format: int64 } }]
+      responses:
+        '200': { description: Entry, content: { application/json: { schema: { $ref: '#/components/schemas/AuditEntry' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /audit/records/{tableName}/{recordId}:
+    get:
+      tags: [audit]
+      operationId: recordAuditTrail
+      parameters:
+        - { name: tableName, in: path, required: true, schema: { type: string } }
+        - { name: recordId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: Trail oldest first, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } } } } }
+  /audit/purge:
+    post:
+      tags: [audit]
+      operationId: purgeAuditLog
+      description: Grade ≥ 8. Deletes entries older than retentionDays (default AUDIT.RETENTION_DAYS).
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { retentionDays: { type: integer, minimum: 30 } } } } } }
+      responses:
+        '200': { $ref: '#/components/responses/Batch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ------------------------------------------------------------------ reporting (Phase 3)
+  /reports/headcount:
+    get:
+      tags: [reporting]
+      operationId: headcountReport
+      description: Grade ≥ 5 (REPORTING/VIEW). All report endpoints also serve text/csv when Accept is text/csv.
+      parameters:
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/DeptFilter' }
+        - { name: locationId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/compensation:
+    get:
+      tags: [reporting]
+      operationId: compensationSummary
+      parameters:
+        - { $ref: '#/components/parameters/DeptFilter' }
+        - { name: gradeId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/turnover:
+    get:
+      tags: [reporting]
+      operationId: turnoverReport
+      parameters:
+        - { $ref: '#/components/parameters/StartDate' }
+        - { $ref: '#/components/parameters/EndDate' }
+        - { $ref: '#/components/parameters/DeptFilter' }
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/new-hires:
+    get:
+      tags: [reporting]
+      operationId: newHiresReport
+      parameters:
+        - { $ref: '#/components/parameters/StartDate' }
+        - { $ref: '#/components/parameters/EndDate' }
+        - { $ref: '#/components/parameters/DeptFilter' }
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/leave-utilization:
+    get:
+      tags: [reporting]
+      operationId: leaveUtilizationReport
+      parameters:
+        - { name: year, in: query, required: true, schema: { type: integer } }
+        - { $ref: '#/components/parameters/DeptFilter' }
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/payroll-summary:
+    get:
+      tags: [reporting]
+      operationId: payrollSummaryReport
+      parameters: [{ name: periodId, in: query, required: true, schema: { type: integer, format: int64 } }]
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+  /reports/eeo:
+    get:
+      tags: [reporting]
+      operationId: eeoComplianceReport
+      parameters: [{ name: asOf, in: query, schema: { type: string, format: date } }]
+      responses:
+        '200': { $ref: '#/components/responses/Report' }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: Opaque session token from /auth/login (USER_SESSIONS) }
+  parameters:
+    StartDate: { name: startDate, in: query, required: true, schema: { type: string, format: date } }
+    EndDate: { name: endDate, in: query, required: true, schema: { type: string, format: date } }
+    RequestId: { name: requestId, in: path, required: true, schema: { type: integer, format: int64 } }
+    EmpId: { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+    PeriodId: { name: periodId, in: path, required: true, schema: { type: integer, format: int64 } }
+    RunId: { name: runId, in: path, required: true, schema: { type: integer, format: int64 } }
+    CycleId: { name: cycleId, in: path, required: true, schema: { type: integer, format: int64 } }
+    ReviewId: { name: reviewId, in: path, required: true, schema: { type: integer, format: int64 } }
+    DeptFilter: { name: deptId, in: query, schema: { type: integer, format: int64 } }
+    Limit: { name: limit, in: query, schema: { type: integer, default: 100, maximum: 1000 } }
+  responses:
+    BadRequest: { description: Validation failed (-20000), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: Invalid credentials (-20301) / locked (-20302) / missing or expired session (-20303), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: Insufficient privilege (-20304) or not owner/approver (-20205/-20206), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: Wrong state / overlap / duplicate, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    BusinessRule: { description: Business rule violated (legacy -20xxx code), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Batch: { description: Batch result, content: { application/json: { schema: { $ref: '#/components/schemas/BatchResult' } } } }
+    Report:
+      description: Report rows
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Report' } }
+        text/csv: { schema: { type: string } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: '-20201' }
+        message: { type: string }
+        details: { type: array, items: { type: string } }
+    BatchResult:
+      type: object
+      properties: { operation: { type: string }, rowsAffected: { type: integer } }
+    Report:
+      type: object
+      properties:
+        name: { type: string }
+        generatedAt: { type: string, format: date-time }
+        columns: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, description: Employee email (case-insensitive) }
+        password: { type: string, format: password }
+    LoginResponse:
+      type: object
+      properties: { token: { type: string }, user: { $ref: '#/components/schemas/CurrentUser' } }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties: { currentPassword: { type: string, format: password }, newPassword: { type: string, format: password } }
+    CurrentUser:
+      type: object
+      properties:
+        empId: { type: integer, format: int64 }
+        username: { type: string }
+        fullName: { type: string }
+        gradeLevel: { type: integer, description: JOB_GRADES.GRADE_ID used as permission level }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        sessionId: { type: integer, format: int64 }
+    Holiday:
+      type: object
+      properties:
+        holidayId: { type: integer, format: int64 }
+        holidayDate: { type: string, format: date }
+        holidayName: { type: string }
+        locationCode: { type: string, nullable: true, description: null = all locations }
+    LookupValue:
+      type: object
+      properties: { code: { type: string }, value: { type: string }, displayOrder: { type: integer } }
+    RefItem:
+      type: object
+      properties: { id: { type: integer, format: int64 }, code: { type: string }, name: { type: string }, gradeId: { type: integer, nullable: true } }
+    LeaveStatus: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED, TAKEN] }
+    LeaveType:
+      type: object
+      properties:
+        leaveTypeId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        paid: { type: boolean }
+        accrual: { type: boolean }
+        accrualRate: { type: number, nullable: true }
+        maxBalance: { type: number, nullable: true }
+        carryoverMax: { type: number, nullable: true }
+        requiresApproval: { type: boolean }
+        minTenureDays: { type: integer }
+    LeaveBalance:
+      type: object
+      properties:
+        leaveTypeId: { type: integer }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        year: { type: integer }
+        openingBalance: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        adjustment: { type: number }
+        pending: { type: number }
+        available: { type: number, description: opening + accrued - used + adjustment - pending }
+        carryoverFromPrev: { type: number }
+        carryoverExpiryDate: { type: string, format: date, nullable: true }
+    LeaveRequest:
+      type: object
+      properties:
+        requestId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        leaveTypeId: { type: integer }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number, description: Business days; 0.5 for half day }
+        halfDay: { type: boolean }
+        halfDayPeriod: { type: string, enum: [AM, PM], nullable: true }
+        status: { $ref: '#/components/schemas/LeaveStatus' }
+        reason: { type: string, nullable: true }
+        approverEmpId: { type: integer, format: int64, nullable: true }
+        approverName: { type: string, nullable: true }
+        approvalDate: { type: string, format: date-time, nullable: true }
+        approvalComments: { type: string, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        createdDate: { type: string, format: date-time }
+    SubmitLeaveRequest:
+      type: object
+      required: [leaveTypeId, startDate, endDate]
+      properties:
+        leaveTypeId: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, description: Must equal startDate for half day }
+        halfDay: { type: boolean, default: false }
+        halfDayPeriod: { type: string, enum: [AM, PM] }
+        reason: { type: string, maxLength: 4000 }
+    DecisionRequest:
+      type: object
+      properties: { comments: { type: string, maxLength: 4000 } }
+    RejectRequest:
+      type: object
+      required: [comments]
+      properties: { comments: { type: string, maxLength: 4000 } }
+    CancelRequest:
+      type: object
+      required: [reason]
+      properties: { reason: { type: string, maxLength: 4000 } }
+    BusinessDays:
+      type: object
+      properties: { startDate: { type: string, format: date }, endDate: { type: string, format: date }, businessDays: { type: integer } }
+    AccrualRunRequest:
+      type: object
+      properties: { accrualDate: { type: string, format: date, description: Defaults to today } }
+    CarryoverRequest:
+      type: object
+      required: [year]
+      properties: { year: { type: integer, description: Year being closed; carries into year + 1 } }
+    InitializeBalancesRequest:
+      type: object
+      required: [empId, year]
+      properties: { empId: { type: integer, format: int64 }, year: { type: integer } }
+    EmploymentStatus: { type: string, enum: [ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED] }
+    EmployeeSummary:
+      type: object
+      description: Same shape as shared EmployeeLookup.EmployeeSummary.
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string }
+        jobId: { type: integer, format: int64 }
+        jobTitle: { type: string }
+        gradeLevel: { type: integer }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        locationCode: { type: string }
+        hireDate: { type: string, format: date }
+        employmentStatus: { $ref: '#/components/schemas/EmploymentStatus' }
+        active: { type: boolean }
+    EmployeeDetail:
+      allOf:
+        - $ref: '#/components/schemas/EmployeeSummary'
+        - type: object
+          properties:
+            middleName: { type: string, nullable: true }
+            dateOfBirth: { type: string, format: date, nullable: true }
+            gender: { type: string, nullable: true }
+            maritalStatus: { type: string, nullable: true }
+            phoneWork: { type: string, nullable: true }
+            phoneMobile: { type: string, nullable: true }
+            addressLine1: { type: string, nullable: true }
+            addressLine2: { type: string, nullable: true }
+            city: { type: string, nullable: true }
+            state: { type: string, nullable: true }
+            postalCode: { type: string, nullable: true }
+            country: { type: string, nullable: true }
+            locationId: { type: integer, format: int64 }
+            employmentType: { type: string }
+            terminationDate: { type: string, format: date, nullable: true }
+            terminationReason: { type: string, nullable: true }
+            tenureYears: { type: number }
+            currentSalary: { $ref: '#/components/schemas/SalaryRecord' }
+            warnings: { type: array, items: { type: string }, description: e.g. salary outside grade range }
+    EmployeeCreate:
+      type: object
+      required: [firstName, lastName, email, hireDate, deptId, jobId]
+      properties:
+        firstName: { type: string }
+        middleName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phoneWork: { type: string }
+        phoneMobile: { type: string }
+        dateOfBirth: { type: string, format: date }
+        gender: { type: string }
+        maritalStatus: { type: string }
+        hireDate: { type: string, format: date }
+        deptId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        managerEmpId: { type: integer, format: int64 }
+        locationId: { type: integer, format: int64, description: Defaults to the department's location }
+        employmentType: { type: string, enum: [FULL_TIME, PART_TIME, CONTRACT, TEMPORARY, INTERN], default: FULL_TIME }
+        baseSalary: { type: number }
+    EmployeeUpdate:
+      type: object
+      properties:
+        firstName: { type: string }
+        middleName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phoneWork: { type: string }
+        phoneMobile: { type: string }
+        addressLine1: { type: string }
+        addressLine2: { type: string }
+        city: { type: string }
+        state: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+    TransferRequest:
+      type: object
+      required: [deptId, effectiveDate]
+      properties:
+        deptId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        locationId: { type: integer, format: int64 }
+        managerEmpId: { type: integer, format: int64 }
+        effectiveDate: { type: string, format: date }
+        reason: { type: string }
+    PromoteRequest:
+      type: object
+      required: [jobId, newSalary, effectiveDate]
+      properties: { jobId: { type: integer, format: int64 }, newSalary: { type: number }, effectiveDate: { type: string, format: date }, reason: { type: string } }
+    TerminateRequest:
+      type: object
+      required: [terminationDate, reason]
+      properties: { terminationDate: { type: string, format: date }, reason: { type: string, example: VOLUNTARY } }
+    RehireRequest:
+      type: object
+      required: [hireDate, deptId, jobId]
+      properties: { hireDate: { type: string, format: date }, deptId: { type: integer, format: int64 }, jobId: { type: integer, format: int64 }, managerEmpId: { type: integer, format: int64 }, baseSalary: { type: number } }
+    OrgChartNode:
+      type: object
+      properties: { empId: { type: integer, format: int64 }, fullName: { type: string }, jobTitle: { type: string }, managerEmpId: { type: integer, format: int64, nullable: true }, level: { type: integer } }
+    EmployeeHistory:
+      type: object
+      properties:
+        historyId: { type: integer, format: int64 }
+        changeType: { type: string, enum: [HIRE, TRANSFER, PROMOTION, DEMOTION, SALARY_CHANGE, TERMINATION, REHIRE, LEAVE_START, LEAVE_END, STATUS_CHANGE] }
+        effectiveDate: { type: string, format: date }
+        oldValues: { type: object, additionalProperties: true }
+        newValues: { type: object, additionalProperties: true }
+        reason: { type: string, nullable: true }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+    Dependent:
+      type: object
+      required: [firstName, lastName, relationship]
+      properties:
+        dependentId: { type: integer, format: int64, readOnly: true }
+        firstName: { type: string }
+        lastName: { type: string }
+        relationship: { type: string, enum: [SPOUSE, CHILD, PARENT, DOMESTIC_PARTNER, OTHER] }
+        dateOfBirth: { type: string, format: date }
+        gender: { type: string }
+        benefitsEligible: { type: boolean }
+    EmergencyContact:
+      type: object
+      required: [contactName, phonePrimary]
+      properties:
+        contactId: { type: integer, format: int64, readOnly: true }
+        contactName: { type: string }
+        relationship: { type: string }
+        phonePrimary: { type: string }
+        phoneSecondary: { type: string }
+        email: { type: string }
+        isPrimary: { type: boolean }
+    SalaryRecord:
+      type: object
+      description: Same shape as shared SalaryRecordService.SalaryRecord.
+      properties:
+        salaryId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        effectiveDate: { type: string, format: date }
+        endDate: { type: string, format: date, nullable: true }
+        baseSalary: { type: number }
+        currencyCode: { type: string }
+        payFrequency: { type: string }
+        salaryBasis: { type: string }
+        changeReason: { type: string, nullable: true }
+        changePct: { type: number, nullable: true }
+        active: { type: boolean }
+    PayPeriod:
+      type: object
+      properties:
+        periodId: { type: integer, format: int64 }
+        periodName: { type: string }
+        frequency: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        payDate: { type: string, format: date }
+        status: { type: string, enum: [OPEN, PROCESSING, CLOSED, REVERSED] }
+    PayrollRun:
+      type: object
+      properties:
+        runId: { type: integer, format: int64 }
+        periodId: { type: integer, format: int64 }
+        runType: { type: string }
+        status: { type: string, enum: [PENDING, CALCULATING, CALCULATED, APPROVED, PAID, REVERSED, ERROR] }
+        employeeCount: { type: integer }
+        totalGross: { type: number }
+        totalDeductions: { type: number }
+        totalNet: { type: number }
+        calculatedAt: { type: string, format: date-time, nullable: true }
+        approvedBy: { type: string, nullable: true }
+    PayrollDetail:
+      type: object
+      properties:
+        detailId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        elementId: { type: integer, format: int64, nullable: true }
+        elementCode: { type: string, nullable: true }
+        elementType: { type: string, enum: [EARNING, DEDUCTION, TAX, BENEFIT] }
+        amount: { type: number, description: Deductions/taxes negative }
+        status: { type: string }
+        errorMessage: { type: string, nullable: true }
+    Payslip:
+      type: object
+      properties:
+        runId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        period: { $ref: '#/components/schemas/PayPeriod' }
+        lines: { type: array, items: { $ref: '#/components/schemas/PayrollDetail' } }
+        gross: { type: number }
+        deductions: { type: number }
+        taxes: { type: number }
+        net: { type: number }
+        ytdGross: { type: number }
+        ytdTaxes: { type: number }
+        ytdNet: { type: number }
+    ReviewCycle:
+      type: object
+      required: [cycleName, startDate, endDate]
+      properties:
+        cycleId: { type: integer, format: int64, readOnly: true }
+        cycleName: { type: string }
+        cycleYear: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        selfReviewDeadline: { type: string, format: date }
+        managerReviewDeadline: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, OPEN, IN_PROGRESS, CALIBRATION, CLOSED], readOnly: true }
+    PerformanceReview:
+      type: object
+      properties:
+        reviewId: { type: integer, format: int64 }
+        cycleId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        reviewerEmpId: { type: integer, format: int64 }
+        reviewerName: { type: string }
+        status: { type: string, enum: [NOT_STARTED, SELF_REVIEW, MANAGER_REVIEW, MEETING_SCHEDULED, COMPLETED, ACKNOWLEDGED] }
+        selfAssessment: { type: string, nullable: true }
+        selfRating: { type: number, nullable: true }
+        managerComments: { type: string, nullable: true }
+        overallRating: { type: number, nullable: true }
+        ratingLabel: { type: string, nullable: true }
+        goals: { type: array, items: { $ref: '#/components/schemas/PerformanceGoal' } }
+    PerformanceGoal:
+      type: object
+      required: [goalTitle]
+      properties:
+        goalId: { type: integer, format: int64, readOnly: true }
+        goalTitle: { type: string }
+        goalDescription: { type: string }
+        weightPct: { type: number }
+        targetDate: { type: string, format: date }
+        progressPct: { type: number }
+        status: { type: string, enum: [NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED, DEFERRED] }
+    AuditEntry:
+      type: object
+      properties:
+        auditId: { type: integer, format: int64 }
+        tableName: { type: string }
+        recordId: { type: integer, format: int64 }
+        action: { type: string, enum: [INSERT, UPDATE, DELETE] }
+        oldValues: { type: object, additionalProperties: true, nullable: true }
+        newValues: { type: object, additionalProperties: true, nullable: true }
+        changedBy: { type: string }
+        changedDate: { type: string, format: date-time }
