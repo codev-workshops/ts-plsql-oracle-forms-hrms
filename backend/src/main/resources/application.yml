@@ -1,0 +1,19 @@
+server:
+  port: ${HRMS_PORT:8080}
+spring:
+  application:
+    name: hrms-backend
+  datasource:
+    url: ${HRMS_DB_URL:jdbc:postgresql://localhost:5432/hrms}
+    username: ${HRMS_DB_USER:hrms}
+    password: ${HRMS_DB_PASSWORD:hrms}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_absent
+logging:
+  level:
+    com.hrms: INFO
