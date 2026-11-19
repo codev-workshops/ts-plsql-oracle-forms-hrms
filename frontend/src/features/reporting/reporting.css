@@ -1,0 +1,19 @@
+.reporting-picker label {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.reporting-table {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.reporting-table table {
+  margin-bottom: 0;
+}
+
+.reporting-table th {
+  white-space: nowrap;
+}
