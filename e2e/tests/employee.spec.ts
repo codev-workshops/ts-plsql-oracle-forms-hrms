@@ -18,7 +18,7 @@ test.describe('employee', () => {
     await page.getByLabel('Last name').fill(`hire${suffix}`);
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Hire date').fill(hireDate);
-    await page.getByLabel('Department').selectOption({ label: 'Finance' });
+    await page.getByLabel('Department').selectOption({ label: 'Finance & Accounting' });
     await page.getByLabel('Job').selectOption({ label: 'Senior Accountant' });
     await page.getByLabel('Manager employee ID').fill('21');
     await page.getByLabel('Base salary').fill('10000');
