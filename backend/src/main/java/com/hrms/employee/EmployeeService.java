@@ -22,6 +22,7 @@ import com.hrms.leave.LeaveService;
 import com.hrms.platform.audit.AuditService;
 import com.hrms.platform.auth.CurrentUser;
 import com.hrms.platform.employee.EmployeeLookup;
+import com.hrms.platform.employee.LocationLookup;
 import com.hrms.platform.employee.EmployeeSummary;
 import com.hrms.platform.error.ApiException;
 import com.hrms.platform.error.ErrorCode;
@@ -54,12 +55,13 @@ public class EmployeeService {
     static final int MAX_FUTURE_HIRE_DAYS = 90;
     static final int MAX_SEARCH_LIMIT = 1000;
     private static final Set<String> STATUSES = Set.of("ACTIVE", "ON_LEAVE", "SUSPENDED", "TERMINATED");
-    private static final Set<String> EMPLOYMENT_TYPES = Set.of("FULL_TIME", "PART_TIME", "CONTRACT", "INTERN");
+    private static final Set<String> EMPLOYMENT_TYPES = Set.of("FULL_TIME", "PART_TIME", "CONTRACT", "TEMPORARY", "INTERN");
     private static final Set<String> GENDERS = Set.of("M", "F", "O");
     private static final Set<String> RELATIONSHIPS = Set.of("SPOUSE", "CHILD", "PARENT", "DOMESTIC_PARTNER", "OTHER");
 
     private final EmployeeRepository repo;
     private final EmployeeLookup lookup;
+    private final LocationLookup locations;
     private final SalaryRecordService salaries;
     private final LeaveRepository leaveRepository;
     private final LeaveService leaveService;
@@ -68,11 +70,13 @@ public class EmployeeService {
     private final NotificationService notifications;
     private final Clock clock;
 
-    public EmployeeService(EmployeeRepository repo, EmployeeLookup lookup, SalaryRecordService salaries,
+    public EmployeeService(EmployeeRepository repo, EmployeeLookup lookup, LocationLookup locations,
+                           SalaryRecordService salaries,
                            LeaveRepository leaveRepository, LeaveService leaveService, PermissionService permissions,
                            AuditService audit, NotificationService notifications, Clock clock) {
         this.repo = repo;
         this.lookup = lookup;
+        this.locations = locations;
         this.salaries = salaries;
         this.leaveRepository = leaveRepository;
         this.leaveService = leaveService;
@@ -299,6 +303,7 @@ public class EmployeeService {
             leaveService.cancel(user, pending.requestId(), "Employee terminated");
         }
         repo.markTerminated(empId, req.terminationDate(), req.reason().trim(), user.username());
+        salaries.endActive(empId, req.terminationDate(), user.username());
         repo.insertHistory(new HistoryEntry(empId, "TERMINATION", req.terminationDate(), current.deptId(), null,
                 current.jobId(), null, current.managerEmpId(), null, null, null, current.locationCode(), null,
                 null, req.reason().trim()), user.username());
@@ -490,8 +495,8 @@ public class EmployeeService {
     }
 
     private String requireLocation(long locationId) {
-        return repo.activeLocationCode(locationId)
-                .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION, "Invalid or inactive location: " + locationId));
+        return locations.codeForId(locationId)
+                .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION, "Invalid location: " + locationId));
     }
 
     private void validateManager(Long managerEmpId, Long empId) {

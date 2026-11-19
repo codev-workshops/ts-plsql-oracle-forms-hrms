@@ -169,7 +169,13 @@ class EmployeeApiTest extends IntegrationTest {
         expectError(callJson(post("/api/v1/employees"), hr, manager), 422, "-20004");
         Map<String, Object> temporary = newHire("temp@company.com");
         temporary.put("employmentType", "TEMPORARY");
-        expectError(callJson(post("/api/v1/employees"), hr, temporary), 400, "-20000");
+        assertThat(create(temporary).get("employmentType").asText()).isEqualTo("TEMPORARY");
+        Map<String, Object> badType = newHire("badtype@company.com");
+        badType.put("employmentType", "SEASONAL");
+        expectError(callJson(post("/api/v1/employees"), hr, badType), 400, "-20000");
+        Map<String, Object> badLocation = newHire("badloc@company.com");
+        badLocation.put("locationId", 9999);
+        expectError(callJson(post("/api/v1/employees"), hr, badLocation), 400, "-20000");
         Map<String, Object> badEmail = newHire("not-an-email");
         expectError(callJson(post("/api/v1/employees"), hr, badEmail), 400, "-20000");
         expectError(callJson(post("/api/v1/employees"), thomas, newHire("denied@company.com")), 403, "-20304");
@@ -276,6 +282,12 @@ class EmployeeApiTest extends IntegrationTest {
                 pending.get("requestId").asLong())).isEqualTo("CANCELLED");
         assertThat(jdbc.queryForObject(balanceSql, BigDecimal.class)).isEqualByComparingTo("0");
         assertThat(count("SELECT count(*) FROM employees WHERE emp_id = 22")).isEqualTo(1);
+        assertThat(count("SELECT count(*) FROM salary_records WHERE emp_id = 22 AND active_flag = 'Y'")).isZero();
+        assertThat(jdbc.queryForObject("SELECT max(end_date)::text FROM salary_records WHERE emp_id = 22",
+                String.class)).isEqualTo("2026-11-30");
+        assertThat(count("SELECT count(*) FROM employee_pay_elements WHERE emp_id = 22 AND active_flag = 'Y'"))
+                .isZero();
+        assertThat(terminated.has("currentSalary")).isFalse();
         assertThat(count("SELECT count(*) FROM notification_queue WHERE recipient_emp_id = 21"
                 + " AND subject = 'Employee termination'")).isEqualTo(1);
         expectError(callJson(post("/api/v1/employees/22/terminate"), hr,

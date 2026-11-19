@@ -284,11 +284,6 @@ public class EmployeeRepository {
                 "Y".equals(rs.getString("active_flag"))), jobId).stream().findFirst();
     }
 
-    public Optional<String> activeLocationCode(long locationId) {
-        return jdbc.queryForList("SELECT location_code FROM locations WHERE location_id = ? AND active_flag = 'Y'",
-                String.class, locationId).stream().findFirst();
-    }
-
     public List<RefItem> departments() {
         return jdbc.query("""
                 SELECT dept_id, dept_code, dept_name FROM departments WHERE active_flag = 'Y' ORDER BY dept_name
