@@ -70,7 +70,7 @@ migrations), delivered in four phases:
 ## SHAs
 
 * Base SHA (main at start): `de012585455275f35304d53327b6364fdba41712`
-* Head SHA: see the PR head commit (recorded in the Phase 1 hand-off message to the coordinator).
+* Head SHA (inventory + checkpoint content commit): `3d41475f236e0bbc9ddfb764ccf1ef4d8f738d15` on branch `devin/1795071118-phase1-discover-inventory`. The only later commit on the branch records this SHA line; the PR head SHA is reported in the Phase 1 hand-off message.
 
 ## Evidence
 
