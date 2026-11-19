@@ -2,9 +2,7 @@ package com.hrms.platform.web;
 
 import com.hrms.platform.auth.AuthInterceptor;
 import com.hrms.platform.auth.CurrentUserArgumentResolver;
-import java.time.Clock;
 import java.util.List;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -31,10 +29,5 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(currentUserResolver);
-    }
-
-    @Bean
-    public Clock clock() {
-        return Clock.systemDefaultZone();
     }
 }

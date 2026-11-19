@@ -1,23 +1,36 @@
 import { expect, test } from '@playwright/test';
 import { EMPLOYEE, MANAGER, login, requireRealStack } from './helpers';
 
-// Picks a weekday about 300-360 days out so reruns on the same DB rarely overlap; each run cancels its request.
-function futureWeekday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 300 + Math.floor(Math.random() * 60));
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+import type { Page } from '@playwright/test';
+
+// Compensatory Time: needs approval and has no accrual balance, so any future year works.
+// Picks a random business day 30-330 days out (asks the API, so holidays are skipped);
+// reruns on the same DB rarely collide and each run cancels its own request.
+async function futureBusinessDay(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const token = window.localStorage.getItem('hrms.token');
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const d = new Date();
+      d.setDate(d.getDate() + 30 + Math.floor(Math.random() * 300));
+      const day = d.toISOString().slice(0, 10);
+      const res = await fetch(`/api/v1/leave/business-days?startDate=${day}&endDate=${day}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if ((await res.json()).businessDays === 1) return day;
+    }
+    throw new Error('no business day found');
+  });
 }
 
 test.describe('leave', () => {
   requireRealStack();
 
-  test('employee submits sick leave, manager approves, employee cancels', async ({ browser }) => {
-    const day = futureWeekday();
+  test('employee submits leave, manager approves, employee cancels', async ({ browser }) => {
     const employee = await browser.newPage();
     await login(employee, EMPLOYEE);
+    const day = await futureBusinessDay(employee);
     await employee.getByRole('tab', { name: 'Request leave' }).click();
-    await employee.getByLabel('Leave type').selectOption({ label: 'Sick Leave' });
+    await employee.getByLabel('Leave type').selectOption({ label: 'Compensatory Time' });
     await employee.getByLabel('Start date').fill(day);
     await employee.getByLabel('End date').fill(day);
     await employee.getByLabel('Reason').fill('e2e');
