@@ -1,0 +1,91 @@
+.payroll-nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.payroll-nav a,
+.payroll-table a {
+  color: #205488;
+}
+
+.payroll-nav a.active {
+  color: #1f3a5f;
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
+}
+
+.payroll-controls {
+  align-items: end;
+  margin-bottom: 0.9rem;
+}
+
+.payroll-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.payroll-controls input[type='number'] {
+  width: 9rem;
+}
+
+.payroll-section-heading,
+.payroll-actions {
+  align-items: center;
+}
+
+.payroll-actions button {
+  margin: 0.2rem;
+}
+
+.payroll-table {
+  overflow-x: auto;
+}
+
+.payroll-table tbody th {
+  font-weight: 600;
+}
+
+.payroll-status {
+  display: inline-block;
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.45rem;
+  background: #e8eef5;
+  color: #254361;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.payroll-status[data-status='OPEN'],
+.payroll-status[data-status='APPROVED'],
+.payroll-status[data-status='CALCULATED'] {
+  background: #dff3e9;
+  color: #12573c;
+}
+
+.payroll-status[data-status='ERROR'] {
+  background: #fbe7e5;
+  color: #92251c;
+}
+
+.payroll-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.payroll-totals > div {
+  background: #eef3f9;
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.85rem;
+}
+
+.payroll-totals dd {
+  margin: 0.2rem 0 0;
+  color: #1f3a5f;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
