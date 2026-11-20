@@ -84,6 +84,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the password from a one-time reset link (OQ-15; v1.5)
+         * @description Public. The token comes from the reset e-mail (cutover or HR-issued). It works once and until it
+         *     expires (`hrms.auth.password-reset.token-ttl`, default 7 days) or a newer link supersedes it. The
+         *     password policy is the change-password policy. On success the credential is usable, the lockout
+         *     is reset and every session of the employee is closed. An unknown, used, superseded or expired
+         *     token, or an employee who is no longer ACTIVE, gives 422 `INVALID_RESET_TOKEN`.
+         *
+         */
+        post: operations["confirmPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-resets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * E-mail a one-time password reset link to an ACTIVE employee (OQ-15; v1.5)
+         * @description For new hires (who have no credential) and forgotten passwords. Older unused links of the
+         *     employee stop working. The link goes through the notification outbox; the token is never
+         *     returned by the API.
+         *
+         */
+        post: operations["issuePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/menu": {
         parameters: {
             query?: never;
@@ -526,6 +574,54 @@ export interface paths {
          *
          */
         post: operations["runMonthlyAccrual"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/carryover-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Carry the year's unused leave into the next year (PKG_LEAVE.process_carryover; v1.5)
+         * @description Legacy rules: remaining = opening + accrued - used + adjustment (pending excluded), capped at the
+         *     type's carryover maximum; it becomes next year's opening balance and carried-over days, expiring
+         *     `carryoverExpiry` months after 1 January. Idempotent per year (DEF-03): the first call returns
+         *     201, later calls 200 with the existing run and change nothing. The scheduled job runs on
+         *     1 January for the year that ended.
+         *
+         */
+        post: operations["runLeaveCarryover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/carryover-expiry-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Expire carried-over days whose expiry date is on or before asOfDate (PKG_LEAVE.expire_carryover; v1.5)
+         * @description DEF-03 fix: only the unused part of the carryover expires (days used in the new year are taken
+         *     from the carryover first); each balance expires once. Idempotent per as-of date: 201 for a new
+         *     run, 200 with the existing run. The scheduled job runs daily.
+         *
+         */
+        post: operations["runLeaveCarryoverExpiry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1200,11 +1296,12 @@ export interface components {
          *     INSUFFICIENT_LEAVE_BALANCE 422/-20201, LEAVE_OVERLAP 409/-20202, INVALID_LEAVE_TYPE 422/-20203,
          *     MIN_TENURE_NOT_MET 422/-20203, INVALID_REQUEST_STATUS 409/-20204, INVALID_DATE_RANGE 400/-20210,
          *     BACKDATE_LIMIT_EXCEEDED 422/-20211, NO_BUSINESS_DAYS 422/-20212, INVALID_CYCLE_STATUS 409/-20401,
-         *     INVALID_REVIEW_STATUS 409/-20402, INVALID_RATING 400/-20403, PARAM_NOT_EDITABLE 409/-20900.
+         *     INVALID_REVIEW_STATUS 409/-20402, INVALID_RATING 400/-20403, PARAM_NOT_EDITABLE 409/-20900,
+         *     INVALID_RESET_TOKEN 422 (v1.5).
          *
          * @enum {string}
          */
-        ErrorCode: "EMPLOYEE_NOT_FOUND" | "INVALID_CREDENTIALS" | "INVALID_CURRENT_PASSWORD" | "PASSWORD_POLICY" | "UNAUTHENTICATED" | "FORBIDDEN" | "VALIDATION_FAILED" | "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "CONCURRENT_MODIFICATION" | "INTERNAL_ERROR" | "EMPLOYEE_NOT_ACTIVE" | "EMP_NUMBER_CONFLICT" | "INVALID_DEPARTMENT" | "INVALID_MANAGER" | "CIRCULAR_REPORTING" | "ALREADY_TERMINATED" | "INVALID_JOB" | "HIRE_DATE_TOO_FAR" | "EMAIL_IN_USE" | "REACTIVATION_FORBIDDEN" | "DELETE_FORBIDDEN" | "EMPLOYEE_NOT_TERMINATED" | "INVALID_SALARY" | "PERIOD_CLOSED" | "INVALID_RUN_STATUS" | "NO_ACTIVE_SALARY" | "INSUFFICIENT_LEAVE_BALANCE" | "LEAVE_OVERLAP" | "INVALID_LEAVE_TYPE" | "MIN_TENURE_NOT_MET" | "INVALID_REQUEST_STATUS" | "INVALID_DATE_RANGE" | "BACKDATE_LIMIT_EXCEEDED" | "NO_BUSINESS_DAYS" | "INVALID_CYCLE_STATUS" | "INVALID_REVIEW_STATUS" | "INVALID_RATING" | "PARAM_NOT_EDITABLE";
+        ErrorCode: "EMPLOYEE_NOT_FOUND" | "INVALID_CREDENTIALS" | "INVALID_CURRENT_PASSWORD" | "PASSWORD_POLICY" | "UNAUTHENTICATED" | "FORBIDDEN" | "VALIDATION_FAILED" | "NOT_FOUND" | "METHOD_NOT_ALLOWED" | "CONCURRENT_MODIFICATION" | "INTERNAL_ERROR" | "EMPLOYEE_NOT_ACTIVE" | "EMP_NUMBER_CONFLICT" | "INVALID_DEPARTMENT" | "INVALID_MANAGER" | "CIRCULAR_REPORTING" | "ALREADY_TERMINATED" | "INVALID_JOB" | "HIRE_DATE_TOO_FAR" | "EMAIL_IN_USE" | "REACTIVATION_FORBIDDEN" | "DELETE_FORBIDDEN" | "EMPLOYEE_NOT_TERMINATED" | "INVALID_SALARY" | "PERIOD_CLOSED" | "INVALID_RUN_STATUS" | "NO_ACTIVE_SALARY" | "INSUFFICIENT_LEAVE_BALANCE" | "LEAVE_OVERLAP" | "INVALID_LEAVE_TYPE" | "MIN_TENURE_NOT_MET" | "INVALID_REQUEST_STATUS" | "INVALID_DATE_RANGE" | "BACKDATE_LIMIT_EXCEEDED" | "NO_BUSINESS_DAYS" | "INVALID_CYCLE_STATUS" | "INVALID_REVIEW_STATUS" | "INVALID_RATING" | "PARAM_NOT_EDITABLE" | "INVALID_RESET_TOKEN";
         /** @enum {string} */
         Module: "EMPLOYEE" | "PAYROLL" | "LEAVE" | "PERFORMANCE" | "REPORTS" | "ADMIN";
         /** @enum {string} */
@@ -1231,6 +1328,22 @@ export interface components {
             currentPassword: string;
             /** Format: password */
             newPassword: string;
+        };
+        ResetPasswordRequest: {
+            /** @description The token from the reset link */
+            token: string;
+            /** Format: password */
+            newPassword: string;
+        };
+        IssuePasswordResetRequest: {
+            /** Format: int64 */
+            empId: number;
+        };
+        PasswordResetIssued: {
+            /** Format: int64 */
+            empId: number;
+            /** Format: date-time */
+            expiresAt: string;
         };
         CurrentUser: {
             /** Format: int64 */
@@ -1598,6 +1711,32 @@ export interface components {
             employeesProcessed?: number;
             entriesCreated?: number;
             totalAccrued?: number;
+            createdBy?: string;
+            /** Format: date-time */
+            createdDate?: string;
+        };
+        CarryoverRunRequest: {
+            /** @description The year whose balances are carried into year + 1 */
+            year: number;
+        };
+        CarryoverExpiryRequest: {
+            /** Format: date */
+            asOfDate: string;
+        };
+        CarryoverRun: {
+            /** Format: int64 */
+            runId?: number;
+            /** @enum {string} */
+            runType?: "CARRYOVER" | "EXPIRY";
+            /** @description CARRYOVER runs only */
+            fromYear?: number | null;
+            /**
+             * Format: date
+             * @description EXPIRY runs only
+             */
+            asOfDate?: string | null;
+            balancesProcessed?: number;
+            totalDays?: number;
             createdBy?: string;
             /** Format: date-time */
             createdDate?: string;
@@ -2161,6 +2300,91 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description INVALID_CURRENT_PASSWORD */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirmPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PASSWORD_POLICY (legacy -20310/-20311/-20312) or VALIDATION_FAILED */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description INVALID_RESET_TOKEN */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    issuePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssuePasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Link queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetIssued"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description EMPLOYEE_NOT_FOUND (-20001) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description EMPLOYEE_NOT_ACTIVE */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2983,6 +3207,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccrualRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    runLeaveCarryover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CarryoverRunRequest"];
+            };
+        };
+        responses: {
+            /** @description The year was already carried over */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarryoverRun"];
+                };
+            };
+            /** @description Run created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarryoverRun"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    runLeaveCarryoverExpiry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CarryoverExpiryRequest"];
+            };
+        };
+        responses: {
+            /** @description The date was already processed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarryoverRun"];
+                };
+            };
+            /** @description Run created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarryoverRun"];
                 };
             };
             400: components["responses"]["ValidationFailed"];

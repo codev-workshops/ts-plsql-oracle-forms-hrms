@@ -82,6 +82,7 @@ const MESSAGES: Record<string, string> = {
   FORBIDDEN: 'You do not have permission for this action.',
   INVALID_CURRENT_PASSWORD: 'The current password is incorrect.',
   PASSWORD_POLICY: 'The new password does not meet the password policy.',
+  INVALID_RESET_TOKEN: 'This password link is invalid, already used or expired. Ask HR for a new one.',
 };
 
 export function errorMessage(e: unknown): string {
