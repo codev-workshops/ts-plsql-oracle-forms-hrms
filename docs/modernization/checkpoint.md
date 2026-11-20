@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| `contract_version` | **`v1`** (frozen by P3) |
+| `contract_version` | **`v1.1-P5`** (v1 frozen by P3; additive amendment v1.1-P5, A-P5-01. P4 runs in parallel and numbers its amendment `v1.1-P4`; the coordinator reconciles on merge) |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P3` |
+| `last_updated_by_phase` | `P5` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -277,11 +277,11 @@ is reported in the PR and the final message.
 
 | Field | Value |
 |---|---|
-| `contract_version` | `v1` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.0.0`, `info.x-contract-version: v1`) |
+| `contract_version` | `v1.1-P5` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.1.0`, `info.x-contract-version: v1.1-P5`) |
 | Frozen? | **Yes — frozen at v1 by P3 on 2026-11-20 (A-P3-01).** P4–P8 add routes only through `v1.N` amendments in §7; `OpenApiContractTest` keeps the file and the controllers in sync. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02) |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P5: `v1.1-P5`** — additive: 8 employee operations (create, partial update, delete=405, transfer, promote, terminate, rehire, history), their schemas, `EmployeeMutation.warnings[]`, error code `EMPLOYEE_NOT_TERMINATED` (A-P5-01) |
 
 ---
 
@@ -295,9 +295,9 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
 | P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
 | P2 Auth + employee read model | accepted | `modernization/p2-auth` | #83 | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. PR head `c20410949c73`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` (53 green) (recorded by P3). |
-| P3 Leave pilot + contract freeze | submitted | `modernization/p3-leave` | _see PR_ | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. |
+| P3 Leave pilot + contract freeze | accepted | `modernization/p3-leave` | #84 | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. PR head `c23ba1c04a58`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P5). |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
-| P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
+| P5 Employee core | submitted | `modernization/p5-employee` | _see PR_ | `f9d91aed89db` | **v1.1-P5** | 2026-11-20 | Employee commands (create/update/transfer/promote/terminate/rehire/history, DELETE=405), `SalaryRecordPort` + recording stub (OQ-01), contract amendment v1.1-P5. No Flyway migration needed (reserved V300–V399 unused). `mvn -f backend/pom.xml test`: 80 tests green. No frontend. Details: §4.5. |
 | P6 Payroll | pending | | | | | | Starts after P5. |
 | P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
 | P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. |
@@ -489,6 +489,57 @@ and the queue every 5 minutes; off unless `hrms.jobs.enabled=true`).
 `leave_accrual_runs` pattern is the template for its idempotency record. No React pilot UI (optional, OQ-16).
 No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) — unchanged.
 
+### 4.5 P5 notes (employee core)
+
+**Code** (`com.hrms.employee`, commit `f9d91aed89db`). `EmployeeCommandService` (all writes),
+`EmployeeCommandController` (`/api/v1/employees`, `EMPLOYEE:EDIT`), `EmployeeModels`, `EmployeeValidators`
+(PLL-001..004), `SalaryRecordPort` + `RecordingSalaryRecordPort`. `ErrorCode.EMPLOYEE_NOT_TERMINATED`.
+Tests: `EmployeeCommandApiTest` (9), `EmployeeValidatorsTest` (5), `OpenApiContractTest` extended.
+**No migration**: the P1 schema already has everything (sequence, partial unique email index, history table,
+grants); the reserved range V300–V399 is untouched.
+
+**Salary port (OQ-01, for P6).** `SalaryRecordPort` is called synchronously inside the employee transaction:
+`createSalaryRecord(SalaryChange)` on create (only with `baseSalary`, `NEW_HIRE`), promote (`PROMOTION`, with
+`changePct` when a current salary is known) and rehire (`REHIRE`); `currentBaseSalary(empId, asOf)` for promote's
+old salary; `endCompensation(empId, endDate, actor)` on terminate (replaces the direct end-dating of
+`salary_records` and `employee_pay_elements`). The P5 stub only records calls and writes nothing, so **until P6
+no salary row is created or end-dated**, promote's history `old_salary` is NULL (legacy wrote 0 when none was
+found) and `changePct` is NULL. P6 implements the port as a `@Component`, deletes `RecordingSalaryRecordPort`
+(two candidates otherwise) and moves `EmployeeCommandApiTest`'s port assertions to the real tables. Salary > 0
+(`INVALID_SALARY`, -20101) is checked in the employee service before the port is called; P6 may check again.
+
+**Behaviour (parity unless marked).**
+- Create: check order names (-20010, 400) → field formats (email = PKG_COMMON regex, phones 10–11 digits, date of
+  birth not future; 400) → dept (-20003) → ACTIVE manager (-20004, no cycle walk on create, as legacy) → job
+  (-20011) → salary > 0 → hire date ≤ today + 180 (OQ-10, -20501) → email free among active rows (-20502, plus the
+  index as a race backstop). Names `UPPER(TRIM)`, email `lower(trim)`, location defaults to the department's,
+  type defaults FULL_TIME. HIRE history, INSERT audit (snapshot), welcome mail (raw first name, as legacy) and
+  manager mail ("New Direct Report"). Outside the grade range → `warnings[]` (OQ-11); same on promote and rehire.
+- Update: partial; null/absent = unchanged; a blank name is 400 (**fix**: Oracle treated `''` as NULL =
+  unchanged). Any status (parity). Email change checked against other active rows. UPDATE audit with only the
+  changed fields.
+- Transfer: `FOR UPDATE NOWAIT` (held lock → 409 `CONCURRENT_MODIFICATION`), ACTIVE only (`EMPLOYEE_NOT_ACTIVE`
+  with legacyCode -20012), manager validated with the cycle walk; job/manager/location default to current.
+  **Fix:** a new job must be active (legacy did not check).
+- Promote: **fix:** requires ACTIVE (422 `EMPLOYEE_NOT_ACTIVE`) and an active job (DEF-P5-1).
+- Terminate: `ALREADY_TERMINATED` (-20005); PENDING leave cancelled via `LeaveService.cancelPendingRequestsOf`
+  (DEF-22: pending balance released, STATUS_CHANGE audited, no leave notification — P3 parity); status
+  TERMINATED, `active_flag=false`, date and reason; port `endCompensation`; TERMINATION history; audit
+  `STATUS_CHANGE` (D-08); manager notified. Sessions of the terminated employee stop working (P2 rule). The
+  legacy TODOs (COBRA, final pay) are not implemented.
+- Rehire (DEF-13 fix): requires TERMINATED (409 `EMPLOYEE_NOT_TERMINATED`, new code); dept, job, optional
+  manager (with cycle walk), salary; location defaults to the new department's; the email must be free among
+  active rows; `hire_date` becomes the rehire date (parity; the hire-date limit is not applied, as the legacy
+  trigger was insert-only); termination fields cleared. REHIRE history with old and new values.
+- TRG-006 is enforced by `checkTransition` on every status write; with no generic status update in the API,
+  `REACTIVATION_FORBIDDEN` is defensive (like `EMP_NUMBER_CONFLICT`).
+- `GET /{empId}/history` needs `EMPLOYEE:EDIT` (it shows salaries); `DELETE /{empId}` is 405 for anyone with
+  `EMPLOYEE:VIEW`.
+
+**Not done in P5 (by design).** Department maintenance/audit (TRG-011, OQ-P5-1). SSN capture and encryption
+(PKG-S03, OQ-P5-2). Org chart / direct reports / headcount / tenure reads (P7 reporting, VW_ORG_HIERARCHY).
+No React UI.
+
 ---
 
 ## 5. Re-homed logic registry
@@ -520,17 +571,17 @@ No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) 
 
 | ID | Trigger (file) | Rule | Legacy code | Dest | Status |
 |---|---|---|---|---|---|
-| TRG-001 | TRG_EMP_BEFORE_INSERT (trg_employees.sql) | Default `CREATED_BY := USER` and `CREATED_DATE := SYSDATE` | – | P5 service (D-04) | open |
-| TRG-002 | TRG_EMP_BEFORE_INSERT | Default `ACTIVE_FLAG='Y'` and `EMPLOYMENT_STATUS='ACTIVE'` | – | P1 column defaults + P5 service | in-progress (P1: column defaults `active_flag DEFAULT true`, `employment_status DEFAULT 'ACTIVE'` in V2; P5 service remains) |
-| TRG-003 | TRG_EMP_BEFORE_INSERT | `HIRE_DATE ≤ SYSDATE + 180` | -20501 | P5 domain. Conflicts with FRM-035 (+90); see OQ-10 | open |
-| TRG-004 | TRG_EMP_BEFORE_INSERT | Email unique, case-insensitive, among `ACTIVE_FLAG='Y'` rows (no DB unique constraint exists) | -20502 | P1 partial unique index `lower(email) WHERE active_flag` + P5 domain (409) | in-progress (P1: partial unique index `uq_employees_email_active` in V6, test `activeEmailIsUniqueCaseInsensitively`; P5 domain 409 remains) |
-| TRG-005 | TRG_EMP_BEFORE_UPDATE | `MODIFIED_BY := NVL(:NEW, USER)` and `MODIFIED_DATE := SYSDATE` | – | P5 service (D-04) | open |
-| TRG-006 | TRG_EMP_BEFORE_UPDATE | Block the `TERMINATED → ACTIVE` transition, except through rehire | -20503 | P5 domain state machine. Note DEF-13 | open |
-| TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | open |
-| TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | in-progress (P1: V8 grants no DELETE/TRUNCATE to `hrms_app`, test `appRoleCannotDeleteAnything`; P5 405 remains) |
+| TRG-001 | TRG_EMP_BEFORE_INSERT (trg_employees.sql) | Default `CREATED_BY := USER` and `CREATED_DATE := SYSDATE` | – | P5 service (D-04) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createHiresWithSequenceNumberHistoryAuditNotificationsAndThePort`) |
+| TRG-002 | TRG_EMP_BEFORE_INSERT | Default `ACTIVE_FLAG='Y'` and `EMPLOYMENT_STATUS='ACTIVE'` | – | P1 column defaults + P5 service | re-homed (P1 column defaults + P5 service inserts `ACTIVE`/`true` explicitly, `f9d91aed89db`; `EmployeeCommandApiTest.createHires…`) |
+| TRG-003 | TRG_EMP_BEFORE_INSERT | `HIRE_DATE ≤ SYSDATE + 180` | -20501 | P5 domain. Conflicts with FRM-035 (+90); see OQ-10 | re-homed (P5, `f9d91aed89db`; 180 days per OQ-10; `EmployeeCommandApiTest.createValidationsKeepTheLegacyOrderAndCodes`) |
+| TRG-004 | TRG_EMP_BEFORE_INSERT | Email unique, case-insensitive, among `ACTIVE_FLAG='Y'` rows (no DB unique constraint exists) | -20502 | P1 partial unique index `lower(email) WHERE active_flag` + P5 domain (409) | re-homed (P1 partial unique index + P5 `EMAIL_IN_USE` 409 on create, update and rehire, `f9d91aed89db`; `EmployeeCommandApiTest.createValidations…`, `updateIsPartialAndAudited`, `rehireIsTheOnlyWayBackFromTerminated`) |
+| TRG-005 | TRG_EMP_BEFORE_UPDATE | `MODIFIED_BY := NVL(:NEW, USER)` and `MODIFIED_DATE := SYSDATE` | – | P5 service (D-04) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.updateIsPartialAndAudited`) |
+| TRG-006 | TRG_EMP_BEFORE_UPDATE | Block the `TERMINATED → ACTIVE` transition, except through rehire | -20503 | P5 domain state machine. Note DEF-13 | re-homed (P5, `f9d91aed89db`: `EmployeeCommandService.checkTransition`, rehire is the only path; no generic status update exists; `EmployeeValidatorsTest.terminatedToActiveOnlyThroughRehire`, `EmployeeCommandApiTest.rehireIsTheOnlyWayBackFromTerminated`) |
+| TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | re-homed (P5, `f9d91aed89db`: explicit `employee_history` rows in the `log_history` shape for HIRE/TRANSFER/PROMOTION/TERMINATION/REHIRE, same transaction; DEF-14 fixed; `EmployeeCommandApiTest`) |
+| TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | re-homed (P1 grants + P5 `DELETE /api/v1/employees/{empId}` → 405 `DELETE_FORBIDDEN`, `f9d91aed89db`; `EmployeeCommandApiTest.writesNeedEmployeeEditAndDeleteIsAlwaysForbidden`) |
 | TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | open |
 | TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | done (P3: `LeaveService` writes `STATUS_CHANGE` old→new in the same transaction; DEF-15 fixed) |
-| TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | open |
+| TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | blocked (OQ-P5-1): no department write path exists in the forms, packages or API, so there is nothing to audit yet |
 
 ### 5.2 Oracle Forms rules (`forms/xml-exports/*.xml`)
 
@@ -565,22 +616,22 @@ No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) 
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-030 | WNFI: without `has_permission(EMPLOYEE,EDIT)`, the EMPLOYEE block gets `INSERT_ALLOWED`, `UPDATE_ALLOWED` and `DELETE_ALLOWED` = false | P5 api-authz (`EMPLOYEE:EDIT` on create, update, terminate, rehire, transfer, promote). EDIT maps to the D-06 actions | open |
+| FRM-030 | WNFI: without `has_permission(EMPLOYEE,EDIT)`, the EMPLOYEE block gets `INSERT_ALLOWED`, `UPDATE_ALLOWED` and `DELETE_ALLOWED` = false | P5 api-authz (`EMPLOYEE:EDIT` on create, update, terminate, rehire, transfer, promote). EDIT maps to the D-06 actions | re-homed (P5, `f9d91aed89db`: `EmployeeCommandController` needs `EMPLOYEE:EDIT`; `EmployeeCommandApiTest.writesNeedEmployeeEditAndDeleteIsAlwaysForbidden`) |
 | FRM-031 | WNFI: `DEFAULT_WHERE` = `EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` | P2 read model default filter (D-03) | re-homed (P2, `EmployeeReadService` default filter; `EmployeeReadApiTest.defaultReadsAreActiveOnly`) |
-| FRM-032 | PRE-INSERT sets `EMP_ID := SEQ_EMPLOYEE.NEXTVAL`, `EMP_NUMBER := generate_emp_number`, `ACTIVE_FLAG`, status `ACTIVE`, `CREATED_BY := :GLOBAL.current_user` | P5 service (D-02, D-04) | open |
-| FRM-033 | PRE-UPDATE sets `MODIFIED_BY` and `MODIFIED_DATE` | P5 service (D-04) | open |
-| FRM-034 | WVI EMAIL: `PKG_VALIDATION.validate_email_format` (the server regex, **not** the PLL) | P5 domain validation. Note DEF-04 | open |
-| FRM-035 | WVI HIRE_DATE: `> SYSDATE + 90` rejected | P5 domain. Conflicts with TRG-003 (+180); see OQ-10 | open (unblocked: OQ-10 closed, user accepted 180 days) |
-| FRM-036 | WVI DEPT_ID must be an active department | P5 domain (= validate_dept -20003) | open |
-| FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | open |
-| FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | open |
+| FRM-032 | PRE-INSERT sets `EMP_ID := SEQ_EMPLOYEE.NEXTVAL`, `EMP_NUMBER := generate_emp_number`, `ACTIVE_FLAG`, status `ACTIVE`, `CREATED_BY := :GLOBAL.current_user` | P5 service (D-02, D-04) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createHiresWithSequenceNumberHistoryAuditNotificationsAndThePort`) |
+| FRM-033 | PRE-UPDATE sets `MODIFIED_BY` and `MODIFIED_DATE` | P5 service (D-04) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.updateIsPartialAndAudited`) |
+| FRM-034 | WVI EMAIL: `PKG_VALIDATION.validate_email_format` (the server regex, **not** the PLL) | P5 domain validation. Note DEF-04 | re-homed (P5, `f9d91aed89db`: `EmployeeValidators.isValidEmail` = PKG_COMMON regex on create/update; DEF-04; `EmployeeValidatorsTest`) |
+| FRM-035 | WVI HIRE_DATE: `> SYSDATE + 90` rejected | P5 domain. Conflicts with TRG-003 (+180); see OQ-10 | re-homed (P5, `f9d91aed89db`: 180 days, OQ-10; same rule as TRG-003) |
+| FRM-036 | WVI DEPT_ID must be an active department | P5 domain (= validate_dept -20003) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createValidationsKeepTheLegacyOrderAndCodes`) |
+| FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createValidationsKeepTheLegacyOrderAndCodes`) |
+| FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | re-homed (P5, `f9d91aed89db`: request records have no id/number/status/audit fields; unknown properties are ignored; `EmployeeCommandApiTest.updateIsPartialAndAudited`) |
 | FRM-039 | SALARY block is read-only (no I/U/D) | P6 (salary changes only through salary-record operations) | open |
-| FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | in-progress (P2: active-only `GET /api/v1/employees` serves the manager LOV; P5 validate_manager remains) |
-| FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | open |
-| FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | drop-proposed |
+| FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | re-homed (P2 lookup + P5 `validateManager` -20004 incl. the 15-level cycle walk, `f9d91aed89db`; `EmployeeCommandApiTest.transferValidatesAndWritesHistory`, `circularCheckWalksAtMostFifteenLevels`) |
+| FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | re-homed (P5, `f9d91aed89db`: every employee write goes through `EmployeeCommandService`; no direct-DML path) |
+| FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | dropped (P5, D-03: no delete; DELETE is 405) |
 | FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | re-homed (P2, joined `managerName`/`deptName`/`jobTitle`/`locationName`; `EmployeeReadApiTest.getReturnsTheReadModel`) |
 | FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
-| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | open (unblocked: OQ-11 closed, user accepted soft warning) |
+| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | in-progress (P5: OQ-11 soft warning `warnings[]` `SALARY_OUTSIDE_GRADE` on create/promote/rehire, `f9d91aed89db`; `EmployeeCommandApiTest.promoteGoesThroughThePort`. P6: salary-record operations) |
 | FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | re-homed (P2, `GET /api/v1/lookups/{departments,job-titles,locations}` active-only; `EmployeeReadApiTest.lookupsAreActiveOnly`) |
 
 **HRMS_LEAVE**
@@ -639,11 +690,11 @@ so that they are not lost.
 
 | ID | Routine (library) | Behaviour | Dest | Status |
 |---|---|---|---|---|
-| PLL-001 | `validate_email` (HRMS_VALIDATION_LIB) | NULL is valid. Requires `@` not first or last, and a `.` after `@` that is not adjacent to it or last. The comment says it "rejects subdomains" but the **code accepts them**. It has no TLD or whitespace check. | P5 domain: a single server-side email validator (DEF-04) | open |
-| PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | open |
-| PLL-003 | `validate_ssn` | NULL is valid. 9 digits; no `000`, `00` or `0000` group. **Stricter than** server `PKG_COMMON.is_valid_ssn`, which checks 9 digits only | P5 domain (recommended: adopt the stricter rule; OQ-04) | open |
-| PLL-004 | `validate_date_not_future` | NULL is valid. `TRUNC(date) ≤ TRUNC(SYSDATE)` | P5 domain (DATE_OF_BIRTH; injected Clock) | open |
-| PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | open |
+| PLL-001 | `validate_email` (HRMS_VALIDATION_LIB) | NULL is valid. Requires `@` not first or last, and a `.` after `@` that is not adjacent to it or last. The comment says it "rejects subdomains" but the **code accepts them**. It has no TLD or whitespace check. | P5 domain: a single server-side email validator (DEF-04) | re-homed (P5, `f9d91aed89db`: one server validator, the PKG_COMMON regex; DEF-04; `EmployeeValidatorsTest.emailUsesTheServerRegexForEveryCaller`) |
+| PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | re-homed (P5, `f9d91aed89db`: `phoneWork`/`phoneMobile` on create/update; `EmployeeValidatorsTest.phoneNeedsTenOrElevenDigits`) |
+| PLL-003 | `validate_ssn` | NULL is valid. 9 digits; no `000`, `00` or `0000` group. **Stricter than** server `PKG_COMMON.is_valid_ssn`, which checks 9 digits only | P5 domain (recommended: adopt the stricter rule; OQ-04) | in-progress (P5: stricter validator `EmployeeValidators.isValidSsn`, `f9d91aed89db`, `EmployeeValidatorsTest.ssnUsesTheStricterPllRule`. No SSN write route yet: OQ-P5-2) |
+| PLL-004 | `validate_date_not_future` | NULL is valid. `TRUNC(date) ≤ TRUNC(SYSDATE)` | P5 domain (DATE_OF_BIRTH; injected Clock) | re-homed (P5, `f9d91aed89db`: `dateOfBirth` on create; `EmployeeValidatorsTest.dateNotFutureIsInclusiveOfToday`) |
+| PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | in-progress (P5: same soft warning as FRM-045, `f9d91aed89db`; P6 remains for salary-record operations) |
 | PLL-010 | `handle_error` (HRMS_COMMON_LIB) | Logs through `PKG_COMMON.log_error`, shows MESSAGE twice, raises FORM_TRIGGER_FAILURE | Dropped. Replaced by server-side error logging and D-05 | drop-proposed |
 | PLL-011 | `toolbar_save/clear/query/first/prev/next/last/insert/delete/exit` (10) | Forms built-ins | ui-only | drop-proposed |
 | PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | drop-proposed |
@@ -658,11 +709,11 @@ re-homing boundary.
 
 | ID | Package.routine | Rule summary | Dest | Status |
 |---|---|---|---|---|
-| PKG-E01 | PKG_EMPLOYEE.generate_emp_number | `MAX()+1` race with a sequence fallback | P5 (D-02) | in-progress (P1: `hrms.seq_emp_number` START 1000 in V2; P5 generator remains) |
-| PKG-E02 | PKG_EMPLOYEE.validate_dept / validate_manager | Active dept (-20003). Manager ACTIVE (-20004). Cycle walk up to depth 15 (`c_max_hierarchy_depth`) (-20004); cycle check only when `p_emp_id` is not null | P5 domain | open |
-| PKG-E03 | PKG_EMPLOYEE.create_employee | Names required (-20010), dept, manager, job active (-20011). Salary vs grade is only a debug warning. Location defaults from dept. Names UPPER/TRIM, email lower/TRIM. Calls **PKG_PAYROLL.create_salary_record** (NEW_HIRE). HIRE history, audit, welcome and manager notifications | P5 service. Salary goes through the interface (OQ-01) | open |
-| PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | open |
-| PKG-E05 | PKG_EMPLOYEE.update_employee / transfer / promote / terminate / rehire | See inventory §I-3.1. Terminate auto-cancels PENDING leave and end-dates salary and pay elements. Promote calls create_salary_record (PROMOTION). Rehire calls create_salary_record (REHIRE) | P5 (salary through the interface) | open |
+| PKG-E01 | PKG_EMPLOYEE.generate_emp_number | `MAX()+1` race with a sequence fallback | P5 (D-02) | re-homed (P1 sequence + P5 `nextEmpNumber`, overflow > 999999 is an error, `f9d91aed89db`; DEF-08; `EmployeeCommandApiTest.createHires…`) |
+| PKG-E02 | PKG_EMPLOYEE.validate_dept / validate_manager | Active dept (-20003). Manager ACTIVE (-20004). Cycle walk up to depth 15 (`c_max_hierarchy_depth`) (-20004); cycle check only when `p_emp_id` is not null | P5 domain | re-homed (P5, `f9d91aed89db`: `validateDept`/`validateManager`/`validateJob`; cycle walk only with an emp id, depth 15, parity; `EmployeeCommandApiTest.circularCheckWalksAtMostFifteenLevels`) |
+| PKG-E03 | PKG_EMPLOYEE.create_employee | Names required (-20010), dept, manager, job active (-20011). Salary vs grade is only a debug warning. Location defaults from dept. Names UPPER/TRIM, email lower/TRIM. Calls **PKG_PAYROLL.create_salary_record** (NEW_HIRE). HIRE history, audit, welcome and manager notifications | P5 service. Salary goes through the interface (OQ-01) | re-homed (P5, `f9d91aed89db`: salary through `SalaryRecordPort` (NEW_HIRE), HIRE history, INSERT audit, welcome + manager notifications; `EmployeeCommandApiTest.createHires…`) |
+| PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | re-homed (P5, `f9d91aed89db`: history written in the business transaction; errors propagate) |
+| PKG-E05 | PKG_EMPLOYEE.update_employee / transfer / promote / terminate / rehire | See inventory §I-3.1. Terminate auto-cancels PENDING leave and end-dates salary and pay elements. Promote calls create_salary_record (PROMOTION). Rehire calls create_salary_record (REHIRE) | P5 (salary through the interface) | re-homed (P5, `f9d91aed89db`: update/transfer/promote/terminate/rehire; terminate cancels PENDING leave through `LeaveService.cancelPendingRequestsOf` and ends compensation through the port; promote/rehire through the port; `EmployeeCommandApiTest`) |
 | PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | re-homed (P2, `EmployeeReadService.search`, bind parameters only; `EmployeeReadApiTest.searchIsInjectionSafe` (DEF-09 fixed)) |
 | PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | open |
 | PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | re-homed (P2, request-scoped `HrmsPrincipal`; no package/global state) |
@@ -683,11 +734,11 @@ re-homing boundary.
 | PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | open |
 | PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | re-homed (P2, `AuthService`, `PermissionService`, `permission_rules` (V9); `AuthApiTest`, `PermissionMatrixTest` (DEF-10 fixed)) |
 | PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | re-homed (P2, `AuthService.changePassword` against `user_credentials`; `ChangePasswordTest`) |
-| PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | in-progress (P2: `hash_password`/MD5 dropped for `DelegatingPasswordEncoder` BCrypt. `encrypt_ssn`/`decrypt_ssn` re-targeted to P5 (SSN writes, key from config) and P8 (re-encrypt): the P2 read model never reads SSN) |
+| PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | in-progress (P2: `hash_password`/MD5 dropped for `DelegatingPasswordEncoder` BCrypt. P5: SSN validator only; SSN write path + key-from-config is OQ-P5-2; P8 re-encrypt) |
 | PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; P2: `AuditWriter` (same transaction, failures propagate) for login, logout and change-password; each phase's service writes remain; P3: leave INSERT + STATUS_CHANGE) |
 | PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
 | PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | done (P3: `NotificationService` transactional outbox + `NotificationDispatcher`; SMTP adapter at P8 cutover) |
-| PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | open |
+| PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | in-progress (P3: business days. P5: email/phone/SSN/date validators in `EmployeeValidators`, `f9d91aed89db`. Others per consuming phase) |
 | PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | drop-proposed (OQ-13 closed: out of scope for P1–P8, follow-up; the tables it reads are migrated in P1) |
 
@@ -720,13 +771,13 @@ re-homing boundary.
 
 | ID | Defect | Evidence | Recommended default |
 |---|---|---|---|
-| DEF-08 | `generate_emp_number` MAX()+1 race | PKG_EMPLOYEE.pkb L39-55 | Fix (D-02; already locked) |
+| DEF-08 | `generate_emp_number` MAX()+1 race | PKG_EMPLOYEE.pkb L39-55 | Fix (D-02; already locked) — **fixed in P5** (`nextEmpNumber` from `seq_emp_number`; `EmployeeCommandApiTest.createHires…` checks consecutive numbers) |
 | DEF-09 | SQL injection in `search_employees` | PKG_EMPLOYEE.pkb L445-499 | Fix (parameterized) |
 | DEF-10 | `authenticate` never verifies a password; MD5 `hash_password` is unused | PKG_SECURITY.pkb | Fix (D-06; already locked) |
 | DEF-11 | Hard-coded AES key | PKG_SECURITY.pkb `c_encryption_key` | Fix (D-06; already locked) |
 | DEF-12 | **The leave auto-approve path always fails.** When `REQUIRES_APPROVAL='N'`, the row is inserted as `APPROVED`, then `approve_leave_request` is called, which raises -20204 because the status is not PENDING. PENDING was also incremented for a row that is already approved | PKG_LEAVE.pkb L170, L176-182, L199-202, L225 | Fix: insert APPROVED and move the days straight to USED — **fixed in P3** (`noApprovalTypesAreApprovedOnSubmitAndUsedDirectly`) |
-| DEF-13 | **`rehire_employee` is blocked by its own trigger.** It updates TERMINATED→ACTIVE, which TRG-006 rejects with -20503. It also has no check that the employee is TERMINATED, and no manager or location handling | PKG_EMPLOYEE.pkb L750-793; trg_employees.sql L68-73 | Fix: rehire is the one allowed transition and requires TERMINATED |
-| DEF-14 | **TRG_EMP_BEFORE_UPDATE history inserts cannot work.** They use the columns `HISTORY_ID`, `CHANGE_DATE`, `OLD_VALUE`, `NEW_VALUE`, `CHANGED_BY` and `CHANGE_REASON`, none of which exist in EMPLOYEE_HISTORY (the DDL has `HIST_ID`, `EFFECTIVE_DATE` and typed `OLD_*`/`NEW_*` columns). The values `DEPARTMENT_CHANGE` and `JOB_CHANGE` also violate `CHK_CHANGE_TYPE` | trg_employees.sql L77-110; 01_core_tables.sql L152-177 | Re-home as service writes in the `log_history` shape (P5) |
+| DEF-13 | **`rehire_employee` is blocked by its own trigger.** It updates TERMINATED→ACTIVE, which TRG-006 rejects with -20503. It also has no check that the employee is TERMINATED, and no manager or location handling | PKG_EMPLOYEE.pkb L750-793; trg_employees.sql L68-73 | Fix: rehire is the one allowed transition and requires TERMINATED — **fixed in P5** (rehire requires TERMINATED, else 409 `EMPLOYEE_NOT_TERMINATED` (v1.1-P5); validates dept, job, optional manager incl. cycle; location defaults to the department's; `EmployeeCommandApiTest.rehireIsTheOnlyWayBackFromTerminated`) |
+| DEF-14 | **TRG_EMP_BEFORE_UPDATE history inserts cannot work.** They use the columns `HISTORY_ID`, `CHANGE_DATE`, `OLD_VALUE`, `NEW_VALUE`, `CHANGED_BY` and `CHANGE_REASON`, none of which exist in EMPLOYEE_HISTORY (the DDL has `HIST_ID`, `EFFECTIVE_DATE` and typed `OLD_*`/`NEW_*` columns). The values `DEPARTMENT_CHANGE` and `JOB_CHANGE` also violate `CHK_CHANGE_TYPE` | trg_employees.sql L77-110; 01_core_tables.sql L152-177 | Re-home as service writes in the `log_history` shape (P5) — **fixed in P5** (service writes typed `employee_history` rows with valid `change_type`s) |
 | DEF-15 | **Leave status audit is silently lost.** TRG_LEAVE_REQUEST_AUDIT writes `ACTION_TYPE='STATUS_CHANGE'`, but `CHK_AUDIT_ACTION` allows only INSERT, UPDATE and DELETE, and PKG_AUDIT's `WHEN OTHERS` swallows the violation | trg_audit.sql L56-68; 04_performance_tables.sql L104; PKG_AUDIT.pkb | Fix (D-08 adds STATUS_CHANGE; already locked) — **fixed in P3** (`approveMovesPendingToUsedAndAuditsTheStatus`) |
 | DEF-16 | `calculate_payroll` commits every 50 employees, and the CALCULATING status is committed before the work, so a failure leaves a half-calculated run | PKG_PAYROLL.pkb L286-327 | Fix: one transaction, or idempotent per-employee resumable work |
 | DEF-17 | `USER_SESSIONS.USERNAME` and every `CREATED_BY`/`MODIFIED_BY`/`CHANGED_BY` are `VARCHAR2(30)`, but the actor written is the email, up to 100 characters | 04_performance_tables.sql L156; PKG_SECURITY.pkb | Fix (D-04 widens; already locked) |
@@ -734,7 +785,7 @@ re-homing boundary.
 | DEF-19 | The hire-date limit differs: Forms allows +90 days, the trigger +180 | HRMS_EMPLOYEE.xml L383; trg_employees.sql L35 | OQ-10 |
 | DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) |
 | DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) |
-| DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) — P3 provides `LeaveService.cancelPendingRequestsOf`; P5 wires terminate to it |
+| DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) — P3 provides `LeaveService.cancelPendingRequestsOf`; P5 wires terminate to it — **fixed in P5** (terminate → `LeaveService.cancelPendingRequestsOf`; pending balance released, STATUS_CHANGE audited; `EmployeeCommandApiTest.terminateCancelsPendingLeaveThroughTheLeaveServiceAndEndsCompensation`) |
 
 ---
 
@@ -745,6 +796,13 @@ re-homing boundary.
 | DEF-23 | `VW_LEAVE_SUMMARY.AVAILABLE` is `OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT`, which **ignores PENDING**, while `LEAVE_BALANCES.AVAILABLE` subtracts it. The report can show more days than a request may use | schema/views/hrms_views.sql L96; 03_leave_tables.sql L47 | P1 keeps parity in the view. P7 endpoint returns both `pending` and the generated `available` (net of pending). See OQ-14 |
 | DEF-24 | Oracle `CHECK (X IN ('A','B', NULL))` never rejects anything, because `X IN (…, NULL)` is UNKNOWN for a non-matching value and UNKNOWN passes a CHECK. `CHK_ACCRUAL_FREQ` and `CHK_HALF_DAY` were no-ops | 03_leave_tables.sql L31, L90 | Fix (already done by D-01's explicit `x IS NULL OR x IN (…)`). P8 data migration must report legacy rows that violate the tightened checks |
 | DEF-25 | The employee seed header claims 25 employees; it inserts 24 | data/seed/02_employee_data.sql L4 | Informational; no action |
+
+**Discovered in P5**
+
+| ID | Defect | Evidence | Recommended default |
+|---|---|---|---|
+| DEF-P5-1 | `promote_employee` has no ACTIVE check and does not validate the new job; `transfer_employee` does not validate a new job; `rehire_employee` does not validate the job | PKG_EMPLOYEE.pkb L581-642, L504-576, L750-793 | Fix under the OQ-04 policy (fix business-logic bugs, already accepted): **fixed in P5** (`EMPLOYEE_NOT_ACTIVE` / `INVALID_JOB`; `EmployeeCommandApiTest.promoteGoesThroughThePort`, `transferValidatesAndWritesHistory`) |
+| DEF-P5-2 | Promote reads the old salary with `ROWNUM = 1 … ORDER BY` (ROWNUM is applied before the sort, so an arbitrary active record is used) and writes `old_salary = 0` when none exists | PKG_EMPLOYEE.pkb L596-606 | Fix: P6's `currentBaseSalary` returns the record effective on the promotion date; NULL (not 0) when none |
 
 ---
 
@@ -772,6 +830,8 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
 | OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists | Coordinator-applied default: **production** — the P8 data migration creates a credential per ACTIVE employee with an unusable hash and a one-time reset link (sent through the P3 outbox). **Dev/test only** — `db/seed/R__dev_seed_p3.sql` gives every seeded ACTIVE employee the password `Hrms#2026` (bcrypt); it is in `db/seed`, which Flyway loads only with the `dev` profile or in tests, never on the production path (`ProductionMigrationTest`). Documented in `backend/README.md` | open — provisional, awaiting user confirmation (dev half implemented in P3; production half is P8) |
 | OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented) |
+| OQ-P5-1 | TRG-011 (department audit) has no write path to attach to: no form, package routine or API route creates, updates or deletes departments. Should the program add department maintenance? | Raised in P5. Departments change only by SQL in legacy | No department write API in P5–P8. If one is added (P7 admin or later), it writes `audit_log` through `AuditWriter` in the same transaction (action-only payload, D-08), and TRG-011 is re-homed there. P8 marks TRG-011 dropped if still unused | open — provisional, awaiting user confirmation (nothing implemented) |
+| OQ-P5-2 | SSN capture: should the employee API accept an SSN on create/update, encrypted with a key from configuration (PKG-S03, PLL-003)? | The HRMS_EMPLOYEE form and `create_employee` never take an SSN; only `encrypt_ssn` exists. P5 added the stricter PLL-003 validator but no route | Do not accept SSN in the API until a key-management decision exists; P8 re-encrypts legacy `ssn_encrypted` with the external key, and adds an SSN write path (validator ready) at the same time | open — provisional, awaiting user confirmation (validator only) |
 
 ---
 
@@ -785,3 +845,4 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P2-01 | 2026-11-20 | P2 | D-05: added the code `INVALID_CURRENT_PASSWORD` (422) for a wrong current password on change-password | Legacy `change_password` was a stub with no such check. 422 follows D-05's split (well-formed input that fails a rule); 401 would wrongly signal an invalid session. Additive; no existing code or status changed |
 | A-P3-01 | 2026-11-20 | P3 | **Contract frozen at `v1`** (`openapi-v1.yaml` 1.0.0): P2 routes unchanged; added 11 leave operations (`/api/v1/leave/types`, `/balances`, `/requests` GET+POST, `/requests/{requestId}` + `/approve` `/reject` `/cancel`, `/approvals`, `/team-calendar`, `/accrual-runs`), leave schemas, and the complete `ErrorCode` enum for every phase (D-05 codes for P4–P7 included so they need no amendment) | P3 exit criterion. Later changes need `v1.N` (additive) or `v2` (breaking) |
 | A-P3-02 | 2026-11-20 | P3 | D-05: `EMPLOYEE_NOT_ACTIVE` is always **422** (the -20012 transfer row said 409); `PARAM_NOT_EDITABLE` is always 409 and an unknown parameter is `NOT_FOUND` 404. Each `ErrorCode` now has exactly one HTTP status | One status per code keeps the frozen catalogue machine-checkable. Neither route exists yet (P5, P7), so no client is affected |
+| A-P5-01 (`v1.1-P5`) | 2026-11-20 | P5 | **Additive contract amendment** (`openapi-v1.yaml` 1.1.0, `x-contract-version: v1.1-P5`): `POST /api/v1/employees`; `PATCH` and `DELETE /api/v1/employees/{empId}` (DELETE always 405 `DELETE_FORBIDDEN`); `POST /api/v1/employees/{empId}/transfer`, `/promote`, `/terminate`, `/rehire`; `GET /api/v1/employees/{empId}/history`; schemas `CreateEmployeeRequest`, `UpdateEmployeeRequest`, `TransferRequest`, `PromoteRequest`, `TerminateRequest`, `RehireRequest`, `EmployeeMutation`, `Warning`, `WarningCode`, `EmploymentType`, `EmployeeHistoryEntry`; new `ErrorCode` `EMPLOYEE_NOT_TERMINATED` (409, no legacy code; extends the D-05 table — rehire of an employee who is not TERMINATED). `INVALID_SALARY` (-20101) is also raised by the employee service for hire/promote/rehire (code and status unchanged). `OpenApiContractTest` accepts `v1` or `v1.N[-Pn]` | P5 routes did not exist in v1. Rehire of a non-terminated employee (DEF-13) is a state conflict no v1 code describes (`REACTIVATION_FORBIDDEN` means the opposite direction). Nothing in v1 changed. Numbered `-P5` because P4 amends in parallel; the coordinator renumbers on merge |
