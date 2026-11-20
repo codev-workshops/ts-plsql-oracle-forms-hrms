@@ -50,6 +50,15 @@ public class EmployeeReadService {
                 .param("empId", empId).query(Long.class).single() > 0;
     }
 
+    /**
+     * Ids of the employees on payroll: {@code employment_status = 'ACTIVE' AND active_flag}, ascending (the
+     * PKG_PAYROLL.calculate_payroll cursor). The in-process read API payroll uses instead of the EMPLOYEES table.
+     */
+    public java.util.List<Long> activeEmployeeIds() {
+        return jdbc.sql("SELECT e.emp_id FROM hrms.employees e WHERE " + ACTIVE_FILTER + " ORDER BY e.emp_id")
+                .query(Long.class).list();
+    }
+
     public EmployeePage search(EmployeeSearch s) {
         List<String> where = new ArrayList<>();
         Map<String, Object> params = new LinkedHashMap<>();

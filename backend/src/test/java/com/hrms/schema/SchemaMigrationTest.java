@@ -30,7 +30,7 @@ class SchemaMigrationTest {
             "leave_types", "leave_balances", "leave_requests", "leave_accrual_log", "holidays",
             "review_cycles", "performance_reviews", "performance_goals", "audit_log",
             "system_parameters", "notification_queue", "user_sessions", "lookup_values",
-            "user_credentials", "permission_rules", "leave_accrual_runs");
+            "user_credentials", "permission_rules", "leave_accrual_runs", "payroll_tax_parameters");
 
     private static final List<String> VIEWS = List.of(
             "vw_active_employees", "vw_org_hierarchy", "vw_employee_compensation",

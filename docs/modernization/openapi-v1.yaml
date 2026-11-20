@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 1.1.0
-  x-contract-version: v1.1-P5
+  version: 1.2.0
+  x-contract-version: v1.2-P6
   description: |
     **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
     sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
@@ -15,6 +15,12 @@ info:
     `GET /api/v1/employees/{empId}/history`; schemas for those bodies and `EmployeeMutation` with
     `warnings[]` (OQ-11); error code `EMPLOYEE_NOT_TERMINATED` (409). Nothing in v1 changed. P4
     numbers its parallel amendment `v1.1-P4`; the coordinator reconciles the numbering on merge.
+
+    **Amendment v1.2-P6 (additive, P6 payroll):** 13 operations under `/api/v1/payroll` (pay periods:
+    list, get, generate, close; runs: list, create, get, calculate, approve, reverse, payslips,
+    errors; employee salary records) and their schemas. No new error code: the payroll codes
+    (`INVALID_SALARY`, `PERIOD_CLOSED`, `INVALID_RUN_STATUS`, `NO_ACTIVE_SALARY`) were catalogued
+    in v1. Nothing in v1 or v1.1-P5 changed.
 
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
@@ -37,6 +43,7 @@ tags:
   - name: employees
   - name: lookups
   - name: leave
+  - name: payroll
 paths:
   /api/v1/auth/login:
     post:
@@ -726,6 +733,270 @@ paths:
         '400': { $ref: '#/components/responses/ValidationFailed' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/payroll/pay-periods:
+    get:
+      tags: [payroll]
+      operationId: listPayPeriods
+      summary: Pay periods, newest start first; OPEN only unless status is given (FRM-061)
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - { name: status, in: query, description: Default OPEN, schema: { $ref: '#/components/schemas/PayPeriodStatus' } }
+        - { name: frequency, in: query, schema: { $ref: '#/components/schemas/PayFrequency' } }
+        - { name: year, in: query, description: Calendar year of the pay date, schema: { type: integer, minimum: 1900, maximum: 9999 } }
+      responses:
+        '200':
+          description: Periods
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PayPeriod' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/payroll/pay-periods/{periodId}:
+    get:
+      tags: [payroll]
+      operationId: getPayPeriod
+      summary: One pay period
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      responses:
+        '200':
+          description: Period
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayPeriod' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/payroll/pay-periods/generate:
+    post:
+      tags: [payroll]
+      operationId: generatePayPeriods
+      summary: Generate a year of MONTHLY or BIWEEKLY periods (PKG_PAYROLL.create_pay_periods)
+      description: |
+        MONTHLY: calendar months; pay date = last day, moved to Friday from Saturday (-1) or Sunday (-2);
+        name `YYYY-MM (Mon)`. BIWEEKLY: the first period ends on the year's first Friday, 14-day periods
+        while the start is in the year, pay date = end + 5, name `YYYY-BW-NN`. Other frequencies are 400.
+        Idempotent: a period overlapping an existing period of the same frequency is skipped (DEF-P6-3);
+        201 when at least one period was created, else 200.
+      x-permission: PAYROLL:EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GeneratePayPeriodsRequest' }
+      responses:
+        '201':
+          description: Periods created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayPeriodGeneration' }
+        '200':
+          description: Nothing new to create
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayPeriodGeneration' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/payroll/pay-periods/{periodId}/close:
+    post:
+      tags: [payroll]
+      operationId: closePayPeriod
+      summary: Close a period (PKG_PAYROLL.close_pay_period); an already CLOSED period is PERIOD_CLOSED (-20102)
+      x-permission: PAYROLL:EDIT
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      responses:
+        '200':
+          description: Closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayPeriod' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PayrollConflict' }
+  /api/v1/payroll/runs:
+    get:
+      tags: [payroll]
+      operationId: listPayrollRuns
+      summary: Payroll runs, newest first
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - { name: periodId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/PayrollRunStatus' } }
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PayrollRun' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [payroll]
+      operationId: createPayrollRun
+      summary: Create a PENDING run for a period that is not CLOSED (PKG_PAYROLL.create_payroll_run)
+      x-permission: PAYROLL:EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePayrollRunRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRun' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PayrollConflict' }
+  /api/v1/payroll/runs/{runId}:
+    get:
+      tags: [payroll]
+      operationId: getPayrollRun
+      summary: One run with its totals
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/payroll/runs/{runId}/calculate:
+    post:
+      tags: [payroll]
+      operationId: calculatePayrollRun
+      summary: Calculate a PENDING run (PKG_PAYROLL.calculate_payroll) → CALCULATED, or ERROR when an employee failed
+      description: |
+        FRM-062: only a PENDING run (else 409 `INVALID_RUN_STATUS`, `legacyCode` null). Every employee with
+        `employmentStatus = ACTIVE` and `active = true`: gross = annual salary on the period end / periods
+        per year; federal, state, Social Security and Medicare tax from the configured tables (DEF-05);
+        DEDUCTION/BENEFIT pay elements. One transaction (DEF-16). An employee without a salary is recorded
+        as an error (`NO_ACTIVE_SALARY`, see `/errors`) and the run becomes ERROR. A run locked by another
+        calculation is 409 `CONCURRENT_MODIFICATION`.
+      x-permission: PAYROLL:EDIT
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Calculated (status CALCULATED or ERROR)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PayrollConflict' }
+  /api/v1/payroll/runs/{runId}/approve:
+    post:
+      tags: [payroll]
+      operationId: approvePayrollRun
+      summary: Approve a CALCULATED run (PKG_PAYROLL.approve_payroll; other statuses are INVALID_RUN_STATUS -20103)
+      x-permission: PAYROLL:APPROVE
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRun' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PayrollConflict' }
+  /api/v1/payroll/runs/{runId}/reverse:
+    post:
+      tags: [payroll]
+      operationId: reversePayrollRun
+      summary: Reverse a CALCULATED, APPROVED, PAID or ERROR run (PKG_PAYROLL.reverse_payroll, DEF-21)
+      description: The run and its details become REVERSED and no longer count towards year-to-date. The reason is audited.
+      x-permission: PAYROLL:APPROVE
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReversePayrollRequest' }
+      responses:
+        '200':
+          description: Reversed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRun' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PayrollConflict' }
+  /api/v1/payroll/runs/{runId}/payslips:
+    get:
+      tags: [payroll]
+      operationId: listPayslips
+      summary: Payslips of a run (PKG_PAYROLL.get_payslip), ordered by last name, with year-to-date totals (DEF-06)
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - { name: empId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Payslips
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Payslip' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/payroll/runs/{runId}/errors:
+    get:
+      tags: [payroll]
+      operationId: listPayrollRunErrors
+      summary: Per-employee calculation errors of a run
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Errors
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PayrollRunError' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/payroll/employees/{empId}/salary-records:
+    get:
+      tags: [payroll]
+      operationId: listSalaryRecords
+      summary: An employee's salary history, newest first (read-only, FRM-039)
+      description: Salary records change only through hire, promote, rehire and terminate (`SalaryRecordPort`).
+      x-permission: PAYROLL:VIEW
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Salary records
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SalaryRecord' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     bearerAuth:
@@ -734,6 +1005,8 @@ components:
       description: Opaque session token from /api/v1/auth/login
   parameters:
     RequestId: { name: requestId, in: path, required: true, schema: { type: integer, format: int64 } }
+    PeriodId: { name: periodId, in: path, required: true, schema: { type: integer, format: int64 } }
+    RunId: { name: runId, in: path, required: true, schema: { type: integer, format: int64 } }
   responses:
     NotFound:
       description: NOT_FOUND (unknown, or not visible to the caller)
@@ -742,6 +1015,11 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: LEAVE_OVERLAP (-20202), INVALID_REQUEST_STATUS (-20204) or CONCURRENT_MODIFICATION
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayrollConflict:
+      description: PERIOD_CLOSED (-20102), INVALID_RUN_STATUS (-20103, or null for the FRM-062 and DEF-21 gates) or CONCURRENT_MODIFICATION
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1165,3 +1443,107 @@ components:
         totalAccrued: { type: number }
         createdBy: { type: string }
         createdDate: { type: string, format: date-time }
+    PayFrequency:
+      type: string
+      enum: [WEEKLY, BIWEEKLY, SEMIMONTHLY, MONTHLY]
+    PayPeriodStatus:
+      type: string
+      enum: [OPEN, PROCESSING, CLOSED, REVERSED]
+    PayrollRunStatus:
+      type: string
+      description: CALCULATING is not observable (one-transaction calculation, DEF-16); PAID has no transition yet
+      enum: [PENDING, CALCULATING, CALCULATED, APPROVED, PAID, REVERSED, ERROR]
+    PayrollRunType:
+      type: string
+      enum: [REGULAR, SUPPLEMENTAL, BONUS, FINAL]
+    PayPeriod:
+      type: object
+      properties:
+        periodId: { type: integer, format: int64 }
+        periodName: { type: string }
+        payFrequency: { $ref: '#/components/schemas/PayFrequency' }
+        periodStartDate: { type: string, format: date }
+        periodEndDate: { type: string, format: date }
+        payDate: { type: string, format: date }
+        status: { $ref: '#/components/schemas/PayPeriodStatus' }
+        closedBy: { type: string, nullable: true }
+        closedDate: { type: string, format: date-time, nullable: true }
+    GeneratePayPeriodsRequest:
+      type: object
+      required: [year, frequency]
+      properties:
+        year: { type: integer, minimum: 1900, maximum: 9999 }
+        frequency: { $ref: '#/components/schemas/PayFrequency' }
+    PayPeriodGeneration:
+      type: object
+      properties:
+        year: { type: integer }
+        frequency: { $ref: '#/components/schemas/PayFrequency' }
+        created: { type: array, items: { $ref: '#/components/schemas/PayPeriod' } }
+        skipped: { type: integer, description: Generated periods not stored because they overlap an existing one }
+    CreatePayrollRunRequest:
+      type: object
+      required: [periodId]
+      properties:
+        periodId: { type: integer, format: int64 }
+        runType: { allOf: [{ $ref: '#/components/schemas/PayrollRunType' }], description: Default REGULAR }
+    ReversePayrollRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    PayrollRun:
+      type: object
+      properties:
+        runId: { type: integer, format: int64 }
+        periodId: { type: integer, format: int64 }
+        periodName: { type: string }
+        runType: { $ref: '#/components/schemas/PayrollRunType' }
+        runDate: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/PayrollRunStatus' }
+        totalGross: { type: number, nullable: true }
+        totalDeductions: { type: number, nullable: true, description: Taxes, deductions and benefits (DEF-P6-1) }
+        totalNet: { type: number, nullable: true }
+        employeeCount: { type: integer, nullable: true, description: Employees calculated without error }
+        errorCount: { type: integer }
+        submittedBy: { type: string, nullable: true }
+        submittedDate: { type: string, format: date-time, nullable: true }
+        approvedBy: { type: string, nullable: true }
+        approvedDate: { type: string, format: date-time, nullable: true }
+    PayrollRunError:
+      type: object
+      properties:
+        detailId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        message: { type: string }
+    Payslip:
+      type: object
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        employeeName: { type: string }
+        periodName: { type: string }
+        payDate: { type: string, format: date }
+        grossPay: { type: number }
+        totalDeductions: { type: number }
+        netPay: { type: number }
+        federalTax: { type: number }
+        stateTax: { type: number }
+        socialSecurity: { type: number }
+        medicare: { type: number }
+        ytdGross: { type: number, description: 'Pay-date year, runs CALCULATED/APPROVED/PAID, up to this pay date' }
+        ytdNet: { type: number }
+    SalaryRecord:
+      type: object
+      properties:
+        salaryId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        effectiveDate: { type: string, format: date }
+        endDate: { type: string, format: date, nullable: true }
+        baseSalary: { type: number }
+        currencyCode: { type: string }
+        payFrequency: { allOf: [{ $ref: '#/components/schemas/PayFrequency' }], nullable: true }
+        salaryBasis: { type: string }
+        changeReason: { type: string, nullable: true }
+        changePct: { type: number, nullable: true }
+        active: { type: boolean }

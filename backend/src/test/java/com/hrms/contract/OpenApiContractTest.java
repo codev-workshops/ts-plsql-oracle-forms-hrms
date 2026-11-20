@@ -10,6 +10,7 @@ import com.hrms.auth.MenuController;
 import com.hrms.auth.Module;
 import com.hrms.common.ErrorCode;
 import com.hrms.leave.LeaveModels;
+import com.hrms.payroll.PayrollModels;
 import com.hrms.employee.EmployeeModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
@@ -60,7 +61,7 @@ class OpenApiContractTest extends ApiTestSupport {
     @Test
     void contractIsV1OrAnAdditiveAmendment() {
         assertThat((String) spec.get("openapi")).startsWith("3.");
-        // v1 frozen by P3; additive amendments are v1.N (P5: v1.1-P5, reconciled by the coordinator on merge)
+        // v1 frozen by P3; additive amendments are v1.N (v1.1-P5, v1.2-P6; reconciled by the coordinator on merge)
         assertThat((String) map(spec, "info").get("x-contract-version")).matches("v1(\\.\\d+(-P\\d)?)?");
     }
 
@@ -112,7 +113,16 @@ class OpenApiContractTest extends ApiTestSupport {
                 Map.entry("PromoteRequest", EmployeeModels.PromoteRequest.class),
                 Map.entry("TerminateRequest", EmployeeModels.TerminateRequest.class),
                 Map.entry("RehireRequest", EmployeeModels.RehireRequest.class),
-                Map.entry("EmployeeHistoryEntry", EmployeeModels.EmployeeHistoryEntry.class));
+                Map.entry("EmployeeHistoryEntry", EmployeeModels.EmployeeHistoryEntry.class),
+                Map.entry("PayPeriod", PayrollModels.PayPeriod.class),
+                Map.entry("GeneratePayPeriodsRequest", PayrollModels.GeneratePayPeriodsRequest.class),
+                Map.entry("PayPeriodGeneration", PayrollModels.PayPeriodGeneration.class),
+                Map.entry("CreatePayrollRunRequest", PayrollModels.CreatePayrollRunRequest.class),
+                Map.entry("ReversePayrollRequest", PayrollModels.ReversePayrollRequest.class),
+                Map.entry("PayrollRun", PayrollModels.PayrollRun.class),
+                Map.entry("PayrollRunError", PayrollModels.PayrollRunError.class),
+                Map.entry("Payslip", PayrollModels.Payslip.class),
+                Map.entry("SalaryRecord", PayrollModels.SalaryRecord.class));
         records.forEach((schema, type) -> assertThat(properties(schema))
                 .as(schema).isEqualTo(Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName).collect(Collectors.toSet())));
@@ -129,6 +139,10 @@ class OpenApiContractTest extends ApiTestSupport {
         assertThat(enumOf("EmploymentType")).isEqualTo(names(EmployeeModels.EmploymentType.values()));
         assertThat(enumOf("WarningCode")).isEqualTo(names(EmployeeModels.WarningCode.values()));
         assertThat(enumOf("HalfDayPeriod")).isEqualTo(names(LeaveModels.HalfDayPeriod.values()));
+        assertThat(enumOf("PayFrequency")).isEqualTo(names(PayrollModels.PayFrequency.values()));
+        assertThat(enumOf("PayPeriodStatus")).isEqualTo(names(PayrollModels.PayPeriodStatus.values()));
+        assertThat(enumOf("PayrollRunStatus")).isEqualTo(names(PayrollModels.PayrollRunStatus.values()));
+        assertThat(enumOf("PayrollRunType")).isEqualTo(names(PayrollModels.PayrollRunType.values()));
     }
 
     @Test

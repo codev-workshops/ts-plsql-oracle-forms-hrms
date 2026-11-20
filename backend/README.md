@@ -25,5 +25,15 @@ mvn -f backend/pom.xml test     # applies every migration + dev seed to an embed
 ## Jobs
 
 `hrms.jobs.enabled=true` turns on the monthly leave accrual (`hrms.jobs.leave-accrual-cron`, default
-`0 0 1 1 * *`, 01:00 UTC on the 1st) and the notification dispatcher
-(`hrms.jobs.notification-delay`, default `PT5M`). Off by default; run them on one instance only.
+`0 0 1 1 * *`, 01:00 UTC on the 1st), the notification dispatcher
+(`hrms.jobs.notification-delay`, default `PT5M`) and the payroll batch that calculates every PENDING
+run (`hrms.jobs.payroll-batch-cron`, default `0 0 2 * * *`, 02:00 UTC daily; actor
+`system:payroll-batch`). Off by default; run them on one instance only.
+
+## Payroll tax configuration
+
+Federal brackets live in `hrms.tax_brackets` and the other constants (Social Security wage base and
+rate, Medicare rates and threshold, standard deductions, allowance amount, flat state rates) in
+`hrms.payroll_tax_parameters`, both seeded with the legacy 2024 values by `V400__payroll.sql`. A run
+uses the latest tax year that is not after its pay-date year, so add rows for a new year to change
+the rates; no code change is needed.
