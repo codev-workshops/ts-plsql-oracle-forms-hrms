@@ -77,7 +77,7 @@ export async function call<T>(
 }
 
 const MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS: 'Invalid email or password. Repeated failures lock the account for 15 minutes.',
+  INVALID_CREDENTIALS: 'Invalid email or password. Repeated failures lock the account temporarily.',
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
   FORBIDDEN: 'You do not have permission for this action.',
   INVALID_CURRENT_PASSWORD: 'The current password is incorrect.',

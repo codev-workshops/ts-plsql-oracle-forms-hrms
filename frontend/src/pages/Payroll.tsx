@@ -15,11 +15,11 @@ export function Payroll() {
   const [run, setRun] = useState<Run | null>(null);
   const payslips = useLoad(
     () => (run ? call(api.GET('/api/v1/payroll/runs/{runId}/payslips', { params: { path: { runId: run.runId! } } })) : Promise.resolve([])),
-    [run?.runId],
+    [run?.runId, run?.status],
   );
   const errors = useLoad(
     () => (run ? call(api.GET('/api/v1/payroll/runs/{runId}/errors', { params: { path: { runId: run.runId! } } })) : Promise.resolve([])),
-    [run?.runId],
+    [run?.runId, run?.status],
   );
   const runPath = (r: Run) => ({ path: { runId: r.runId! } });
   const after = (p: Promise<Run>) => p.then((r) => { setRun(r); runs.reload(); });

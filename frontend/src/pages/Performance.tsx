@@ -5,12 +5,23 @@ import { ActionButton, body, DataTable, ErrorBanner, SimpleForm, useLoad } from 
 
 type Review = Schemas['PerformanceReview'];
 
+/** Mirrors the server's review status gates (PerformanceService) to hide forms that would be rejected. */
+const SELF_ASSESSABLE = ['NOT_STARTED', 'SELF_REVIEW'];
+const MANAGER_REVIEWABLE = ['MANAGER_REVIEW', 'MEETING_SCHEDULED'];
+
 /** HRMS_PERFORMANCE: cycles (admin lifecycle), my reviews, goals. No delete actions (block DML policy). */
 export function Performance() {
   const { has, user } = useAuth();
   const admin = has('PERFORMANCE', 'ADMIN');
   const cycles = useLoad(() => call(api.GET('/api/v1/performance/cycles', { params: { query: { includeClosed: true } } })), []);
-  const reviews = useLoad(() => call(api.GET('/api/v1/performance/reviews')), []);
+  const [source, setSource] = useState<{ role: 'EMPLOYEE' | 'REVIEWER' } | { cycleId: number }>({ role: 'EMPLOYEE' });
+  const reviews = useLoad(
+    () =>
+      'cycleId' in source
+        ? call(api.GET('/api/v1/performance/cycles/{cycleId}/reviews', { params: { path: { cycleId: source.cycleId } } }))
+        : call(api.GET('/api/v1/performance/reviews', { params: { query: { role: source.role } } })),
+    [source],
+  );
   const [selected, setSelected] = useState<Review | null>(null);
   const goals = useLoad(
     () =>
@@ -48,7 +59,8 @@ export function Performance() {
                   )}
                   {c.status !== 'DRAFT' && c.status !== 'CLOSED' && (
                     <>
-                      <ActionButton label="Generate reviews" onClick={() => call(api.POST('/api/v1/performance/cycles/{cycleId}/reviews/generate', { params: cyclePath(c) })).then(reviews.reload)} />
+                      <ActionButton label="Generate reviews" onClick={() => call(api.POST('/api/v1/performance/cycles/{cycleId}/reviews/generate', { params: cyclePath(c) })).then(() => setSource({ cycleId: c.cycleId! }))} />
+                      <button type="button" onClick={() => setSource({ cycleId: c.cycleId! })}>All reviews</button>
                       <ActionButton label="Close" onClick={() => call(api.POST('/api/v1/performance/cycles/{cycleId}/close', { params: cyclePath(c) })).then(cycles.reload)} />
                     </>
                   )}
@@ -72,7 +84,16 @@ export function Performance() {
           }
         />
       )}
-      <h3>My reviews</h3>
+      <h3>Reviews</h3>
+      <div className="tabs">
+        <button type="button" aria-pressed={'role' in source && source.role === 'EMPLOYEE'} onClick={() => setSource({ role: 'EMPLOYEE' })}>
+          My reviews
+        </button>
+        <button type="button" aria-pressed={'role' in source && source.role === 'REVIEWER'} onClick={() => setSource({ role: 'REVIEWER' })}>
+          Reviews I conduct
+        </button>
+        {'cycleId' in source && <span className="muted">All reviews in cycle {source.cycleId}</span>}
+      </div>
       <ErrorBanner error={reviews.error} />
       <DataTable
         label="Reviews"
@@ -92,23 +113,23 @@ export function Performance() {
             Review {selected.reviewId}: {selected.employeeName} — {selected.status}
           </h3>
           <div className="row">
-            {selected.empId === user?.empId && (
-              <>
+            {selected.empId === user?.empId && SELF_ASSESSABLE.includes(selected.status ?? '') && (
                 <SimpleForm
                   title="Self assessment"
                   submitLabel="Submit self assessment"
                   fields={[{ name: 'selfAssessment', label: 'Self assessment', type: 'textarea', required: true }]}
                   onSubmit={(v) => refresh(call(api.POST('/api/v1/performance/reviews/{reviewId}/self-assessment', { params: reviewPath, body: { selfAssessment: v.selfAssessment ?? '' } })))}
                 />
+            )}
+            {selected.empId === user?.empId && selected.status === 'COMPLETED' && (
                 <SimpleForm
                   title="Acknowledge"
                   submitLabel="Acknowledge"
                   fields={[{ name: 'comments', label: 'Comments', type: 'textarea' }]}
                   onSubmit={(v) => refresh(call(api.POST('/api/v1/performance/reviews/{reviewId}/acknowledge', { params: reviewPath, body: body(v) })))}
                 />
-              </>
             )}
-            {selected.reviewerEmpId === user?.empId && (
+            {selected.reviewerEmpId === user?.empId && MANAGER_REVIEWABLE.includes(selected.status ?? '') && (
               <SimpleForm
                 title="Manager review"
                 submitLabel="Submit manager review"
