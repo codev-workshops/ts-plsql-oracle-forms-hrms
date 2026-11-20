@@ -204,7 +204,7 @@ class SchemaMigrationTest {
             Long id = jdbc.queryForObject("""
                     INSERT INTO hrms.leave_balances (emp_id, leave_type_id, calendar_year, opening_balance,
                         accrued, used, adjustment, pending, created_by)
-                    VALUES (11, 1, 2026, 5, 10, 3.5, -1, 2, 'test') RETURNING balance_id
+                    VALUES (11, 1, 2099, 5, 10, 3.5, -1, 2, 'test') RETURNING balance_id
                     """, Long.class);
             assertThat(jdbc.queryForObject("SELECT available FROM hrms.leave_balances WHERE balance_id = ?",
                     BigDecimal.class, id)).isEqualByComparingTo("8.50");
@@ -324,7 +324,8 @@ class SchemaMigrationTest {
         assertThat(jdbc.queryForObject("SELECT compa_ratio FROM hrms.vw_employee_compensation WHERE emp_id = 1",
                 BigDecimal.class)).isEqualByComparingTo("100.0");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM hrms.vw_payroll_latest", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM hrms.vw_leave_summary", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hrms.vw_leave_summary", Integer.class))
+                .isEqualTo(jdbc.queryForObject("SELECT count(*) FROM hrms.leave_balances", Integer.class));
         tx.executeWithoutResult(s -> {
             jdbc.update("""
                     INSERT INTO hrms.leave_requests (emp_id, leave_type_id, start_date, end_date, total_days,
