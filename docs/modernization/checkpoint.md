@@ -263,7 +263,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 
 | Phase | Status | Branch | PR | Content commit SHAs | Contract version at exit | Date | Notes |
 |---|---|---|---|---|---|---|---|
-| P0 Inventory & checkpoint | submitted | `modernization/p0-inventory` | _see PR_ | _filled by ledger commit_ | v0-draft | 2026-11-20 | Docs only. No code or schema changes. |
+| P0 Inventory & checkpoint | submitted | `modernization/p0-inventory` | _see PR_ | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. |
 | P1 Postgres schema | pending | | | | | | |
 | P2 Auth + employee read model | pending | | | | | | |
 | P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
