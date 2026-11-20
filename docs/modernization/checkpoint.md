@@ -1,0 +1,553 @@
+# HRMS Modernization — Program Checkpoint
+
+> **Single entry point for every phase.** Read this file first. Locked decisions (§2) and the
+> API contract (once frozen) are binding; changing them requires a versioned amendment (§7),
+> never a silent edit. Detailed catalogue backing the registry: [`inventory.md`](inventory.md).
+
+| Field | Value |
+|---|---|
+| `contract_version` | **`v0-draft`** |
+| `checkpoint_status` | `in-progress` |
+| `last_updated_by_phase` | `P0` |
+| Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
+
+---
+
+## 1. How to use this file (phase protocol)
+
+1. Read §2 (locked decisions), §3 (contract version), §4 (ledger), §5 (registry), §6 (open questions).
+2. Do only your phase's work. Registry entries whose `Dest` is your phase are your scope.
+3. On exit, update **all** of the following in the same PR:
+   - §4: add or update your ledger row with status `submitted` and your commit SHAs. The
+     coordinator marks it `accepted` in the next phase.
+   - §5: set `Status` for each entry you touched (vocabulary in §5.0) and give the evidence
+     (a commit, file or test).
+   - §6: close the questions you resolved, citing the decision. Add new questions.
+   - §2 and §3: change these only through §7 amendments.
+4. The `api` IDs used below are logical names, not final routes. Phase 3 freezes the real routes in
+   `docs/modernization/openapi-v1.yaml`.
+
+---
+
+## 2. Locked decisions
+
+Each decision has an ID (`D-xx`). Cite it by ID. To change one, add an amendment in §7.
+
+### D-00 Target application stack — **USER DECISION** (relayed by the coordinator, 2026-11-20)
+
+| Layer | Choice |
+|---|---|
+| Backend language and framework | **Java 21 + Spring Boot 3** |
+| Database | **PostgreSQL 16** |
+| Schema migrations | **Flyway** (versioned SQL migrations, `V<n>__<desc>.sql`) |
+| API style | **REST/JSON, with the contract defined in OpenAPI 3.x** (`docs/modernization/openapi-v1.yaml`, frozen at v1 in P3) |
+| Frontend | **React** (replaces the Oracle Forms UI) |
+
+Implications for later phases (recommended defaults, not user decisions):
+- P1 writes Flyway SQL migrations. P1 chooses the Maven/Gradle layout and records it in §2 as an
+  amendment if it is not obvious.
+- Server-side logic lives in Spring services. **No business logic goes in DB triggers or stored
+  procedures** (see D-07). DB constraints (PK/FK/CHECK/UNIQUE/generated columns) still enforce
+  integrity.
+- React screens call the REST API only. Every Forms-only gate is re-homed in the API (§5), and
+  the UI may at most mirror a gate for UX.
+
+### D-01 Oracle → PostgreSQL type mapping
+
+| Oracle | PostgreSQL | Rule |
+|---|---|---|
+| `NUMBER(p,0)` surrogate PK / FK id (`*_ID`) | `BIGINT` | All surrogate keys and their FKs. |
+| `NUMBER(p,s)` money / rate / days / rating | `NUMERIC(p,s)` | Keep the precision and scale exactly. Never use `float`/`double`/`real`. |
+| `NUMBER` (unconstrained) | `NUMERIC` | |
+| `NUMBER(p)` small counters/years (e.g. `CALENDAR_YEAR`, `PRIORITY`, `EMPLOYEE_COUNT`) | `INTEGER` | P1 lists each column it maps this way. |
+| `VARCHAR2(n)` | `VARCHAR(n)` | Length in characters. Audit actor columns are widened (D-04). |
+| `CHAR(1)` Y/N flag (`*_FLAG`, `OVERTIME_ELIGIBLE`, `BENEFITS_ENROLLED`, `PRENOTE_SENT`, `REQUIRES_*`, `EMPLOYER_PAID`) | `BOOLEAN` | The flag policy is below. |
+| `CHAR(1)` non-flag code (`GENDER`) | `VARCHAR(1)` + `CHECK` | This is not a boolean. |
+| `DATE`, calendar-date semantics | `DATE` | `HIRE_DATE`, `TERMINATION_DATE`, `DATE_OF_BIRTH`, `START_DATE`, `END_DATE`, `EFFECTIVE_DATE`, `PERIOD_START_DATE`, `PERIOD_END_DATE`, `PAY_DATE`, `HOLIDAY_DATE`, `TARGET_DATE`, `ACCRUAL_DATE`, `CARRYOVER_EXPIRY_DT`, review-cycle due dates |
+| `DATE`, event/instant semantics | `TIMESTAMPTZ` (stored in UTC) | `CREATED_DATE`, `MODIFIED_DATE`, `CHANGED_DATE`, `LOGIN_TIME`, `LOGOUT_TIME`, `APPROVAL_DATE`, `APPROVED_DATE`, `SUBMITTED_DATE`, `CANCELLED_DATE`, `CLOSED_DATE`, `RUN_DATE`, `EMPLOYEE_ACK_DATE`, `SENT_DATE`, plus any other `*_TIME` or audit/event column |
+| `CLOB` free text (assessments, comments, notes, notification `BODY`) | `TEXT` | |
+| `CLOB` holding JSON (`AUDIT_LOG.OLD_VALUES`, `AUDIT_LOG.NEW_VALUES`) | `JSONB` | Audit payloads are real JSON objects (D-04, D-08). |
+| `BLOB` (`EMPLOYEES.PHOTO_BLOB`) | `BYTEA` | |
+| `LEAVE_BALANCES.AVAILABLE NUMBER(6,2) GENERATED ALWAYS AS (OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT - PENDING) VIRTUAL` | `NUMERIC(6,2) GENERATED ALWAYS AS (opening_balance + accrued - used + adjustment - pending) STORED` | PostgreSQL 16 has no virtual generated columns. The formula must stay identical. |
+| `DEFAULT SYSDATE` | `DEFAULT CURRENT_TIMESTAMP` (timestamptz) / `CURRENT_DATE` (date) | Only a safety net. The application supplies the values (D-04). |
+| `CHECK (x IN ('A','B', NULL))` | `CHECK (x IS NULL OR x IN ('A','B'))` | Make the NULL semantics explicit. |
+| Schema `HRMS`, upper-case identifiers | Schema `hrms`, unquoted lower `snake_case` | Keep the column names, lower-cased. |
+
+**CHAR(1) flag policy:** `'Y'` maps to `true` and `'N'` maps to `false`. A column that is
+`NOT NULL` in Oracle stays `NOT NULL`. A nullable flag that has an Oracle default becomes
+`NOT NULL DEFAULT <same value>`, and any NULLs are backfilled to that default during data
+migration (P8 rehearsal verifies this). The API exposes JSON booleans. The old string `'Y'`/`'N'`
+never appears in the API.
+
+**Calendar-date vs instant:** if P1 finds a `DATE` column that the list above does not classify,
+default it to `DATE` when the name ends in `_DATE` and holds a business date, otherwise to
+`TIMESTAMPTZ`, and list it in the P1 ledger notes. Business dates have no timezone. Instants are
+stored in UTC.
+
+### D-02 Sequence and ID strategy
+
+- Surrogate PKs use `BIGINT GENERATED BY DEFAULT AS IDENTITY`, so seed and migrated rows can keep
+  their original IDs. The start value is at least the Oracle `START WITH`. After seed or data load,
+  each identity is reset to `max(id)+1` with `setval`. This is mandatory because the seed IDs
+  collide with sequences that start at 1 (inventory §I-6).
+- **`EMP_NUMBER` comes from a dedicated sequence `hrms.seq_emp_number`**, formatted as
+  `'EMP-' || lpad(nextval::text, 6, '0')`. This drops the `MAX()+1` race in
+  `PKG_EMPLOYEE.generate_emp_number`, together with its silent fallback to `SEQ_EMPLOYEE`. Before
+  go-live, the sequence is set above the largest numeric suffix already in use. The `UNIQUE`
+  constraint on `emp_number` stays. Error `-20002` (duplicate generated number) becomes
+  unreachable and is kept only as a defensive 409.
+- Number formatting stays `EMP-NNNNNN` (regex `^EMP-\d{6}$`, from
+  `PKG_VALIDATION.validate_emp_number_format`). If the suffix exceeds 999999 that is an error,
+  not a silent widening.
+- No table uses `MAX()+1` or `SELECT ... FROM DUAL` patterns.
+
+### D-03 Soft-delete convention
+
+- **No physical deletes of business rows through the application.** This covers `employees` and
+  every table with an `active_flag`. The API exposes no `DELETE` on these resources; such a request
+  returns `405` with code `DELETE_FORBIDDEN` (legacy `-20504`).
+- Deactivation sets `active_flag = false`. Employees leave only through **terminate**, which sets
+  `employment_status = 'TERMINATED'` and `active_flag = false`. They return only through
+  **rehire**.
+- **Default reads filter to active rows** (this re-homes Forms `DEFAULT_WHERE`). For employees the
+  filter is `employment_status = 'ACTIVE' AND active_flag`. Inactive rows are returned only with an
+  explicit query parameter (e.g. `includeInactive=true`), which needs the module's `VIEW`
+  permission.
+- At the DB level, P1 enforces this with grants (the application role has no `DELETE` on
+  `employees`) rather than a trigger. Exceptions (audit retention purge, test fixtures) must be
+  listed in §2 by amendment.
+
+### D-04 Audit-column ownership (`CREATED_BY`/`CREATED_DATE`/`MODIFIED_BY`/`MODIFIED_DATE`)
+
+- **The application owns these columns.** They are set from the authenticated principal and from an
+  injected `java.time.Clock`. Nothing uses DB `USER`, `SYSDATE` or `SYS_CONTEXT`, and no DB
+  trigger fills them.
+- The actor value is the principal's login identifier (the employee email, lower-cased). Batch and
+  system jobs use `system:<job-name>`. Actor columns widen to `VARCHAR(100)`, because Oracle's
+  `VARCHAR2(30)` cannot hold the email usernames that the legacy code already writes there.
+- `created_*` is written once and never updated. `modified_*` is set on every update.
+- The column-level DB defaults (`CURRENT_TIMESTAMP`) are only a safety net. Tests must not rely on
+  them.
+- Audit-log rows (`audit_log`) are written in the **same transaction** as the change they
+  describe. The legacy `PRAGMA AUTONOMOUS_TRANSACTION`, which swallowed errors, is not ported (see
+  D-08).
+
+### D-05 Error mapping: `RAISE_APPLICATION_ERROR -20xxx` → HTTP
+
+The error body is RFC 9457 `application/problem+json`, with extension members `code` (a stable
+string), `legacyCode` (the Oracle number, or null), `traceId`, and optionally `errors[]` for field
+validation. The `code` strings are part of the contract.
+
+| Legacy | Source | `code` | HTTP |
+|---|---|---|---|
+| -20001 | PKG_EMPLOYEE (not found) | `EMPLOYEE_NOT_FOUND` | 404 |
+| -20001 | PKG_LEAVE.submit (not found **or not active**) | `EMPLOYEE_NOT_FOUND` / `EMPLOYEE_NOT_ACTIVE` | 404 / 422 (split by cause) |
+| -20002 | PKG_EMPLOYEE (duplicate emp number) | `EMP_NUMBER_CONFLICT` | 409 |
+| -20003 | validate_dept | `INVALID_DEPARTMENT` | 422 |
+| -20004 | validate_manager (inactive) | `INVALID_MANAGER` | 422 |
+| -20004 | validate_manager (cycle) | `CIRCULAR_REPORTING` | 422 |
+| -20005 | terminate (already terminated) | `ALREADY_TERMINATED` | 409 |
+| -20010 | create_employee (names required) | `VALIDATION_FAILED` | 400 |
+| -20011 | create_employee (job) | `INVALID_JOB` | 422 |
+| -20012 | transfer (non-active) | `EMPLOYEE_NOT_ACTIVE` | 409 |
+| -20101 | create_salary_record (≤0) | `INVALID_SALARY` | 422 |
+| -20102 | close_pay_period / create_payroll_run | `PERIOD_CLOSED` | 409 |
+| -20103 | approve_payroll | `INVALID_RUN_STATUS` | 409 |
+| -20104 | calculate_employee_pay | `NO_ACTIVE_SALARY` | 422 |
+| (new) | calculate gate (FRM-062) | `INVALID_RUN_STATUS` | 409 |
+| -20201 | submit leave (balance) | `INSUFFICIENT_LEAVE_BALANCE` | 422 |
+| -20202 | submit leave (overlap) | `LEAVE_OVERLAP` | 409 |
+| -20203 | submit leave (type) | `INVALID_LEAVE_TYPE` | 422 |
+| -20203 | submit leave (tenure) | `MIN_TENURE_NOT_MET` | 422 |
+| -20204 | approve/reject/cancel leave | `INVALID_REQUEST_STATUS` | 409 |
+| -20210 | submit leave | `INVALID_DATE_RANGE` | 400 |
+| -20211 | submit leave | `BACKDATE_LIMIT_EXCEEDED` | 422 |
+| -20212 | submit leave | `NO_BUSINESS_DAYS` | 422 |
+| -20301 | authenticate | `INVALID_CREDENTIALS` | 401 |
+| -20310/-20311/-20312 | change_password | `PASSWORD_POLICY` | 400 |
+| -20401 | open_review_cycle | `INVALID_CYCLE_STATUS` | 409 |
+| -20402 | submit_self_assessment | `INVALID_REVIEW_STATUS` | 409 |
+| -20403 | submit_manager_review | `INVALID_RATING` | 400 |
+| -20501 | TRG_EMP_BEFORE_INSERT | `HIRE_DATE_TOO_FAR` | 422 |
+| -20502 | TRG_EMP_BEFORE_INSERT | `EMAIL_IN_USE` | 409 |
+| -20503 | TRG_EMP_BEFORE_UPDATE | `REACTIVATION_FORBIDDEN` | 409 |
+| -20504 | TRG_EMP_INSTEAD_OF_DELETE | `DELETE_FORBIDDEN` | 405 |
+| -20900 | PKG_COMMON.set_param | `PARAM_NOT_EDITABLE` | 404 / 409 |
+| (new) | missing, invalid or expired token (replaces Forms session checks) | `UNAUTHENTICATED` | 401 |
+| (new) | permission matrix denies (replaces Forms `has_permission` gates) | `FORBIDDEN` | 403 |
+| (new) | generic bean validation | `VALIDATION_FAILED` | 400 |
+| (new) | optimistic-lock / `FOR UPDATE NOWAIT` conflict | `CONCURRENT_MODIFICATION` | 409 |
+
+Rules: `4xx` means the client can act on it, `5xx` means it cannot. Messages never include SQL,
+stack traces or other employees' data. Status codes 400 vs 422 follow the split above: 400 is a
+malformed or missing input, 422 is input that is well-formed but violates a business rule, and 409
+is a state conflict.
+
+### D-06 Auth model (token + module/action permission matrix; fix, not port)
+
+- **Login:** the client posts credentials to an auth endpoint. Identity is resolved via
+  `lower(employees.email) = lower(:username)` with `employment_status = 'ACTIVE'`, which matches the
+  legacy `PKG_SECURITY.authenticate`. If more than one active row matches, the legacy code picks
+  `MIN(emp_id)`. P2 ports that deterministically and records it, and OQ-06 tracks the question.
+- **Fix, not port:** the legacy `authenticate` **never checks the password** (see inventory §I-4).
+  `hash_password` uses MD5 and is never called, and the SSN key `c_encryption_key` is hard-coded in
+  the source. The new system does the following:
+  - Credentials live in a new `user_credentials` table holding a **BCrypt or Argon2id** hash (Spring
+    Security `DelegatingPasswordEncoder`). The MD5 path is dropped.
+  - The SSN encryption key comes from external configuration or a secret store and is **never in
+    source**. Re-encryption of `ssn_encrypted` is part of P8 data migration. `decrypt_ssn`'s habit
+    of swallowing errors (`'***DECRYPT_ERROR***'`) is not ported.
+  - Responses are uniform and timing-safe: the same `INVALID_CREDENTIALS` comes back for an unknown
+    user and for a bad password.
+  - Brute-force lockout is added. The policy numbers are OQ-07 (provisional: 5 failures, 15-minute
+    lock).
+- **Token:** an opaque, random bearer token with at least 256 bits of entropy. Only its SHA-256 hash
+  is stored, in `user_sessions`. Sessions are server-side and revocable, so `logout` invalidates the
+  token. The legacy timeout is **30 minutes from `LOGIN_TIME` (absolute)**. P2 ports that value, and
+  OQ-08 tracks absolute vs. sliding.
+- **Authorization:** a data-driven **permission matrix** of
+  `(module ∈ {EMPLOYEE, PAYROLL, LEAVE, PERFORMANCE, REPORTS, ADMIN}) × (action ∈ {VIEW, CREATE,
+  EDIT, APPROVE, ADMIN})`. It is checked server-side on **every** endpoint and returns 403
+  `FORBIDDEN` on denial. Its initial population must reproduce the legacy
+  `PKG_SECURITY.has_permission` exactly, for parity:
+  1. Grade ≥ 8 → all modules, all actions.
+  2. `VIEW` on any module → grade ≥ 5.
+  3. `LEAVE` `CREATE`/`VIEW` → everyone.
+  4. `EMPLOYEE` `VIEW` → everyone.
+  5. Everything else → denied.
+  Row-level scoping (own records, own department) is described in the legacy comments but is **not
+  implemented** in the code. It is tracked as OQ-09 and must not be invented silently.
+- The React client may hide UI by permission (re-homing `SET_MENU_ITEM_PROPERTY` and
+  `SET_BLOCK_PROPERTY ... *_ALLOWED`), but the API is the only enforcement point.
+
+### D-07 Logic placement
+
+All re-homed triggers and Forms rules (§5) become Spring service, domain or authorization code, or
+DB constraints. No new PL/pgSQL business triggers are added. A DB trigger is allowed only for pure
+integrity work that a constraint cannot express, and each one needs an amendment.
+
+### D-08 Audit / CDC
+
+- `audit_log` rows are written by the application in the same transaction as the change.
+  `action_type` is limited to `INSERT`/`UPDATE`/`DELETE`/`STATUS_CHANGE`. The last value is new:
+  the legacy CHECK constraint rejected it, so leave status audits were silently lost (DEF-15).
+- `old_values` and `new_values` are JSONB. They carry at least the fields the legacy triggers
+  emitted: salary `{emp_id, salary, effective, active}`, leave `{status}`, departments
+  `{action only}`.
+- A failed audit write fails the business transaction. Audit writes are never silently skipped.
+
+### D-09 Phase-ledger mechanics
+
+The ledger format is in §4. A phase records the SHAs of its **content commits**. The final commit,
+which only writes the ledger row, is excluded because it cannot contain its own SHA. The PR head SHA
+is reported in the PR and the final message.
+
+---
+
+## 3. Contract version
+
+| Field | Value |
+|---|---|
+| `contract_version` | `v0-draft` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (does not exist yet; P2 creates it, P3 freezes it) |
+| Frozen? | No. Until P3, phases may edit the draft freely and must note their changes in the ledger. |
+| Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
+| Version history | `v0-draft` (P0, initial) |
+
+---
+
+## 4. Accepted-commits phase ledger
+
+Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) → `accepted` or
+`rejected` (by the coordinator, recorded in the next phase).
+
+| Phase | Status | Branch | PR | Content commit SHAs | Contract version at exit | Date | Notes |
+|---|---|---|---|---|---|---|---|
+| P0 Inventory & checkpoint | submitted | `modernization/p0-inventory` | _see PR_ | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. |
+| P1 Postgres schema | pending | | | | | | |
+| P2 Auth + employee read model | pending | | | | | | |
+| P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
+| P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
+| P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
+| P6 Payroll | pending | | | | | | Starts after P5. |
+| P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
+| P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. |
+
+---
+
+## 5. Re-homed logic registry
+
+### 5.0 Conventions
+
+- **ID prefixes:**
+  - `TRG-` DB trigger rule
+  - `FRM-` Oracle Forms trigger, property or gate
+  - `PLL-` Forms library routine
+  - `MNU-` menu item or gate
+  - `PKG-` package rule or batch job that must be re-homed
+  - `VW-` view
+  - `DEF-` documented or discovered defect that needs a port-vs-fix decision
+
+  IDs are stable. Never renumber them. Add new IDs at the end of each table.
+- **Dest:** the phase that owns re-homing, plus the target layer: `api-authz`, `service`, `domain`,
+  `db-constraint`, `db-view`, `job`, `ui-only`.
+- **Status:**
+  - `open`: not yet done.
+  - `in-progress`.
+  - `re-homed (Pn, <sha/test>)`.
+  - `drop-proposed`: a UI-only item with a rationale. P8 confirms it.
+  - `dropped (Pn, rationale)`.
+  - `blocked (OQ-xx)`.
+- P0 set every entry to `open` or `drop-proposed`. Line numbers refer to `main@de01258`.
+
+### 5.1 Database triggers (`plsql/triggers/`): 6 triggers, 11 rules
+
+| ID | Trigger (file) | Rule | Legacy code | Dest | Status |
+|---|---|---|---|---|---|
+| TRG-001 | TRG_EMP_BEFORE_INSERT (trg_employees.sql) | Default `CREATED_BY := USER` and `CREATED_DATE := SYSDATE` | – | P5 service (D-04) | open |
+| TRG-002 | TRG_EMP_BEFORE_INSERT | Default `ACTIVE_FLAG='Y'` and `EMPLOYMENT_STATUS='ACTIVE'` | – | P1 column defaults + P5 service | open |
+| TRG-003 | TRG_EMP_BEFORE_INSERT | `HIRE_DATE ≤ SYSDATE + 180` | -20501 | P5 domain. Conflicts with FRM-035 (+90); see OQ-10 | open |
+| TRG-004 | TRG_EMP_BEFORE_INSERT | Email unique, case-insensitive, among `ACTIVE_FLAG='Y'` rows (no DB unique constraint exists) | -20502 | P1 partial unique index `lower(email) WHERE active_flag` + P5 domain (409) | open |
+| TRG-005 | TRG_EMP_BEFORE_UPDATE | `MODIFIED_BY := NVL(:NEW, USER)` and `MODIFIED_DATE := SYSDATE` | – | P5 service (D-04) | open |
+| TRG-006 | TRG_EMP_BEFORE_UPDATE | Block the `TERMINATED → ACTIVE` transition, except through rehire | -20503 | P5 domain state machine. Note DEF-13 | open |
+| TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | open |
+| TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | open |
+| TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | open |
+| TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | open |
+| TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | open |
+
+### 5.2 Oracle Forms rules (`forms/xml-exports/*.xml`)
+
+**HRMS_LOGIN**
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-001 | BTN_LOGIN requires USERNAME and PASSWORD, then calls `PKG_SECURITY.authenticate(user, pwd, CLIENT_HOST)` | P2 api (login, 400/401) | open |
+| FRM-002 | After login: `:GLOBAL.session_id`, `current_user` and `current_emp_id` are set (a second lookup by email, `ROWNUM=1`), then HRMS_MENU opens | P2 token claims and a "current principal" endpoint | open |
+| FRM-003 | `WHEN OTHERS` turns every failure into "Invalid username or password" | P2. Uniform 401 for credential failures only. Other errors are not masked | open |
+| FRM-004 | WNFI and KEY-NEXT-ITEM focus and navigation | P2 ui-only | drop-proposed (React UX) |
+
+**HRMS_MENU** (form; `HRMS_MENU.mmb.sql` is tracked as MNU-)
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | open |
+| FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | blocked (OQ-03) |
+| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | blocked (OQ-03) |
+| FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | open |
+| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | open |
+| FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | open |
+| FRM-016 | MI_ABOUT shows a version message | P7 ui-only | drop-proposed |
+
+**Session check repeated in every form** (HRMS_EMPLOYEE, HRMS_LEAVE, HRMS_PAYROLL, HRMS_PERFORMANCE: WNFI)
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-020 | `IF NOT PKG_SECURITY.is_session_valid(...) THEN RAISE FORM_TRIGGER_FAILURE`. Note DEF-18: the forms pass `GET_APPLICATION_PROPERTY(USERNAME)`, not `:GLOBAL.session_id` | P2 token-validation filter on all `/api/**` (401) | open |
+
+**HRMS_EMPLOYEE**
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-030 | WNFI: without `has_permission(EMPLOYEE,EDIT)`, the EMPLOYEE block gets `INSERT_ALLOWED`, `UPDATE_ALLOWED` and `DELETE_ALLOWED` = false | P5 api-authz (`EMPLOYEE:EDIT` on create, update, terminate, rehire, transfer, promote). EDIT maps to the D-06 actions | open |
+| FRM-031 | WNFI: `DEFAULT_WHERE` = `EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` | P2 read model default filter (D-03) | open |
+| FRM-032 | PRE-INSERT sets `EMP_ID := SEQ_EMPLOYEE.NEXTVAL`, `EMP_NUMBER := generate_emp_number`, `ACTIVE_FLAG`, status `ACTIVE`, `CREATED_BY := :GLOBAL.current_user` | P5 service (D-02, D-04) | open |
+| FRM-033 | PRE-UPDATE sets `MODIFIED_BY` and `MODIFIED_DATE` | P5 service (D-04) | open |
+| FRM-034 | WVI EMAIL: `PKG_VALIDATION.validate_email_format` (the server regex, **not** the PLL) | P5 domain validation. Note DEF-04 | open |
+| FRM-035 | WVI HIRE_DATE: `> SYSDATE + 90` rejected | P5 domain. Conflicts with TRG-003 (+180); see OQ-10 | blocked (OQ-10) |
+| FRM-036 | WVI DEPT_ID must be an active department | P5 domain (= validate_dept -20003) | open |
+| FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | open |
+| FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | open |
+| FRM-039 | SALARY block is read-only (no I/U/D) | P6 (salary changes only through salary-record operations) | open |
+| FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | open |
+| FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | open |
+| FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | drop-proposed |
+| FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | open |
+| FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
+| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | blocked (OQ-11) |
+| FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | open |
+
+**HRMS_LEAVE**
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-050 | WNFI `DEFAULT_WHERE` = `EMP_ID = :GLOBAL.current_emp_id` (self-only list; built by string concatenation) | P3 api-authz (row scoping: own requests; managers see approvals assigned to them) | open |
+| FRM-051 | BTN cancel gate: only `PENDING`/`APPROVED`, then ALT_CONFIRM_CANCEL | P3 domain. **The server already enforces this** (`cancel_leave_request` raises -20204, PKG_LEAVE.pkb L331). It stays server-side | open |
+| FRM-052 | NEW_REQUEST requires leave type, start date and end date | P3 api validation (400) | open |
+| FRM-053 | LEAVE_REQUEST and LEAVE_BALANCE blocks are read-only (no I/U/D) | P3 (no generic CRUD; only submit, approve, reject and cancel commands) | open |
+| FRM-054 | POST-QUERY looks up the leave type name; RG_LEAVE_TYPES LOV | P3 read model and lookup | open |
+| FRM-055 | Submit passes `HALF_DAY_FLAG` but **never** `HALF_DAY_PERIOD` | P3 (accept `halfDayPeriod`; see DEF-01) | open |
+| FRM-056 | Tabs for pending approvals and team calendar (`get_pending_requests`, `get_team_calendar`) | P3 api | open |
+
+**HRMS_PAYROLL**
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-060 | WNFI: without `has_permission(PAYROLL,VIEW)` the form exits | P6 api-authz (`PAYROLL:VIEW` on all payroll reads) | open |
+| FRM-061 | WNFI `DEFAULT_WHERE` on PAY_PERIOD = `STATUS='OPEN'` | P6 list default filter | open |
+| FRM-062 | **BTN_CALCULATE gate: `PAYROLL_RUN.STATUS = 'PENDING'` only.** This is Forms-only. Verified: `PKG_PAYROLL.calculate_payroll` has **no** status check (L271-347) | P6 domain (409 `INVALID_RUN_STATUS`) | open |
+| FRM-063 | BTN_APPROVE gate: `has_permission(PAYROLL,APPROVE)`. This is Forms-only: `approve_payroll` checks status (CALCULATED, -20103) but not permission | P6 api-authz (`PAYROLL:APPROVE`) | open |
+| FRM-064 | BTN_CREATE_RUN calls `create_payroll_run` with **no** permission check beyond the form-entry VIEW check | P6 api-authz (recommended: `PAYROLL:CREATE`; see OQ-09) | open |
+| FRM-065 | All PAY_PERIOD and PAYROLL_RUN blocks are read-only | P6 (no generic CRUD) | open |
+
+**HRMS_PERFORMANCE**
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| FRM-070 | WNFI `DEFAULT_WHERE` on REVIEW_CYCLE = `STATUS IN ('OPEN','DRAFT')` | P4 list default filter | open |
+| FRM-071 | REVIEW_CYCLE block is read-only (no I/U/D); cycles are not editable from the form | P4 api-authz (only the lifecycle commands create, open and close, behind `PERFORMANCE:ADMIN`) | open |
+| FRM-072 | PERFORMANCE_REVIEW block: `InsertAllowed=No`, `DeleteAllowed=No`, `UpdateAllowed=Yes` | P4 (reviews are created only by `generate_reviews_for_cycle`/`create_review`; no delete) | open |
+| FRM-073 | PERFORMANCE_REVIEW.STATUS item `UpdateAllowed=No` | P4 domain (status changes only through workflow commands) | open |
+| FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | open |
+| FRM-075 | PERFORMANCE_GOAL insert and update are allowed | P4 api (add goal, update progress) | open |
+| FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | blocked (OQ-09) |
+| FRM-077 | POST-QUERY looks up the employee name | P4 read model | open |
+
+### 5.3 Menu module (`forms/menus/HRMS_MENU.mmb.sql`)
+
+| ID | Rule | Dest | Status |
+|---|---|---|---|
+| MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | open |
+| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | blocked (OQ-03) |
+| MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | blocked (OQ-03) |
+| MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | blocked (OQ-03) |
+| MNU-005 | Admin → Change Password | P2 (= FRM-015) | open |
+| MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | drop-proposed |
+| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | open |
+
+### 5.4 PLL libraries (`forms/libraries/`)
+
+Verified: **no exported form XML calls any PLL routine.** The forms attach the libraries, and the
+EMPLOYEE form validates email through the server `PKG_VALIDATION`. The PLL rules are re-homed anyway
+so that they are not lost.
+
+| ID | Routine (library) | Behaviour | Dest | Status |
+|---|---|---|---|---|
+| PLL-001 | `validate_email` (HRMS_VALIDATION_LIB) | NULL is valid. Requires `@` not first or last, and a `.` after `@` that is not adjacent to it or last. The comment says it "rejects subdomains" but the **code accepts them**. It has no TLD or whitespace check. | P5 domain: a single server-side email validator (DEF-04) | open |
+| PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | open |
+| PLL-003 | `validate_ssn` | NULL is valid. 9 digits; no `000`, `00` or `0000` group. **Stricter than** server `PKG_COMMON.is_valid_ssn`, which checks 9 digits only | P5 domain (recommended: adopt the stricter rule; OQ-04) | open |
+| PLL-004 | `validate_date_not_future` | NULL is valid. `TRUNC(date) ≤ TRUNC(SYSDATE)` | P5 domain (DATE_OF_BIRTH; injected Clock) | open |
+| PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | open |
+| PLL-010 | `handle_error` (HRMS_COMMON_LIB) | Logs through `PKG_COMMON.log_error`, shows MESSAGE twice, raises FORM_TRIGGER_FAILURE | Dropped. Replaced by server-side error logging and D-05 | drop-proposed |
+| PLL-011 | `toolbar_save/clear/query/first/prev/next/last/insert/delete/exit` (10) | Forms built-ins | ui-only | drop-proposed |
+| PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | drop-proposed |
+| PLL-013 | `get_current_user` (`NVL(:GLOBAL.current_user, USER)`) | Principal lookup | P2 (authenticated principal) | open |
+| PLL-014 | `get_session_id`, `check_session` (`is_session_valid`) | Session gate | P2 (= FRM-020) | open |
+| PLL-015 | `refresh_lov` | Repopulates the record group | ui-only (lookup endpoints) | drop-proposed |
+
+### 5.5 Package rules and batch jobs that must be re-homed
+
+Full API and signature catalogue: `inventory.md` §I-3. This table lists the rules that cross the
+re-homing boundary.
+
+| ID | Package.routine | Rule summary | Dest | Status |
+|---|---|---|---|---|
+| PKG-E01 | PKG_EMPLOYEE.generate_emp_number | `MAX()+1` race with a sequence fallback | P5 (D-02) | open |
+| PKG-E02 | PKG_EMPLOYEE.validate_dept / validate_manager | Active dept (-20003). Manager ACTIVE (-20004). Cycle walk up to depth 15 (`c_max_hierarchy_depth`) (-20004); cycle check only when `p_emp_id` is not null | P5 domain | open |
+| PKG-E03 | PKG_EMPLOYEE.create_employee | Names required (-20010), dept, manager, job active (-20011). Salary vs grade is only a debug warning. Location defaults from dept. Names UPPER/TRIM, email lower/TRIM. Calls **PKG_PAYROLL.create_salary_record** (NEW_HIRE). HIRE history, audit, welcome and manager notifications | P5 service. Salary goes through the interface (OQ-01) | open |
+| PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | open |
+| PKG-E05 | PKG_EMPLOYEE.update_employee / transfer / promote / terminate / rehire | See inventory §I-3.1. Terminate auto-cancels PENDING leave and end-dates salary and pay elements. Promote calls create_salary_record (PROMOTION). Rehire calls create_salary_record (REHIRE) | P5 (salary through the interface) | open |
+| PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | open |
+| PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | open |
+| PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | open |
+| PKG-L01 | PKG_LEAVE.submit_leave_request | -20001, -20203 (type, tenure), -20210, -20211 (backdating > 5 days), business days (-20212), overlap (-20202), balance when ACCRUAL_FLAG='Y' (-20201), status PENDING/APPROVED by REQUIRES_APPROVAL, PENDING balance increment, manager notification, audit | P3 | open |
+| PKG-L02 | PKG_LEAVE.approve / reject / cancel | PENDING only for approve and reject; PENDING or APPROVED for cancel (-20204). Balance moves PENDING→USED, PENDING release, or USED restore. Notifications on approve and reject (none on cancel) | P3 | open |
+| PKG-L03 | PKG_LEAVE.calculate_business_days | Weekdays minus HOLIDAYS (active, `LOCATION_CODE IS NULL OR = emp location`) | P3 domain (DEF-02) | open |
+| PKG-L04 | PKG_LEAVE.run_monthly_accrual | DBMS_SCHEDULER on the 1st; MAX_BALANCE cap; tenure; commit every 100 | P3 or P8 `job` (Spring `@Scheduled` + idempotency); OQ-12 | open |
+| PKG-L05 | PKG_LEAVE.process_carryover / expire_carryover | Year-end carryover capped at CARRYOVER_MAX, with expiry months | P3 or P8 `job` (DEF-03) | open |
+| PKG-P01 | PKG_PAYROLL.create_salary_record | Salary > 0 (-20101). End-dates the prior active record at `effective-1`. Inserts ANNUAL. Audit | P6. Implements the P5 interface | open |
+| PKG-P02 | PKG_PAYROLL.create_pay_periods | MONTHLY: end = LAST_DAY, pay = end, Saturday → Friday (−1), Sunday → Friday (−2). BIWEEKLY: first Friday of the year −13 = start, 14-day periods, pay = end + 5, name `YYYY-BW-NN` | P6 domain | open |
+| PKG-P03 | PKG_PAYROLL.calculate_payroll / calculate_employee_pay | No status gate (FRM-062). Commits every 50 (DEF-16). Gross = annual / periods. Fed, state, FICA and Medicare. Deductions by element | P6 | open |
+| PKG-P04 | PKG_PAYROLL.approve_payroll / reverse_payroll / close_pay_period / create_payroll_run | Approve needs CALCULATED (-20103). Reverse has **no** status check. Close rejects CLOSED (-20102). Create rejects CLOSED (-20102) | P6 domain | open |
+| PKG-P05 | PKG_PAYROLL.calculate_federal_tax / state / fica / medicare | Hard-coded 2024 brackets and constants; flat state rates | P6 (DEF-05) | open |
+| PKG-P06 | PKG_PAYROLL.generate_pay_register | UTL_FILE CSV | P7 report endpoint (CSV) or drop; OQ-03 | open |
+| PKG-P07 | Payroll batch "DBMS_SCHEDULER" (header comment; no job DDL in the repo) | Batch calculate | P6 `job` (Spring scheduler; no DBMS_SCHEDULER) | open |
+| PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | open |
+| PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | open |
+| PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | open |
+| PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | open |
+| PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | open |
+| PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | open |
+| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | open |
+| PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
+| PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | open |
+| PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | open |
+| PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | blocked (OQ-03) |
+| PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | blocked (OQ-13) |
+
+### 5.6 Views (`schema/views/hrms_views.sql`)
+
+| ID | View | Dest | Status |
+|---|---|---|---|
+| VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | open |
+| VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | open |
+| VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | open |
+| VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | open |
+| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | open |
+| VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | open |
+
+### 5.7 Defects (port-vs-fix candidates; the decision belongs to the user, see OQ-04)
+
+**Documented in the package headers or comments**
+
+| ID | Defect | Evidence | Recommended default |
+|---|---|---|---|
+| DEF-01 | The half-day overlap check ignores `HALF_DAY_FLAG` and `HALF_DAY_PERIOD`, so AM and PM requests on the same day block each other. A half day is always 0.5, even when the range spans days, weekends or holidays | PKG_LEAVE.pkb L45-62, L129-131 | Fix: period-aware overlap; a half day requires `start = end` |
+| DEF-02 | Observed holidays are not excluded: the check matches the exact date only | PKG_LEAVE.pkb L9-10 | Fix through **data**: HOLIDAYS carries an observed-date row. No algorithm change |
+| DEF-03 | Carryover "double-expire". `expire_carryover` itself is idempotent, because it zeroes `CARRYOVER_FROM_PREV`. The real double path: re-running `process_carryover` resets `CARRYOVER_FROM_PREV`, then expiry subtracts into ADJUSTMENT again. Expiry also subtracts the full carryover even after it has been used | PKG_LEAVE.pkb L558-623 | Fix: an idempotency record per (year, employee, type), and expire only the unused remainder |
+| DEF-04 | Email validation drift. The PLL accepts subdomains, despite its comment, and has no TLD check. The server regex `^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` is used by the form | PLL L14-38; PKG_COMMON.pkb L265-268 | Fix: one server validator using the PKG_COMMON regex |
+| DEF-05 | Hard-coded 2024 federal brackets, standard deductions (14600/29200), allowance 4300, SS wage base 168600, flat state rates | PKG_PAYROLL.pkb L7-14, L643-718 | Fix: read TAX_BRACKETS and a parameter table, seeded with the 2024 values for parity |
+| DEF-06 | YTD issues. YTD keys on the `PERIOD_START_DATE` year (biweekly periods spanning a year boundary go to the wrong year) and on `STATUS='CALCULATED'` only. The payslip has YTD placeholders of 0 | PKG_PAYROLL.pkb L802-819, L784-785 | Fix (key on PAY_DATE year; include approved and paid runs) |
+| DEF-07 | "Overtime does not account for holidays". **No overtime calculation exists in the repo**; there is only an `OVERTIME_ELIGIBLE` column and a T&A import stub | PKG_PAYROLL.pks L11 | Record as not applicable. Overtime is out of scope unless the user adds it |
+
+**Discovered in P0** (each verified against the source)
+
+| ID | Defect | Evidence | Recommended default |
+|---|---|---|---|
+| DEF-08 | `generate_emp_number` MAX()+1 race | PKG_EMPLOYEE.pkb L39-55 | Fix (D-02; already locked) |
+| DEF-09 | SQL injection in `search_employees` | PKG_EMPLOYEE.pkb L445-499 | Fix (parameterized) |
+| DEF-10 | `authenticate` never verifies a password; MD5 `hash_password` is unused | PKG_SECURITY.pkb | Fix (D-06; already locked) |
+| DEF-11 | Hard-coded AES key | PKG_SECURITY.pkb `c_encryption_key` | Fix (D-06; already locked) |
+| DEF-12 | **The leave auto-approve path always fails.** When `REQUIRES_APPROVAL='N'`, the row is inserted as `APPROVED`, then `approve_leave_request` is called, which raises -20204 because the status is not PENDING. PENDING was also incremented for a row that is already approved | PKG_LEAVE.pkb L170, L176-182, L199-202, L225 | Fix: insert APPROVED and move the days straight to USED |
+| DEF-13 | **`rehire_employee` is blocked by its own trigger.** It updates TERMINATED→ACTIVE, which TRG-006 rejects with -20503. It also has no check that the employee is TERMINATED, and no manager or location handling | PKG_EMPLOYEE.pkb L750-793; trg_employees.sql L68-73 | Fix: rehire is the one allowed transition and requires TERMINATED |
+| DEF-14 | **TRG_EMP_BEFORE_UPDATE history inserts cannot work.** They use the columns `HISTORY_ID`, `CHANGE_DATE`, `OLD_VALUE`, `NEW_VALUE`, `CHANGED_BY` and `CHANGE_REASON`, none of which exist in EMPLOYEE_HISTORY (the DDL has `HIST_ID`, `EFFECTIVE_DATE` and typed `OLD_*`/`NEW_*` columns). The values `DEPARTMENT_CHANGE` and `JOB_CHANGE` also violate `CHK_CHANGE_TYPE` | trg_employees.sql L77-110; 01_core_tables.sql L152-177 | Re-home as service writes in the `log_history` shape (P5) |
+| DEF-15 | **Leave status audit is silently lost.** TRG_LEAVE_REQUEST_AUDIT writes `ACTION_TYPE='STATUS_CHANGE'`, but `CHK_AUDIT_ACTION` allows only INSERT, UPDATE and DELETE, and PKG_AUDIT's `WHEN OTHERS` swallows the violation | trg_audit.sql L56-68; 04_performance_tables.sql L104; PKG_AUDIT.pkb | Fix (D-08 adds STATUS_CHANGE; already locked) |
+| DEF-16 | `calculate_payroll` commits every 50 employees, and the CALCULATING status is committed before the work, so a failure leaves a half-calculated run | PKG_PAYROLL.pkb L286-327 | Fix: one transaction, or idempotent per-employee resumable work |
+| DEF-17 | `USER_SESSIONS.USERNAME` and every `CREATED_BY`/`MODIFIED_BY`/`CHANGED_BY` are `VARCHAR2(30)`, but the actor written is the email, up to 100 characters | 04_performance_tables.sql L156; PKG_SECURITY.pkb | Fix (D-04 widens; already locked) |
+| DEF-18 | The Forms session check passes `GET_APPLICATION_PROPERTY(USERNAME)`, the DB user and not the session ID, to `is_session_valid` | HRMS_EMPLOYEE.xml L34; HRMS_LEAVE.xml, HRMS_PERFORMANCE.xml WNFI | Dropped with Forms (FRM-020 re-homed) |
+| DEF-19 | The hire-date limit differs: Forms allows +90 days, the trigger +180 | HRMS_EMPLOYEE.xml L383; trg_employees.sql L35 | OQ-10 |
+| DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) |
+| DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) |
+| DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) |
+
+---
+
+## 6. Open questions
+
+Format: ID · question · findings · **recommended default** · status. The coordinator relays the
+user's answers. If a phase is blocked without an answer, it implements the recommended default and
+marks it **"provisional — awaiting user confirmation"**.
+
+| ID | Question | P0 findings | Recommended default | Status |
+|---|---|---|---|---|
+| OQ-01 | How should the PKG_EMPLOYEE ↔ PKG_PAYROLL "circular dependency" be resolved? | **It is not circular in code.** Grepping `PKG_x.` usages shows `PKG_EMPLOYEE → PKG_PAYROLL.create_salary_record` (create L275, promote L617, rehire L778), while `PKG_PAYROLL` calls only `PKG_AUDIT` and `PKG_COMMON`. **There is no call to `PKG_EMPLOYEE.is_active` anywhere.** `is_active` (PKG_EMPLOYEE.pkb L885) is never called. `PKG_PAYROLL` reads `EMPLOYEES` directly (L298-300, L787, L862). The "Circular dependency" notes in PKG_EMPLOYEE.pks L9, PKG_PAYROLL.pks L9 and the PKG_EMPLOYEE.pkb L273-274 comment are wrong. The header `Dependencies:` lists are wrong too: PKG_PAYROLL, PKG_LEAVE, PKG_PERFORMANCE, PKG_REPORTING and PKG_INTEGRATION claim to depend on PKG_EMPLOYEE, but none of them calls it. The only other real cross-module call is `PKG_SECURITY → PKG_EMPLOYEE.set_session_context`. Full call graph: inventory §I-2. | P5 defines a `SalaryRecordPort` (in-process Java interface, called synchronously in the same transaction, so hire, promote and rehire stay atomic). P5 ships a no-op or recording stub. P6 provides the real implementation. Payroll reads employee status through the employee module's read API or repository, never through a reverse service call. Async events or an outbox are deferred. | open (the default is consistent with the program's P5 text) |
+| OQ-02 | Are there unverified server-side status checks in truncated package bodies? | **None of the package bodies in the repo is truncated.** All 11 `.pkb` files are complete and end with `END PKG_x; /`. Every status check is verified: present = leave approve/reject (PENDING), leave cancel (PENDING/APPROVED), approve_payroll (CALCULATED), close_pay_period and create_payroll_run (not CLOSED), open_review_cycle (DRAFT), submit_self_assessment (NOT_STARTED/SELF_REVIEW), acknowledge (COMPLETED, silent), terminate (not TERMINATED), transfer (ACTIVE). **Absent** = calculate_payroll (the Forms PENDING gate is the only guard), reverse_payroll, close_review_cycle, submit_manager_review, update_goal_progress, rehire_employee. | Treat the Forms gates as authoritative requirements and enforce every state machine server-side (DEF-21, FRM-062). | open (needs confirmation that nothing exists outside the repo) |
+| OQ-03 | What is the scope of the dead menu items HRMS_REPORTS and HRMS_ADMIN? | Neither form exists in `forms/xml-exports/`. A backend exists: PKG_REPORTING (7 reports) and SYSTEM_PARAMETERS + `PKG_COMMON.set_param`. The menu says Admin needs the ADMIN permission. | REPORTS: P7 exposes read-only endpoints for the 4 named views (VW_PENDING_APPROVALS, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_ORG_HIERARCHY) behind `REPORTS:VIEW`. The other PKG_REPORTING reports and the pay register are deferred. ADMIN: out of scope, except change-password (P2). The menu entry is hidden. | open |
+| OQ-04 | What is the port-vs-fix policy for documented bugs (DEF-01…07) and discovered bugs (DEF-12…22)? | §5.7 | Security bugs are already fixed by D-02, D-04, D-06 and D-08. For business-logic bugs: **fix**, as recommended per row in §5.7. Each fix gets a parity test that documents how it deviates from legacy. P8 records the final decision for each bug. | open (user decision) |
+| OQ-05 | Target stack | — | — | **closed by D-00 (user decision, 2026-11-20)** |
+| OQ-06 | Two ACTIVE employees can share an email (uniqueness is enforced only among `ACTIVE_FLAG='Y'` rows, and only by a trigger). What should login do? | authenticate takes `MIN(emp_id)`; the login form takes `ROWNUM=1` | Port MIN(emp_id) in P2. TRG-004 and the P1 partial unique index then prevent new duplicates. P8 data migration reports any existing duplicates. | open |
+| OQ-07 | Lockout policy numbers | Legacy has no lockout | 5 consecutive failures → 15-minute lock; counter resets on success | open (provisional when P2 implements it) |
+| OQ-08 | Session timeout: absolute or sliding? | Legacy: 30 minutes absolute from LOGIN_TIME | Port 30 minutes absolute in P2 | open |
+| OQ-09 | Row-level scoping and the finer permission matrix: own records, own department, manager/reviewer rights, PAYROLL CREATE, PERFORMANCE write | `has_permission` comments promise "edit own department / own records" but the code does not implement it. The Performance form has no permission check | Keep exact legacy matrix parity (D-06). Add only the minimal scoping that the forms implied: leave lists are self-only, approvals go to the assigned approver, a review is updated by its reviewer or employee, and payroll create and calculate need `PAYROLL:EDIT`/grade ≥ 8. Each addition is marked provisional. | open |
+| OQ-10 | Hire-date future limit: 90 days (Forms) or 180 days (trigger)? | DEF-19 | 180 days (the DB trigger was the authoritative server rule) | open |
+| OQ-11 | Salary outside the grade range: soft warning with a manager override, or a hard error? | Server code only prints a debug message. The PLL and PKG_VALIDATION return messages. The override flow is undocumented | Soft warning: the response carries a `warnings[]` entry and the save is not blocked. No override workflow | open |
+| OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | open |
+| OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | open |
+
+---
+
+## 7. Amendment log
+
+| Version / ID | Date | Phase | Change | Rationale |
+|---|---|---|---|---|
+| — | 2026-11-20 | P0 | Initial locked decisions D-00…D-09; contract `v0-draft` | Phase 0 deliverable. D-00 is a user decision relayed by the coordinator |
