@@ -31,6 +31,8 @@ public enum ErrorCode {
     EMAIL_IN_USE(HttpStatus.CONFLICT, -20502),
     REACTIVATION_FORBIDDEN(HttpStatus.CONFLICT, -20503),
     DELETE_FORBIDDEN(HttpStatus.METHOD_NOT_ALLOWED, -20504),
+    // Added by contract amendment v1.1-P5: rehire of an employee who is not TERMINATED (DEF-13)
+    EMPLOYEE_NOT_TERMINATED(HttpStatus.CONFLICT, null),
     // Payroll (P6)
     INVALID_SALARY(HttpStatus.UNPROCESSABLE_ENTITY, -20101),
     PERIOD_CLOSED(HttpStatus.CONFLICT, -20102),

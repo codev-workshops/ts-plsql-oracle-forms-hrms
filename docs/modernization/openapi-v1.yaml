@@ -1,13 +1,20 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 1.0.0
-  x-contract-version: v1
+  version: 1.1.0
+  x-contract-version: v1.1-P5
   description: |
     **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
     sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
     the leave pilot and froze the file. Any change to a route, schema, error code or status from
     here on is a versioned amendment (`v1.N` additive, `v2` breaking) recorded in checkpoint §7.
+
+    **Amendment v1.1-P5 (additive, P5 employee core):** `POST /api/v1/employees`,
+    `PATCH`/`DELETE /api/v1/employees/{empId}` (DELETE always 405 `DELETE_FORBIDDEN`),
+    `POST /api/v1/employees/{empId}/{transfer,promote,terminate,rehire}`,
+    `GET /api/v1/employees/{empId}/history`; schemas for those bodies and `EmployeeMutation` with
+    `warnings[]` (OQ-11); error code `EMPLOYEE_NOT_TERMINATED` (409). Nothing in v1 changed. P4
+    numbers its parallel amendment `v1.1-P4`; the coordinator reconciles the numbering on merge.
 
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
@@ -152,6 +159,45 @@ paths:
         '400': { $ref: '#/components/responses/ValidationFailed' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [employees]
+      operationId: createEmployee
+      summary: Hire an employee (PKG_EMPLOYEE.create_employee + TRG_EMP_BEFORE_INSERT) — v1.1-P5
+      description: |
+        Check order (legacy): first and last name (400, legacy -20010), field formats (email,
+        phones, date of birth not in the future; 400), active department (INVALID_DEPARTMENT),
+        ACTIVE manager (INVALID_MANAGER), active job (INVALID_JOB), salary > 0 (INVALID_SALARY), hire
+        date at most 180 days ahead (HIRE_DATE_TOO_FAR, OQ-10), email unused among active employees
+        (EMAIL_IN_USE). Names are stored upper-case, email lower-case. `empNumber` comes from a
+        sequence (EMP-NNNNNN). Location defaults to the department's. A salary outside the job
+        grade's range is a `warnings[]` entry, never an error (OQ-11). The salary record is handed
+        to the compensation port (OQ-01). Writes a HIRE history row, an INSERT audit row, a welcome
+        notification and, with a manager, a direct-report notification.
+      x-permission: EMPLOYEE:EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEmployeeRequest' }
+      responses:
+        '201':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: EMAIL_IN_USE (-20502) or EMP_NUMBER_CONFLICT (-20002)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: INVALID_DEPARTMENT (-20003), INVALID_MANAGER (-20004), INVALID_JOB (-20011), INVALID_SALARY (-20101), HIRE_DATE_TOO_FAR (-20501)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /api/v1/employees/{empId}:
     get:
       tags: [employees]
@@ -172,6 +218,236 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404':
           description: EMPLOYEE_NOT_FOUND (legacy -20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    patch:
+      tags: [employees]
+      operationId: updateEmployee
+      summary: Partial update of names and contact details (PKG_EMPLOYEE.update_employee) — v1.1-P5
+      description: |
+        Absent or null fields are unchanged; a blank name is 400. Department, job, manager, status
+        and pay change only through the commands below; `empId`, `empNumber` and audit columns are
+        never writable (FRM-038). Works for any status, as in legacy.
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateEmployeeRequest' }
+      responses:
+        '200':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: EMAIL_IN_USE (-20502)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [employees]
+      operationId: deleteEmployee
+      summary: Always refused — employees are never physically deleted (TRG-008, D-03) — v1.1-P5
+      x-permission: EMPLOYEE:VIEW
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '405':
+          description: DELETE_FORBIDDEN (-20504); use terminate
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/employees/{empId}/transfer:
+    post:
+      tags: [employees]
+      operationId: transferEmployee
+      summary: Transfer (PKG_EMPLOYEE.transfer_employee) — v1.1-P5
+      description: |
+        The row is locked NOWAIT (a held lock is 409 CONCURRENT_MODIFICATION). The employee must be
+        ACTIVE (EMPLOYEE_NOT_ACTIVE, legacy -20012). Job, manager and location default to the current
+        values. A new manager must be ACTIVE and must not create a reporting cycle within 15 levels
+        (CIRCULAR_REPORTING). Writes a TRANSFER history row.
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferRequest' }
+      responses:
+        '200':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: CONCURRENT_MODIFICATION
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: EMPLOYEE_NOT_ACTIVE, INVALID_DEPARTMENT, INVALID_JOB, INVALID_MANAGER, CIRCULAR_REPORTING
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/employees/{empId}/promote:
+    post:
+      tags: [employees]
+      operationId: promoteEmployee
+      summary: Promote (PKG_EMPLOYEE.promote_employee) — v1.1-P5
+      description: |
+        The employee must be ACTIVE and the job active (both new checks). The new salary goes to the
+        compensation port as PROMOTION, with the change percentage when a current salary is known.
+        Outside the grade range is a warning (OQ-11). Writes a PROMOTION history row.
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromoteRequest' }
+      responses:
+        '200':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: EMPLOYEE_NOT_ACTIVE, INVALID_JOB, INVALID_SALARY
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/employees/{empId}/terminate:
+    post:
+      tags: [employees]
+      operationId: terminateEmployee
+      summary: Terminate (PKG_EMPLOYEE.terminate_employee) — v1.1-P5
+      description: |
+        Rejects an already TERMINATED employee (ALREADY_TERMINATED, -20005). Cancels every PENDING leave
+        request through the leave cancel transition, which releases the pending balance (DEF-22). Sets
+        TERMINATED, the termination date and reason, and `active = false`; ends compensation through the
+        port; writes a TERMINATION history row and a STATUS_CHANGE audit row; notifies the manager.
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TerminateRequest' }
+      responses:
+        '200':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: ALREADY_TERMINATED (-20005)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/employees/{empId}/rehire:
+    post:
+      tags: [employees]
+      operationId: rehireEmployee
+      summary: Rehire (PKG_EMPLOYEE.rehire_employee, fixed per DEF-13) — v1.1-P5
+      description: |
+        The only path from TERMINATED back to ACTIVE (TRG-006). The employee must be TERMINATED
+        (EMPLOYEE_NOT_TERMINATED). Department, job and an optional manager are validated as on create;
+        location defaults to the department's; the email must not be in use by another active employee.
+        Hire date becomes the rehire date (legacy). Writes a REHIRE history row.
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RehireRequest' }
+      responses:
+        '200':
+          description: The employee after the change, plus non-blocking warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeMutation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: EMPLOYEE_NOT_TERMINATED or EMAIL_IN_USE (-20502)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: INVALID_DEPARTMENT, INVALID_JOB, INVALID_MANAGER, CIRCULAR_REPORTING, INVALID_SALARY
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/employees/{empId}/history:
+    get:
+      tags: [employees]
+      operationId: employeeHistory
+      summary: EMPLOYEE_HISTORY rows, oldest first (any status) — v1.1-P5
+      x-permission: EMPLOYEE:EDIT
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: History
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EmployeeHistoryEntry' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -525,7 +801,8 @@ components:
         EMPLOYEE_NOT_ACTIVE 422/-20001, EMP_NUMBER_CONFLICT 409/-20002, INVALID_DEPARTMENT 422/-20003,
         INVALID_MANAGER 422/-20004, CIRCULAR_REPORTING 422/-20004, ALREADY_TERMINATED 409/-20005,
         INVALID_JOB 422/-20011, HIRE_DATE_TOO_FAR 422/-20501, EMAIL_IN_USE 409/-20502,
-        REACTIVATION_FORBIDDEN 409/-20503, DELETE_FORBIDDEN 405/-20504, INVALID_SALARY 422/-20101,
+        REACTIVATION_FORBIDDEN 409/-20503, DELETE_FORBIDDEN 405/-20504,
+        EMPLOYEE_NOT_TERMINATED 409 (v1.1-P5), INVALID_SALARY 422/-20101,
         PERIOD_CLOSED 409/-20102, INVALID_RUN_STATUS 409/-20103, NO_ACTIVE_SALARY 422/-20104,
         INSUFFICIENT_LEAVE_BALANCE 422/-20201, LEAVE_OVERLAP 409/-20202, INVALID_LEAVE_TYPE 422/-20203,
         MIN_TENURE_NOT_MET 422/-20203, INVALID_REQUEST_STATUS 409/-20204, INVALID_DATE_RANGE 400/-20210,
@@ -535,7 +812,8 @@ components:
              UNAUTHENTICATED, FORBIDDEN, VALIDATION_FAILED, NOT_FOUND, METHOD_NOT_ALLOWED,
              CONCURRENT_MODIFICATION, INTERNAL_ERROR, EMPLOYEE_NOT_ACTIVE, EMP_NUMBER_CONFLICT,
              INVALID_DEPARTMENT, INVALID_MANAGER, CIRCULAR_REPORTING, ALREADY_TERMINATED, INVALID_JOB,
-             HIRE_DATE_TOO_FAR, EMAIL_IN_USE, REACTIVATION_FORBIDDEN, DELETE_FORBIDDEN, INVALID_SALARY,
+             HIRE_DATE_TOO_FAR, EMAIL_IN_USE, REACTIVATION_FORBIDDEN, DELETE_FORBIDDEN,
+             EMPLOYEE_NOT_TERMINATED, INVALID_SALARY,
              PERIOD_CLOSED, INVALID_RUN_STATUS, NO_ACTIVE_SALARY, INSUFFICIENT_LEAVE_BALANCE,
              LEAVE_OVERLAP, INVALID_LEAVE_TYPE, MIN_TENURE_NOT_MET, INVALID_REQUEST_STATUS,
              INVALID_DATE_RANGE, BACKDATE_LIMIT_EXCEEDED, NO_BUSINESS_DAYS, INVALID_CYCLE_STATUS,
@@ -629,6 +907,124 @@ components:
         deptName: { type: string }
         jobId: { type: integer, format: int64 }
         jobTitle: { type: string }
+    EmploymentType:
+      type: string
+      description: v1.1-P5
+      enum: [FULL_TIME, PART_TIME, CONTRACT, INTERN]
+    WarningCode:
+      type: string
+      description: v1.1-P5
+      enum: [SALARY_OUTSIDE_GRADE]
+    Warning:
+      type: object
+      description: A non-blocking finding returned with a successful write (OQ-11) — v1.1-P5
+      required: [code, message]
+      properties:
+        code: { $ref: '#/components/schemas/WarningCode' }
+        message: { type: string, example: 'Salary $30,000.00 is below minimum for grade Junior ($45,000.00)' }
+    EmployeeMutation:
+      type: object
+      description: v1.1-P5
+      required: [employee, warnings]
+      properties:
+        employee: { $ref: '#/components/schemas/EmployeeView' }
+        warnings:
+          type: array
+          items: { $ref: '#/components/schemas/Warning' }
+    CreateEmployeeRequest:
+      type: object
+      description: v1.1-P5. firstName and lastName are required (400, legacy -20010).
+      required: [firstName, lastName, hireDate, deptId, jobId]
+      properties:
+        firstName: { type: string, maxLength: 50 }
+        lastName: { type: string, maxLength: 50 }
+        hireDate: { type: string, format: date }
+        deptId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        locationCode: { type: string, maxLength: 10, nullable: true, description: Defaults to the department's location }
+        employmentType: { allOf: [{ $ref: '#/components/schemas/EmploymentType' }], default: FULL_TIME }
+        baseSalary: { type: number, nullable: true, description: Annual; handed to the compensation port as NEW_HIRE }
+        email: { type: string, maxLength: 100, nullable: true }
+        phoneWork: { type: string, maxLength: 30, nullable: true, description: 10 or 11 digits }
+        phoneMobile: { type: string, maxLength: 30, nullable: true, description: 10 or 11 digits }
+        dateOfBirth: { type: string, format: date, nullable: true, description: Not in the future }
+    UpdateEmployeeRequest:
+      type: object
+      description: v1.1-P5. Absent or null = unchanged.
+      properties:
+        firstName: { type: string, maxLength: 50 }
+        lastName: { type: string, maxLength: 50 }
+        email: { type: string, maxLength: 100 }
+        phoneWork: { type: string, maxLength: 30 }
+        phoneMobile: { type: string, maxLength: 30 }
+        addressLine1: { type: string, maxLength: 200 }
+        addressLine2: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        stateProvince: { type: string, maxLength: 100 }
+        postalCode: { type: string, maxLength: 20 }
+        countryCode: { type: string, maxLength: 3 }
+    TransferRequest:
+      type: object
+      description: v1.1-P5
+      required: [newDeptId]
+      properties:
+        newDeptId: { type: integer, format: int64 }
+        newJobId: { type: integer, format: int64, nullable: true }
+        newManagerEmpId: { type: integer, format: int64, nullable: true }
+        newLocationCode: { type: string, maxLength: 10, nullable: true }
+        effectiveDate: { type: string, format: date, nullable: true, description: Defaults to today }
+        reasonCode: { type: string, maxLength: 30, nullable: true }
+        comments: { type: string, maxLength: 4000, nullable: true }
+    PromoteRequest:
+      type: object
+      description: v1.1-P5
+      required: [newJobId, newSalary]
+      properties:
+        newJobId: { type: integer, format: int64 }
+        newSalary: { type: number }
+        effectiveDate: { type: string, format: date, nullable: true, description: Defaults to today }
+        comments: { type: string, maxLength: 4000, nullable: true }
+    TerminateRequest:
+      type: object
+      description: v1.1-P5
+      required: [terminationDate, reason]
+      properties:
+        terminationDate: { type: string, format: date }
+        reason: { type: string, maxLength: 30 }
+        comments: { type: string, maxLength: 4000, nullable: true }
+    RehireRequest:
+      type: object
+      description: v1.1-P5
+      required: [rehireDate, deptId, jobId, baseSalary]
+      properties:
+        rehireDate: { type: string, format: date }
+        deptId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        baseSalary: { type: number }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        locationCode: { type: string, maxLength: 10, nullable: true, description: Defaults to the department's location }
+    EmployeeHistoryEntry:
+      type: object
+      description: One EMPLOYEE_HISTORY row — v1.1-P5
+      properties:
+        histId: { type: integer, format: int64 }
+        changeType: { type: string, enum: [HIRE, TRANSFER, PROMOTION, DEMOTION, SALARY_CHANGE, TERMINATION, REHIRE, LEAVE_START, LEAVE_END, STATUS_CHANGE] }
+        effectiveDate: { type: string, format: date }
+        oldDeptId: { type: integer, format: int64, nullable: true }
+        newDeptId: { type: integer, format: int64, nullable: true }
+        oldJobId: { type: integer, format: int64, nullable: true }
+        newJobId: { type: integer, format: int64, nullable: true }
+        oldManagerId: { type: integer, format: int64, nullable: true }
+        newManagerId: { type: integer, format: int64, nullable: true }
+        oldSalary: { type: number, nullable: true }
+        newSalary: { type: number, nullable: true }
+        oldLocation: { type: string, nullable: true }
+        newLocation: { type: string, nullable: true }
+        reasonCode: { type: string, nullable: true }
+        comments: { type: string, nullable: true }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
     EmployeePage:
       type: object
       required: [items, page, size, total]
