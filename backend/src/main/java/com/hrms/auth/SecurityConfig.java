@@ -19,7 +19,7 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 /** Stateless bearer-token security; the permission matrix is enforced with @PreAuthorize (D-06). */
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, PasswordResetProperties.class})
 public class SecurityConfig {
 
     @Bean
@@ -37,6 +37,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/password-reset/confirm").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e

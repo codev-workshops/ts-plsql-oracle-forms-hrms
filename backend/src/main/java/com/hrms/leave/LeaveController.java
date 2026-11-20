@@ -4,6 +4,9 @@ import com.hrms.auth.HrmsPrincipal;
 import com.hrms.leave.LeaveModels.AccrualRun;
 import com.hrms.leave.LeaveModels.AccrualRunRequest;
 import com.hrms.leave.LeaveModels.CancelLeaveRequest;
+import com.hrms.leave.LeaveModels.CarryoverExpiryRequest;
+import com.hrms.leave.LeaveModels.CarryoverRun;
+import com.hrms.leave.LeaveModels.CarryoverRunRequest;
 import com.hrms.leave.LeaveModels.LeaveBalance;
 import com.hrms.leave.LeaveModels.LeaveDecision;
 import com.hrms.leave.LeaveModels.LeaveRequest;
@@ -44,11 +47,14 @@ public class LeaveController {
 
     private final LeaveService leave;
     private final LeaveAccrualService accrual;
+    private final LeaveCarryoverService carryover;
     private final Clock clock;
 
-    public LeaveController(LeaveService leave, LeaveAccrualService accrual, Clock clock) {
+    public LeaveController(LeaveService leave, LeaveAccrualService accrual, LeaveCarryoverService carryover,
+            Clock clock) {
         this.leave = leave;
         this.accrual = accrual;
+        this.carryover = carryover;
         this.clock = clock;
     }
 
@@ -118,6 +124,22 @@ public class LeaveController {
     ResponseEntity<AccrualRun> runAccrual(@AuthenticationPrincipal HrmsPrincipal p,
             @Valid @RequestBody AccrualRunRequest body) {
         LeaveAccrualService.Outcome o = accrual.run(body.accrualDate(), p.actor());
+        return ResponseEntity.status(o.created() ? HttpStatus.CREATED : HttpStatus.OK).body(o.run());
+    }
+
+    @PostMapping("/carryover-runs")
+    @PreAuthorize("hasAuthority('LEAVE:ADMIN')")
+    ResponseEntity<CarryoverRun> runCarryover(@AuthenticationPrincipal HrmsPrincipal p,
+            @Valid @RequestBody CarryoverRunRequest body) {
+        LeaveCarryoverService.Outcome o = carryover.carryOver(body.year(), p.actor());
+        return ResponseEntity.status(o.created() ? HttpStatus.CREATED : HttpStatus.OK).body(o.run());
+    }
+
+    @PostMapping("/carryover-expiry-runs")
+    @PreAuthorize("hasAuthority('LEAVE:ADMIN')")
+    ResponseEntity<CarryoverRun> runCarryoverExpiry(@AuthenticationPrincipal HrmsPrincipal p,
+            @Valid @RequestBody CarryoverExpiryRequest body) {
+        LeaveCarryoverService.Outcome o = carryover.expire(body.asOfDate(), p.actor());
         return ResponseEntity.status(o.created() ? HttpStatus.CREATED : HttpStatus.OK).body(o.run());
     }
 }

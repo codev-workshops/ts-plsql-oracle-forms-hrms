@@ -1,5 +1,7 @@
 package com.hrms.leave;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -50,6 +52,17 @@ public final class LeaveModels {
     }
 
     public record AccrualRunRequest(@NotNull LocalDate accrualDate) {
+    }
+
+    public record CarryoverRunRequest(@NotNull @Min(1900) @Max(9998) Integer year) {
+    }
+
+    public record CarryoverExpiryRequest(@NotNull LocalDate asOfDate) {
+    }
+
+    /** A carryover (fromYear set) or expiry (asOfDate set) run (PKG-L05, contract v1.5). */
+    public record CarryoverRun(long runId, String runType, Integer fromYear, LocalDate asOfDate,
+            int balancesProcessed, BigDecimal totalDays, String createdBy, OffsetDateTime createdDate) {
     }
 
     public record AccrualRun(long runId, LocalDate accrualPeriod, LocalDate accrualDate, int employeesProcessed,

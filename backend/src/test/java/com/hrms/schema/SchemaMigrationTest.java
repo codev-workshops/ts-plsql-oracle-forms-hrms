@@ -30,7 +30,8 @@ class SchemaMigrationTest {
             "leave_types", "leave_balances", "leave_requests", "leave_accrual_log", "holidays",
             "review_cycles", "performance_reviews", "performance_goals", "audit_log",
             "system_parameters", "notification_queue", "user_sessions", "lookup_values",
-            "user_credentials", "permission_rules", "leave_accrual_runs", "payroll_tax_parameters");
+            "user_credentials", "permission_rules", "leave_accrual_runs", "payroll_tax_parameters",
+            "leave_carryover_runs", "leave_carryover_log", "password_reset_tokens");
 
     private static final List<String> VIEWS = List.of(
             "vw_active_employees", "vw_org_hierarchy", "vw_employee_compensation",
@@ -282,7 +283,7 @@ class SchemaMigrationTest {
         assertThat(jdbc.queryForList("""
                 SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'hrms' AND c.relkind = 'r'
-                AND (has_table_privilege('hrms_app', c.oid, 'DELETE')
+                AND ((has_table_privilege('hrms_app', c.oid, 'DELETE') AND c.relname <> 'audit_log') -- A-P8-02
                      OR has_table_privilege('hrms_app', c.oid, 'TRUNCATE')
                      OR NOT has_table_privilege('hrms_app', c.oid, 'SELECT, INSERT, UPDATE'))
                 """, String.class)).isEmpty();

@@ -3,6 +3,7 @@ package com.hrms.auth;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,11 +35,23 @@ public class AuthController {
             @NotBlank @Size(max = 200) String newPassword) {
     }
 
+    public record ResetPasswordRequest(@NotBlank @Size(max = 100) String token,
+            @NotBlank @Size(max = 200) String newPassword) {
+    }
+
+    public record IssuePasswordResetRequest(@NotNull Long empId) {
+    }
+
+    public record PasswordResetIssued(long empId, OffsetDateTime expiresAt) {
+    }
+
     private final AuthService auth;
+    private final PasswordResetService resets;
     private final JdbcClient jdbc;
 
-    public AuthController(AuthService auth, JdbcClient jdbc) {
+    public AuthController(AuthService auth, PasswordResetService resets, JdbcClient jdbc) {
         this.auth = auth;
+        this.resets = resets;
         this.jdbc = jdbc;
     }
 
@@ -63,6 +77,24 @@ public class AuthController {
     void changePassword(@AuthenticationPrincipal HrmsPrincipal principal,
             @Valid @RequestBody ChangePasswordRequest body, HttpServletRequest request) {
         auth.changePassword(principal, body.currentPassword(), body.newPassword(), request.getRemoteAddr());
+    }
+
+    /** Public: sets the password from a one-time reset link (OQ-15, contract v1.5). */
+    @PostMapping("/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void confirmPasswordReset(@Valid @RequestBody ResetPasswordRequest body, HttpServletRequest request) {
+        resets.confirm(body.token(), body.newPassword(), request.getRemoteAddr());
+    }
+
+    /** HR issues a reset link to an ACTIVE employee (e.g. a new hire or a forgotten password). */
+    @PostMapping("/password-resets")
+    @PreAuthorize("hasAuthority('EMPLOYEE:EDIT')")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    PasswordResetIssued issuePasswordReset(@AuthenticationPrincipal HrmsPrincipal principal,
+            @Valid @RequestBody IssuePasswordResetRequest body, HttpServletRequest request) {
+        PasswordResetService.IssuedReset r = resets.issue(body.empId(), principal.actor(), request.getRemoteAddr(),
+                principal.sessionId());
+        return new PasswordResetIssued(r.empId(), r.expiresAt());
     }
 
     private CurrentUser currentUser(HrmsPrincipal p) {
