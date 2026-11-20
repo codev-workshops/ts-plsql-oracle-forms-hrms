@@ -23,7 +23,7 @@ class ProductionMigrationTest {
                 .placeholders(java.util.Map.of("app_role", "hrms_app"))
                 .load();
         MigrateResult result = flyway.migrate();
-        assertThat(result.migrationsExecuted).isEqualTo(12);
+        assertThat(result.migrationsExecuted).isEqualTo(13); // V1-V10, V200, V400, V500
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         try (Connection c = flyway.getConfiguration().getDataSource().getConnection();
              Statement s = c.createStatement();

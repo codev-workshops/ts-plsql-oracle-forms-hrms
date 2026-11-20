@@ -33,6 +33,8 @@ public enum ErrorCode {
     DELETE_FORBIDDEN(HttpStatus.METHOD_NOT_ALLOWED, -20504),
     // Added by contract amendment v1.1-P5: rehire of an employee who is not TERMINATED (DEF-13)
     EMPLOYEE_NOT_TERMINATED(HttpStatus.CONFLICT, null),
+    // Added by contract amendment v1.5 (P8): unknown, used, superseded or expired password reset token (OQ-15)
+    INVALID_RESET_TOKEN(HttpStatus.UNPROCESSABLE_ENTITY, null),
     // Payroll (P6)
     INVALID_SALARY(HttpStatus.UNPROCESSABLE_ENTITY, -20101),
     PERIOD_CLOSED(HttpStatus.CONFLICT, -20102),

@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 1.4.0
-  x-contract-version: v1.4
+  version: 1.5.0
+  x-contract-version: v1.5
   description: |
     **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
     sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
@@ -41,6 +41,15 @@ info:
     REPORTS:VIEW (OQ-03); compensation and payroll figures also need PAYROLL:VIEW. `MenuEntry` gains
     the optional navigation targets `route` and `apiPath`. No new error code; nothing in v1–v1.3
     changed. The other PKG_REPORTING reports and the pay register stay deferred (OQ-03).
+
+    **Amendment v1.5 (additive, checkpoint §7 A-P8-01, P8 parity + cutover):** one-time password
+    reset links (OQ-15) — `POST /api/v1/auth/password-reset/confirm` (public) and
+    `POST /api/v1/auth/password-resets` (EMPLOYEE:EDIT); year-end leave carryover and carryover
+    expiry runs (PKG-L05, DEF-03) — `POST /api/v1/leave/carryover-runs` and
+    `POST /api/v1/leave/carryover-expiry-runs` (LEAVE:ADMIN, idempotent like accrual runs); schemas
+    `ResetPasswordRequest`, `IssuePasswordResetRequest`, `PasswordResetIssued`, `CarryoverRunRequest`,
+    `CarryoverExpiryRequest`, `CarryoverRun`; error code `INVALID_RESET_TOKEN` (422). Nothing in
+    v1–v1.4 changed.
 
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
@@ -138,6 +147,69 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '422':
           description: INVALID_CURRENT_PASSWORD
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmPasswordReset
+      summary: Set the password from a one-time reset link (OQ-15; v1.5)
+      description: |
+        Public. The token comes from the reset e-mail (cutover or HR-issued). It works once and until it
+        expires (`hrms.auth.password-reset.token-ttl`, default 7 days) or a newer link supersedes it. The
+        password policy is the change-password policy. On success the credential is usable, the lockout
+        is reset and every session of the employee is closed. An unknown, used, superseded or expired
+        token, or an employee who is no longer ACTIVE, gives 422 `INVALID_RESET_TOKEN`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: 'Password set' }
+        '400':
+          description: PASSWORD_POLICY (legacy -20310/-20311/-20312) or VALIDATION_FAILED
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: INVALID_RESET_TOKEN
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/auth/password-resets:
+    post:
+      tags: [auth]
+      operationId: issuePasswordReset
+      summary: E-mail a one-time password reset link to an ACTIVE employee (OQ-15; v1.5)
+      description: |
+        For new hires (who have no credential) and forgotten passwords. Older unused links of the
+        employee stop working. The link goes through the notification outbox; the token is never
+        returned by the API.
+      x-permission: EMPLOYEE:EDIT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssuePasswordResetRequest' }
+      responses:
+        '202':
+          description: Link queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasswordResetIssued' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (-20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: EMPLOYEE_NOT_ACTIVE
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -754,6 +826,66 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AccrualRun' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/carryover-runs:
+    post:
+      tags: [leave]
+      operationId: runLeaveCarryover
+      summary: Carry the year's unused leave into the next year (PKG_LEAVE.process_carryover; v1.5)
+      description: |
+        Legacy rules: remaining = opening + accrued - used + adjustment (pending excluded), capped at the
+        type's carryover maximum; it becomes next year's opening balance and carried-over days, expiring
+        `carryoverExpiry` months after 1 January. Idempotent per year (DEF-03): the first call returns
+        201, later calls 200 with the existing run and change nothing. The scheduled job runs on
+        1 January for the year that ended.
+      x-permission: LEAVE:ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CarryoverRunRequest' }
+      responses:
+        '201':
+          description: Run created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CarryoverRun' }
+        '200':
+          description: The year was already carried over
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CarryoverRun' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/carryover-expiry-runs:
+    post:
+      tags: [leave]
+      operationId: runLeaveCarryoverExpiry
+      summary: Expire carried-over days whose expiry date is on or before asOfDate (PKG_LEAVE.expire_carryover; v1.5)
+      description: |
+        DEF-03 fix: only the unused part of the carryover expires (days used in the new year are taken
+        from the carryover first); each balance expires once. Idempotent per as-of date: 201 for a new
+        run, 200 with the existing run. The scheduled job runs daily.
+      x-permission: LEAVE:ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CarryoverExpiryRequest' }
+      responses:
+        '201':
+          description: Run created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CarryoverRun' }
+        '200':
+          description: The date was already processed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CarryoverRun' }
         '400': { $ref: '#/components/responses/ValidationFailed' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1612,7 +1744,8 @@ components:
         INSUFFICIENT_LEAVE_BALANCE 422/-20201, LEAVE_OVERLAP 409/-20202, INVALID_LEAVE_TYPE 422/-20203,
         MIN_TENURE_NOT_MET 422/-20203, INVALID_REQUEST_STATUS 409/-20204, INVALID_DATE_RANGE 400/-20210,
         BACKDATE_LIMIT_EXCEEDED 422/-20211, NO_BUSINESS_DAYS 422/-20212, INVALID_CYCLE_STATUS 409/-20401,
-        INVALID_REVIEW_STATUS 409/-20402, INVALID_RATING 400/-20403, PARAM_NOT_EDITABLE 409/-20900.
+        INVALID_REVIEW_STATUS 409/-20402, INVALID_RATING 400/-20403, PARAM_NOT_EDITABLE 409/-20900,
+        INVALID_RESET_TOKEN 422 (v1.5).
       enum: [EMPLOYEE_NOT_FOUND, INVALID_CREDENTIALS, INVALID_CURRENT_PASSWORD, PASSWORD_POLICY,
              UNAUTHENTICATED, FORBIDDEN, VALIDATION_FAILED, NOT_FOUND, METHOD_NOT_ALLOWED,
              CONCURRENT_MODIFICATION, INTERNAL_ERROR, EMPLOYEE_NOT_ACTIVE, EMP_NUMBER_CONFLICT,
@@ -1622,7 +1755,7 @@ components:
              PERIOD_CLOSED, INVALID_RUN_STATUS, NO_ACTIVE_SALARY, INSUFFICIENT_LEAVE_BALANCE,
              LEAVE_OVERLAP, INVALID_LEAVE_TYPE, MIN_TENURE_NOT_MET, INVALID_REQUEST_STATUS,
              INVALID_DATE_RANGE, BACKDATE_LIMIT_EXCEEDED, NO_BUSINESS_DAYS, INVALID_CYCLE_STATUS,
-             INVALID_REVIEW_STATUS, INVALID_RATING, PARAM_NOT_EDITABLE]
+             INVALID_REVIEW_STATUS, INVALID_RATING, PARAM_NOT_EDITABLE, INVALID_RESET_TOKEN]
     Module:
       type: string
       enum: [EMPLOYEE, PAYROLL, LEAVE, PERFORMANCE, REPORTS, ADMIN]
@@ -1652,6 +1785,23 @@ components:
       properties:
         currentPassword: { type: string, maxLength: 200, format: password }
         newPassword: { type: string, maxLength: 200, format: password }
+    ResetPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token: { type: string, maxLength: 100, description: The token from the reset link }
+        newPassword: { type: string, maxLength: 200, format: password }
+    IssuePasswordResetRequest:
+      type: object
+      required: [empId]
+      properties:
+        empId: { type: integer, format: int64 }
+    PasswordResetIssued:
+      type: object
+      required: [empId, expiresAt]
+      properties:
+        empId: { type: integer, format: int64 }
+        expiresAt: { type: string, format: date-time }
     CurrentUser:
       type: object
       required: [empId, empNumber, username, firstName, lastName, loginTime, expiresAt, permissions]
@@ -1970,6 +2120,27 @@ components:
         employeesProcessed: { type: integer }
         entriesCreated: { type: integer }
         totalAccrued: { type: number }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+    CarryoverRunRequest:
+      type: object
+      required: [year]
+      properties:
+        year: { type: integer, minimum: 1900, maximum: 9998, description: The year whose balances are carried into year + 1 }
+    CarryoverExpiryRequest:
+      type: object
+      required: [asOfDate]
+      properties:
+        asOfDate: { type: string, format: date }
+    CarryoverRun:
+      type: object
+      properties:
+        runId: { type: integer, format: int64 }
+        runType: { type: string, enum: [CARRYOVER, EXPIRY] }
+        fromYear: { type: integer, nullable: true, description: CARRYOVER runs only }
+        asOfDate: { type: string, format: date, nullable: true, description: EXPIRY runs only }
+        balancesProcessed: { type: integer }
+        totalDays: { type: number }
         createdBy: { type: string }
         createdDate: { type: string, format: date-time }
     PayFrequency:
