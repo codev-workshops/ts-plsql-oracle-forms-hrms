@@ -2,6 +2,7 @@ package com.hrms.common;
 
 import com.hrms.leave.LeaveAccrualService;
 import com.hrms.notification.NotificationDispatcher;
+import com.hrms.payroll.PayrollBatch;
 import java.time.Clock;
 import java.time.LocalDate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,8 +11,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
- * Replaces the DBMS_SCHEDULER jobs owned by P3: monthly leave accrual (PKG-L04) and the notification queue
- * (PKG-N01). Off unless {@code hrms.jobs.enabled=true}, so tests and extra instances never run them by accident.
+ * Replaces the DBMS_SCHEDULER jobs: monthly leave accrual (PKG-L04), the notification queue (PKG-N01) and the
+ * payroll batch (PKG-P07). Off unless {@code hrms.jobs.enabled=true}, so tests and extra instances never run them by accident.
  */
 @Configuration
 @EnableScheduling
@@ -22,11 +23,13 @@ class ScheduledJobs {
 
     private final LeaveAccrualService accrual;
     private final NotificationDispatcher dispatcher;
+    private final PayrollBatch payroll;
     private final Clock clock;
 
-    ScheduledJobs(LeaveAccrualService accrual, NotificationDispatcher dispatcher, Clock clock) {
+    ScheduledJobs(LeaveAccrualService accrual, NotificationDispatcher dispatcher, PayrollBatch payroll, Clock clock) {
         this.accrual = accrual;
         this.dispatcher = dispatcher;
+        this.payroll = payroll;
         this.clock = clock;
     }
 
@@ -39,5 +42,10 @@ class ScheduledJobs {
     void dispatchNotifications() {
         dispatcher.requeueFailed(3);
         dispatcher.dispatchPending(50);
+    }
+
+    @Scheduled(cron = "${hrms.jobs.payroll-batch-cron:0 0 2 * * *}", zone = "UTC")
+    void payrollBatch() {
+        payroll.calculatePendingRuns();
     }
 }

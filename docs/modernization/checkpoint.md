@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| `contract_version` | **`v1.1-P5`** (v1 frozen by P3; additive amendment v1.1-P5, A-P5-01. P4 runs in parallel and numbers its amendment `v1.1-P4`; the coordinator reconciles on merge) |
+| `contract_version` | **`v1.2-P6`** (v1 frozen by P3; additive amendments v1.1-P5 (A-P5-01) and v1.2-P6 (A-P6-01) on this branch. P4's parallel `v1.1-P4` (PR #85) is not on this branch; P7 merges it and the coordinator reconciles the numbering) |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P5` |
+| `last_updated_by_phase` | `P6` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -277,11 +277,11 @@ is reported in the PR and the final message.
 
 | Field | Value |
 |---|---|
-| `contract_version` | `v1.1-P5` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.1.0`, `info.x-contract-version: v1.1-P5`) |
+| `contract_version` | `v1.2-P6` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.2.0`, `info.x-contract-version: v1.2-P6`) |
 | Frozen? | **Yes — frozen at v1 by P3 on 2026-11-20 (A-P3-01).** P4–P8 add routes only through `v1.N` amendments in §7; `OpenApiContractTest` keeps the file and the controllers in sync. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P5: `v1.1-P5`** — additive: 8 employee operations (create, partial update, delete=405, transfer, promote, terminate, rehire, history), their schemas, `EmployeeMutation.warnings[]`, error code `EMPLOYEE_NOT_TERMINATED` (A-P5-01) |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P5: `v1.1-P5`** — additive: 8 employee operations (create, partial update, delete=405, transfer, promote, terminate, rehire, history), their schemas, `EmployeeMutation.warnings[]`, error code `EMPLOYEE_NOT_TERMINATED` (A-P5-01). **P4: `v1.1-P4`** (performance, PR #85, separate branch; merged by P7). **P6: `v1.2-P6`** — additive: 13 payroll operations under `/api/v1/payroll` and their schemas; no new error code (A-P6-01) |
 
 ---
 
@@ -296,9 +296,9 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
 | P2 Auth + employee read model | accepted | `modernization/p2-auth` | #83 | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. PR head `c20410949c73`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` (53 green) (recorded by P3). |
 | P3 Leave pilot + contract freeze | accepted | `modernization/p3-leave` | #84 | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. PR head `c23ba1c04a58`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P5). |
-| P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
-| P5 Employee core | submitted | `modernization/p5-employee` | _see PR_ | `f9d91aed89db` | **v1.1-P5** | 2026-11-20 | Employee commands (create/update/transfer/promote/terminate/rehire/history, DELETE=405), `SalaryRecordPort` + recording stub (OQ-01), contract amendment v1.1-P5. No Flyway migration needed (reserved V300–V399 unused). `mvn -f backend/pom.xml test`: 80 tests green. No frontend. Details: §4.5. |
-| P6 Payroll | pending | | | | | | Starts after P5. |
+| P4 Performance | accepted | `modernization/p4-performance` | #85 | `2d4d2094c777` | v1.1-P4 | 2026-11-20 | PR head `71f773356d30`. Accepted by the coordinator (76 tests green) (recorded by P6). **Its code is not on the P5/P6 branch line**; P7 merges it as `accepted` before adding its own entry. |
+| P5 Employee core | accepted | `modernization/p5-employee` | #86 | `f9d91aed89db` | **v1.1-P5** | 2026-11-20 | Employee commands (create/update/transfer/promote/terminate/rehire/history, DELETE=405), `SalaryRecordPort` + recording stub (OQ-01), contract amendment v1.1-P5. No Flyway migration needed (reserved V300–V399 unused). `mvn -f backend/pom.xml test`: 80 tests green. No frontend. Details: §4.5. PR head `7cb802b364a9`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P6). |
+| P6 Payroll | submitted | `modernization/p6-payroll` | _see PR_ | `2bf5a5c6326c` | **v1.2-P6** | 2026-11-20 | Flyway V400 (tax parameters + 2024 brackets, nullable error-row element, unique period start). `SalaryRecordPort` implemented by payroll (stub deleted), pay-period generation, runs (create/calculate/approve/reverse, payslips, errors), table-driven taxes, payroll batch job, contract v1.2-P6. `mvn -f backend/pom.xml test`: 90 tests green. No frontend. Details: §4.6. |
 | P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
 | P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. |
 
@@ -540,6 +540,68 @@ found) and `changePct` is NULL. P6 implements the port as a `@Component`, delete
 (PKG-S03, OQ-P5-2). Org chart / direct reports / headcount / tenure reads (P7 reporting, VW_ORG_HIERARCHY).
 No React UI.
 
+### 4.6 P6 notes (payroll)
+
+**Code** (`com.hrms.payroll`, commit `2bf5a5c6326c`). `PayrollSalaryRecords` (the real `SalaryRecordPort`; P5's
+`RecordingSalaryRecordPort` is deleted), `PayPeriodService`, `PayrollRunService`, `TaxCalculator`, `PayrollBatch`
+(scheduled from `ScheduledJobs`), `PayrollController` (`/api/v1/payroll`), `PayrollModels`, `PayrollCaller`. The
+employee module gains `EmployeeReadService.activeEmployeeIds()`: payroll reads who is on payroll through the employee
+read API and never calls back into employee commands (OQ-01). Tests: `PayrollApiTest` (7), `TaxCalculatorTest` (3);
+`EmployeeCommandApiTest` now asserts real `salary_records` rows instead of stub calls.
+
+**Migration V400** (range V400–V499). `payroll_tax_parameters` (per tax year; `STATE_RATE` rows carry a state) and
+`tax_brackets` rows, both seeded with the legacy 2024 values (reference data, so in `db/migration`, not `db/seed`);
+`payroll_details.element_id` nullable for `element_type = 'ERROR'` rows only (DEF-P6-2); unique
+`pay_periods (pay_frequency, period_start_date)` (DEF-P6-3); partial index on active salary records. No DELETE grant.
+
+**Routes and authorities** (FRM-060, FRM-063, FRM-064, OQ-09). Every route needs `PAYROLL:VIEW` (grade ≥ 5). Generate
+periods, close a period, create and calculate a run need `PAYROLL:EDIT` (grade ≥ 8). Approve and reverse need
+`PAYROLL:APPROVE` (grade ≥ 8). With the D-06 matrix only grade ≥ 8 can change anything. No generic CRUD (FRM-039,
+FRM-065); salary records are read-only (`GET /employees/{empId}/salary-records`).
+
+**Behaviour (parity unless marked).**
+- Salary port (PKG-P01): salary > 0 (-20101); prior active records with an earlier effective date are end-dated at
+  `effective − 1` and deactivated; the new record is ANNUAL, USD, MONTHLY, `change_reason` = NEW_HIRE / PROMOTION /
+  REHIRE. `Propagation.MANDATORY`, so it always runs in the employee transaction. One `audit_log` row per insert and
+  per end-dated record with `{empId, salary, effective, active, endDate}` (TRG-009; DEF-20 fix: no double audit).
+  `currentBaseSalary` = the record effective on the date (`get_salary_as_of`), empty when none, so promote's history
+  `old_salary` and `change_pct` are now filled (DEF-P5-2). `endCompensation` ends salary records and pay elements
+  at the termination date (PKG_EMPLOYEE L695-711).
+- Pay periods (PKG-P02): legacy MONTHLY/BIWEEKLY rules and names; other frequencies are 400 (legacy created
+  nothing). Fix: idempotent; a period that overlaps an existing period of the same frequency is skipped
+  (DEF-P6-3), one transaction. The list defaults to OPEN, newest first (FRM-061); `year` filters on the pay date.
+- Create run: the period must exist (404) and not be CLOSED (-20102); PENDING, REGULAR by default. Close period:
+  CLOSED is final (-20102). Both audited.
+- Calculate (PKG-P03): **FRM-062 PENDING-only gate server-side** (409 `INVALID_RUN_STATUS`, legacyCode null). The run
+  row is locked `FOR UPDATE NOWAIT` (a concurrent calculation is 409 `CONCURRENT_MODIFICATION`). **Fix DEF-16:** one
+  transaction; any failure rolls the whole run back to PENDING with no details, and CALCULATING is never visible.
+  Employees: `employment_status = 'ACTIVE' AND active_flag`, by emp_id. Gross = salary on the period end / periods
+  per year of the period's frequency, rounded to cents. W-4 defaults (SINGLE, 0 allowances, no state) when no
+  `employee_tax_info` row. Taxable income = gross (legacy did not subtract pretax deductions; OQ-P6-2). Deductions:
+  active DEDUCTION/BENEFIT pay elements overlapping the period, by priority; override, else FLAT amount/default,
+  else PERCENTAGE of gross. No salary → an ERROR detail `NO_ACTIVE_SALARY (-20104)` for that employee, the others
+  are still calculated, and the run ends ERROR (legacy). `employee_count` counts successes. **Fix DEF-P6-1:** run
+  totals include BENEFIT rows, so they equal the payslips.
+- Taxes (PKG-P05, **fix DEF-05**): legacy formulas and rounding (HALF_UP to cents) with brackets and constants read
+  from the tables; the latest configured tax year ≤ the run's pay-date year applies, so 2024 values keep applying
+  (legacy behaviour) until newer rows exist. HEAD_OF_HOUSEHOLD has no brackets, as legacy (OQ-P6-1).
+- YTD (**fix DEF-06**): the tax year of a run is the year of its **pay date** (tax tables, W-4 row and YTD; legacy
+  used the period-end year for the W-4 and the period-start year for YTD). YTD = EARNING details of runs that are
+  CALCULATED, APPROVED or PAID, paid in that year up to this pay date, excluding the run being calculated (legacy
+  also counted the current run's own gross). Payslip `ytdGross`/`ytdNet` are filled (legacy placeholders of 0).
+- Approve: CALCULATED only (-20103). Reverse (**fix DEF-21**): only from CALCULATED, APPROVED, PAID or ERROR (409,
+  legacyCode null); run and details become REVERSED; the required reason is in the audit payload (legacy took a
+  reason and dropped it). Every run status change writes `STATUS_CHANGE` (D-08).
+- Batch (PKG-P07): `PayrollBatch.calculatePendingRuns()` calculates each PENDING run in its own transaction as
+  `system:payroll-batch`; skipped runs (locked or no longer PENDING) do not stop the others. Cron
+  `hrms.jobs.payroll-batch-cron` (default 02:00 UTC daily), only with `hrms.jobs.enabled=true`.
+- DEF-07: not applicable (no overtime calculation exists); nothing implemented.
+
+**Not done in P6 (by design).** Pay register CSV (PKG-P06, P7 per OQ-03). `VW_PAYROLL_LATEST` endpoint (VW-005,
+P7). PAID transition (no legacy code path), bank deposits, employer cost (`total_employer_cost` stays NULL, as
+legacy). Tax-table maintenance API (rows are changed by migration). Segregation of duties between calculate and
+approve (OQ-P6-3). No React UI.
+
 ---
 
 ## 5. Re-homed logic registry
@@ -579,7 +641,7 @@ No React UI.
 | TRG-006 | TRG_EMP_BEFORE_UPDATE | Block the `TERMINATED → ACTIVE` transition, except through rehire | -20503 | P5 domain state machine. Note DEF-13 | re-homed (P5, `f9d91aed89db`: `EmployeeCommandService.checkTransition`, rehire is the only path; no generic status update exists; `EmployeeValidatorsTest.terminatedToActiveOnlyThroughRehire`, `EmployeeCommandApiTest.rehireIsTheOnlyWayBackFromTerminated`) |
 | TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | re-homed (P5, `f9d91aed89db`: explicit `employee_history` rows in the `log_history` shape for HIRE/TRANSFER/PROMOTION/TERMINATION/REHIRE, same transaction; DEF-14 fixed; `EmployeeCommandApiTest`) |
 | TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | re-homed (P1 grants + P5 `DELETE /api/v1/employees/{empId}` → 405 `DELETE_FORBIDDEN`, `f9d91aed89db`; `EmployeeCommandApiTest.writesNeedEmployeeEditAndDeleteIsAlwaysForbidden`) |
-| TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | open |
+| TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | re-homed (P6, `2bf5a5c6326c`: `PayrollSalaryRecords` writes one `SALARY_RECORDS` audit row per insert and per end-dated record, same transaction; DEF-20 fixed; `EmployeeCommandApiTest.createHires…`). No salary delete path exists (D-03) |
 | TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | done (P3: `LeaveService` writes `STATUS_CHANGE` old→new in the same transaction; DEF-15 fixed) |
 | TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | blocked (OQ-P5-1): no department write path exists in the forms, packages or API, so there is nothing to audit yet |
 
@@ -625,13 +687,13 @@ No React UI.
 | FRM-036 | WVI DEPT_ID must be an active department | P5 domain (= validate_dept -20003) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createValidationsKeepTheLegacyOrderAndCodes`) |
 | FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | re-homed (P5, `f9d91aed89db`; `EmployeeCommandApiTest.createValidationsKeepTheLegacyOrderAndCodes`) |
 | FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | re-homed (P5, `f9d91aed89db`: request records have no id/number/status/audit fields; unknown properties are ignored; `EmployeeCommandApiTest.updateIsPartialAndAudited`) |
-| FRM-039 | SALARY block is read-only (no I/U/D) | P6 (salary changes only through salary-record operations) | open |
+| FRM-039 | SALARY block is read-only (no I/U/D) | P6 (salary changes only through salary-record operations) | re-homed (P6, `2bf5a5c6326c`: no write route; `GET /api/v1/payroll/employees/{empId}/salary-records` read-only; `PayrollApiTest.salaryRecordsAreReadOnlyAndNeedPayrollView`) |
 | FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | re-homed (P2 lookup + P5 `validateManager` -20004 incl. the 15-level cycle walk, `f9d91aed89db`; `EmployeeCommandApiTest.transferValidatesAndWritesHistory`, `circularCheckWalksAtMostFifteenLevels`) |
 | FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | re-homed (P5, `f9d91aed89db`: every employee write goes through `EmployeeCommandService`; no direct-DML path) |
 | FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | dropped (P5, D-03: no delete; DELETE is 405) |
 | FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | re-homed (P2, joined `managerName`/`deptName`/`jobTitle`/`locationName`; `EmployeeReadApiTest.getReturnsTheReadModel`) |
 | FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
-| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | in-progress (P5: OQ-11 soft warning `warnings[]` `SALARY_OUTSIDE_GRADE` on create/promote/rehire, `f9d91aed89db`; `EmployeeCommandApiTest.promoteGoesThroughThePort`. P6: salary-record operations) |
+| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | re-homed (P5 soft warning `SALARY_OUTSIDE_GRADE` on create/promote/rehire, `f9d91aed89db`; P6 `2bf5a5c6326c`: these are the only salary-record operations, so no further warning point exists) |
 | FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | re-homed (P2, `GET /api/v1/lookups/{departments,job-titles,locations}` active-only; `EmployeeReadApiTest.lookupsAreActiveOnly`) |
 
 **HRMS_LEAVE**
@@ -650,12 +712,12 @@ No React UI.
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-060 | WNFI: without `has_permission(PAYROLL,VIEW)` the form exits | P6 api-authz (`PAYROLL:VIEW` on all payroll reads) | open |
-| FRM-061 | WNFI `DEFAULT_WHERE` on PAY_PERIOD = `STATUS='OPEN'` | P6 list default filter | open |
-| FRM-062 | **BTN_CALCULATE gate: `PAYROLL_RUN.STATUS = 'PENDING'` only.** This is Forms-only. Verified: `PKG_PAYROLL.calculate_payroll` has **no** status check (L271-347) | P6 domain (409 `INVALID_RUN_STATUS`) | open |
-| FRM-063 | BTN_APPROVE gate: `has_permission(PAYROLL,APPROVE)`. This is Forms-only: `approve_payroll` checks status (CALCULATED, -20103) but not permission | P6 api-authz (`PAYROLL:APPROVE`) | open |
-| FRM-064 | BTN_CREATE_RUN calls `create_payroll_run` with **no** permission check beyond the form-entry VIEW check | P6 api-authz (recommended: `PAYROLL:CREATE`; see OQ-09) | open |
-| FRM-065 | All PAY_PERIOD and PAYROLL_RUN blocks are read-only | P6 (no generic CRUD) | open |
+| FRM-060 | WNFI: without `has_permission(PAYROLL,VIEW)` the form exits | P6 api-authz (`PAYROLL:VIEW` on all payroll reads) | re-homed (P6, `2bf5a5c6326c`: `PAYROLL:VIEW` on every `/api/v1/payroll` route; `PayrollApiTest`, 403 for grade 2) |
+| FRM-061 | WNFI `DEFAULT_WHERE` on PAY_PERIOD = `STATUS='OPEN'` | P6 list default filter | re-homed (P6, `2bf5a5c6326c`: `GET /api/v1/payroll/pay-periods` defaults to OPEN, newest start first; `PayrollApiTest.generatesMonthlyAndBiweeklyPeriodsIdempotently`) |
+| FRM-062 | **BTN_CALCULATE gate: `PAYROLL_RUN.STATUS = 'PENDING'` only.** This is Forms-only. Verified: `PKG_PAYROLL.calculate_payroll` has **no** status check (L271-347) | P6 domain (409 `INVALID_RUN_STATUS`) | re-homed (P6, `2bf5a5c6326c`: `PayrollRunService.calculate` 409 `INVALID_RUN_STATUS` unless PENDING; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`) |
+| FRM-063 | BTN_APPROVE gate: `has_permission(PAYROLL,APPROVE)`. This is Forms-only: `approve_payroll` checks status (CALCULATED, -20103) but not permission | P6 api-authz (`PAYROLL:APPROVE`) | re-homed (P6, `2bf5a5c6326c`: approve needs `PAYROLL:APPROVE`; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`) |
+| FRM-064 | BTN_CREATE_RUN calls `create_payroll_run` with **no** permission check beyond the form-entry VIEW check | P6 api-authz (recommended: `PAYROLL:CREATE`; see OQ-09) | re-homed (P6, `2bf5a5c6326c`: create and calculate need `PAYROLL:EDIT` per closed OQ-09 (grade ≥ 8); 403 for a grade-6 `PAYROLL:VIEW` holder; `PayrollApiTest`) |
+| FRM-065 | All PAY_PERIOD and PAYROLL_RUN blocks are read-only | P6 (no generic CRUD) | re-homed (P6, `2bf5a5c6326c`: commands only; no generic CRUD route on periods or runs) |
 
 **HRMS_PERFORMANCE**
 
@@ -694,7 +756,7 @@ so that they are not lost.
 | PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | re-homed (P5, `f9d91aed89db`: `phoneWork`/`phoneMobile` on create/update; `EmployeeValidatorsTest.phoneNeedsTenOrElevenDigits`) |
 | PLL-003 | `validate_ssn` | NULL is valid. 9 digits; no `000`, `00` or `0000` group. **Stricter than** server `PKG_COMMON.is_valid_ssn`, which checks 9 digits only | P5 domain (recommended: adopt the stricter rule; OQ-04) | in-progress (P5: stricter validator `EmployeeValidators.isValidSsn`, `f9d91aed89db`, `EmployeeValidatorsTest.ssnUsesTheStricterPllRule`. No SSN write route yet: OQ-P5-2) |
 | PLL-004 | `validate_date_not_future` | NULL is valid. `TRUNC(date) ≤ TRUNC(SYSDATE)` | P5 domain (DATE_OF_BIRTH; injected Clock) | re-homed (P5, `f9d91aed89db`: `dateOfBirth` on create; `EmployeeValidatorsTest.dateNotFutureIsInclusiveOfToday`) |
-| PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | in-progress (P5: same soft warning as FRM-045, `f9d91aed89db`; P6 remains for salary-record operations) |
+| PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | re-homed (same as FRM-045: P5 `f9d91aed89db` warning; P6 `2bf5a5c6326c` adds no other salary write path) |
 | PLL-010 | `handle_error` (HRMS_COMMON_LIB) | Logs through `PKG_COMMON.log_error`, shows MESSAGE twice, raises FORM_TRIGGER_FAILURE | Dropped. Replaced by server-side error logging and D-05 | drop-proposed |
 | PLL-011 | `toolbar_save/clear/query/first/prev/next/last/insert/delete/exit` (10) | Forms built-ins | ui-only | drop-proposed |
 | PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | drop-proposed |
@@ -722,13 +784,13 @@ re-homing boundary.
 | PKG-L03 | PKG_LEAVE.calculate_business_days | Weekdays minus HOLIDAYS (active, `LOCATION_CODE IS NULL OR = emp location`) | P3 domain (DEF-02) | done (P3: `BusinessDays`; DEF-02 via data) |
 | PKG-L04 | PKG_LEAVE.run_monthly_accrual | DBMS_SCHEDULER on the 1st; MAX_BALANCE cap; tenure; commit every 100 | P3 or P8 `job` (Spring `@Scheduled` + idempotency); OQ-12 | done (P3: `LeaveAccrualService` + `POST /api/v1/leave/accrual-runs` + `ScheduledJobs`; idempotent per month) |
 | PKG-L05 | PKG_LEAVE.process_carryover / expire_carryover | Year-end carryover capped at CARRYOVER_MAX, with expiry months | P3 or P8 `job` (DEF-03) | open — deferred to P8 per OQ-12 (DEF-03) |
-| PKG-P01 | PKG_PAYROLL.create_salary_record | Salary > 0 (-20101). End-dates the prior active record at `effective-1`. Inserts ANNUAL. Audit | P6. Implements the P5 interface | open |
-| PKG-P02 | PKG_PAYROLL.create_pay_periods | MONTHLY: end = LAST_DAY, pay = end, Saturday → Friday (−1), Sunday → Friday (−2). BIWEEKLY: first Friday of the year −13 = start, 14-day periods, pay = end + 5, name `YYYY-BW-NN` | P6 domain | open |
-| PKG-P03 | PKG_PAYROLL.calculate_payroll / calculate_employee_pay | No status gate (FRM-062). Commits every 50 (DEF-16). Gross = annual / periods. Fed, state, FICA and Medicare. Deductions by element | P6 | open |
-| PKG-P04 | PKG_PAYROLL.approve_payroll / reverse_payroll / close_pay_period / create_payroll_run | Approve needs CALCULATED (-20103). Reverse has **no** status check. Close rejects CLOSED (-20102). Create rejects CLOSED (-20102) | P6 domain | open |
-| PKG-P05 | PKG_PAYROLL.calculate_federal_tax / state / fica / medicare | Hard-coded 2024 brackets and constants; flat state rates | P6 (DEF-05) | open |
+| PKG-P01 | PKG_PAYROLL.create_salary_record | Salary > 0 (-20101). End-dates the prior active record at `effective-1`. Inserts ANNUAL. Audit | P6. Implements the P5 interface | re-homed (P6, `2bf5a5c6326c`: `PayrollSalaryRecords` implements `SalaryRecordPort`; stub deleted; `EmployeeCommandApiTest` asserts the rows) |
+| PKG-P02 | PKG_PAYROLL.create_pay_periods | MONTHLY: end = LAST_DAY, pay = end, Saturday → Friday (−1), Sunday → Friday (−2). BIWEEKLY: first Friday of the year −13 = start, 14-day periods, pay = end + 5, name `YYYY-BW-NN` | P6 domain | re-homed (P6, `2bf5a5c6326c`: `PayPeriodService.generate`, idempotent (DEF-P6-3); `TaxCalculatorTest.payPeriodGeneration`, `PayrollApiTest`) |
+| PKG-P03 | PKG_PAYROLL.calculate_payroll / calculate_employee_pay | No status gate (FRM-062). Commits every 50 (DEF-16). Gross = annual / periods. Fed, state, FICA and Medicare. Deductions by element | P6 | re-homed (P6, `2bf5a5c6326c`: `PayrollRunService.calculate`, PENDING gate, one transaction (DEF-16), YTD fix (DEF-06), totals fix (DEF-P6-1); `PayrollApiTest`) |
+| PKG-P04 | PKG_PAYROLL.approve_payroll / reverse_payroll / close_pay_period / create_payroll_run | Approve needs CALCULATED (-20103). Reverse has **no** status check. Close rejects CLOSED (-20102). Create rejects CLOSED (-20102) | P6 domain | re-homed (P6, `2bf5a5c6326c`: create (-20102), approve (-20103), reverse with state check (DEF-21), close (-20102), all audited; `PayrollApiTest`) |
+| PKG-P05 | PKG_PAYROLL.calculate_federal_tax / state / fica / medicare | Hard-coded 2024 brackets and constants; flat state rates | P6 (DEF-05) | re-homed (P6, `2bf5a5c6326c`: `TaxCalculator`, brackets/constants from `tax_brackets` + `payroll_tax_parameters` (DEF-05); `TaxCalculatorTest`, `PayrollApiTest.taxesDeductionsAndTotalsAreTableDriven`) |
 | PKG-P06 | PKG_PAYROLL.generate_pay_register | UTL_FILE CSV | P7 report endpoint (CSV) or drop; OQ-03 | open |
-| PKG-P07 | Payroll batch "DBMS_SCHEDULER" (header comment; no job DDL in the repo) | Batch calculate | P6 `job` (Spring scheduler; no DBMS_SCHEDULER) | open |
+| PKG-P07 | Payroll batch "DBMS_SCHEDULER" (header comment; no job DDL in the repo) | Batch calculate | P6 `job` (Spring scheduler; no DBMS_SCHEDULER) | re-homed (P6, `2bf5a5c6326c`: `PayrollBatch` + `ScheduledJobs.payrollBatch` (`hrms.jobs.payroll-batch-cron`); `PayrollApiTest.batchJobCalculatesEveryPendingRun`) |
 | PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | open |
 | PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | open |
 | PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | open |
@@ -750,7 +812,7 @@ re-homing boundary.
 | VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | in-progress (P1: recursive CTE `hrms.vw_org_hierarchy` in V7, test `orgHierarchyKeepsConnectBySemantics`; P7 endpoint remains) |
 | VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | in-progress (P1: `hrms.vw_employee_compensation` in V7; P7 endpoint remains) |
 | VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | in-progress (P1: `hrms.vw_leave_summary` in V7, parity incl. DEF-23; P7 endpoint remains) |
-| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | in-progress (P1: `hrms.vw_payroll_latest` in V7; P6/P7 remains) |
+| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | in-progress (P1: `hrms.vw_payroll_latest` in V7; P6 needed no change — the view reads the same tables; P7 endpoint remains) |
 | VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | in-progress (P1: `hrms.vw_pending_approvals` in V7, test `reportingViewsAreQueryable`; P7 endpoint remains) |
 
 ### 5.7 Defects (port-vs-fix candidates; the decision belongs to the user, see OQ-04)
@@ -763,9 +825,9 @@ re-homing boundary.
 | DEF-02 | Observed holidays are not excluded: the check matches the exact date only | PKG_LEAVE.pkb L9-10 | Fix through **data**: HOLIDAYS carries an observed-date row. No algorithm change — **P3: no code needed** — holidays are matched by date + location; observed dates are P8 data-migration rows (test: HQ-only holiday not excluded for CHI) |
 | DEF-03 | Carryover "double-expire". `expire_carryover` itself is idempotent, because it zeroes `CARRYOVER_FROM_PREV`. The real double path: re-running `process_carryover` resets `CARRYOVER_FROM_PREV`, then expiry subtracts into ADJUSTMENT again. Expiry also subtracts the full carryover even after it has been used | PKG_LEAVE.pkb L558-623 | Fix: an idempotency record per (year, employee, type), and expire only the unused remainder — **deferred to P8** with PKG-L05 (OQ-12) |
 | DEF-04 | Email validation drift. The PLL accepts subdomains, despite its comment, and has no TLD check. The server regex `^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` is used by the form | PLL L14-38; PKG_COMMON.pkb L265-268 | Fix: one server validator using the PKG_COMMON regex |
-| DEF-05 | Hard-coded 2024 federal brackets, standard deductions (14600/29200), allowance 4300, SS wage base 168600, flat state rates | PKG_PAYROLL.pkb L7-14, L643-718 | Fix: read TAX_BRACKETS and a parameter table, seeded with the 2024 values for parity |
-| DEF-06 | YTD issues. YTD keys on the `PERIOD_START_DATE` year (biweekly periods spanning a year boundary go to the wrong year) and on `STATUS='CALCULATED'` only. The payslip has YTD placeholders of 0 | PKG_PAYROLL.pkb L802-819, L784-785 | Fix (key on PAY_DATE year; include approved and paid runs) |
-| DEF-07 | "Overtime does not account for holidays". **No overtime calculation exists in the repo**; there is only an `OVERTIME_ELIGIBLE` column and a T&A import stub | PKG_PAYROLL.pks L11 | Record as not applicable. Overtime is out of scope unless the user adds it |
+| DEF-05 | Hard-coded 2024 federal brackets, standard deductions (14600/29200), allowance 4300, SS wage base 168600, flat state rates | PKG_PAYROLL.pkb L7-14, L643-718 | Fix: read TAX_BRACKETS and a parameter table, seeded with the 2024 values for parity — **fixed in P6** (`2bf5a5c6326c`, V400 + `TaxCalculator`; latest tax year ≤ pay-date year) |
+| DEF-06 | YTD issues. YTD keys on the `PERIOD_START_DATE` year (biweekly periods spanning a year boundary go to the wrong year) and on `STATUS='CALCULATED'` only. The payslip has YTD placeholders of 0 | PKG_PAYROLL.pkb L802-819, L784-785 | Fix (key on PAY_DATE year; include approved and paid runs) — **fixed in P6** (`2bf5a5c6326c`: pay-date year, CALCULATED/APPROVED/PAID runs, current run excluded, payslip YTD filled; `PayrollApiTest.yearToDateCapsSocialSecurityAndAddsMedicare`) |
+| DEF-07 | "Overtime does not account for holidays". **No overtime calculation exists in the repo**; there is only an `OVERTIME_ELIGIBLE` column and a T&A import stub | PKG_PAYROLL.pks L11 | Record as not applicable. Overtime is out of scope unless the user adds it — **recorded as not applicable in P6** (nothing implemented) |
 
 **Discovered in P0** (each verified against the source)
 
@@ -779,12 +841,12 @@ re-homing boundary.
 | DEF-13 | **`rehire_employee` is blocked by its own trigger.** It updates TERMINATED→ACTIVE, which TRG-006 rejects with -20503. It also has no check that the employee is TERMINATED, and no manager or location handling | PKG_EMPLOYEE.pkb L750-793; trg_employees.sql L68-73 | Fix: rehire is the one allowed transition and requires TERMINATED — **fixed in P5** (rehire requires TERMINATED, else 409 `EMPLOYEE_NOT_TERMINATED` (v1.1-P5); validates dept, job, optional manager incl. cycle; location defaults to the department's; `EmployeeCommandApiTest.rehireIsTheOnlyWayBackFromTerminated`) |
 | DEF-14 | **TRG_EMP_BEFORE_UPDATE history inserts cannot work.** They use the columns `HISTORY_ID`, `CHANGE_DATE`, `OLD_VALUE`, `NEW_VALUE`, `CHANGED_BY` and `CHANGE_REASON`, none of which exist in EMPLOYEE_HISTORY (the DDL has `HIST_ID`, `EFFECTIVE_DATE` and typed `OLD_*`/`NEW_*` columns). The values `DEPARTMENT_CHANGE` and `JOB_CHANGE` also violate `CHK_CHANGE_TYPE` | trg_employees.sql L77-110; 01_core_tables.sql L152-177 | Re-home as service writes in the `log_history` shape (P5) — **fixed in P5** (service writes typed `employee_history` rows with valid `change_type`s) |
 | DEF-15 | **Leave status audit is silently lost.** TRG_LEAVE_REQUEST_AUDIT writes `ACTION_TYPE='STATUS_CHANGE'`, but `CHK_AUDIT_ACTION` allows only INSERT, UPDATE and DELETE, and PKG_AUDIT's `WHEN OTHERS` swallows the violation | trg_audit.sql L56-68; 04_performance_tables.sql L104; PKG_AUDIT.pkb | Fix (D-08 adds STATUS_CHANGE; already locked) — **fixed in P3** (`approveMovesPendingToUsedAndAuditsTheStatus`) |
-| DEF-16 | `calculate_payroll` commits every 50 employees, and the CALCULATING status is committed before the work, so a failure leaves a half-calculated run | PKG_PAYROLL.pkb L286-327 | Fix: one transaction, or idempotent per-employee resumable work |
+| DEF-16 | `calculate_payroll` commits every 50 employees, and the CALCULATING status is committed before the work, so a failure leaves a half-calculated run | PKG_PAYROLL.pkb L286-327 | Fix: one transaction, or idempotent per-employee resumable work — **fixed in P6** (`2bf5a5c6326c`: one transaction; `PayrollApiTest.missingSalaryMakesTheRunErrorAndAFailureRollsTheWholeRunBack`) |
 | DEF-17 | `USER_SESSIONS.USERNAME` and every `CREATED_BY`/`MODIFIED_BY`/`CHANGED_BY` are `VARCHAR2(30)`, but the actor written is the email, up to 100 characters | 04_performance_tables.sql L156; PKG_SECURITY.pkb | Fix (D-04 widens; already locked) |
 | DEF-18 | The Forms session check passes `GET_APPLICATION_PROPERTY(USERNAME)`, the DB user and not the session ID, to `is_session_valid` | HRMS_EMPLOYEE.xml L34; HRMS_LEAVE.xml, HRMS_PERFORMANCE.xml WNFI | Dropped with Forms (FRM-020 re-homed) |
 | DEF-19 | The hire-date limit differs: Forms allows +90 days, the trigger +180 | HRMS_EMPLOYEE.xml L383; trg_employees.sql L35 | OQ-10 |
-| DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) |
-| DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) |
+| DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) — **fixed in P6** (`2bf5a5c6326c`) |
+| DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) — P6 fixed the `reverse_payroll` part (`2bf5a5c6326c`; from CALCULATED/APPROVED/PAID/ERROR only). The performance parts are P4's |
 | DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) — P3 provides `LeaveService.cancelPendingRequestsOf`; P5 wires terminate to it — **fixed in P5** (terminate → `LeaveService.cancelPendingRequestsOf`; pending balance released, STATUS_CHANGE audited; `EmployeeCommandApiTest.terminateCancelsPendingLeaveThroughTheLeaveServiceAndEndsCompensation`) |
 
 ---
@@ -802,7 +864,17 @@ re-homing boundary.
 | ID | Defect | Evidence | Recommended default |
 |---|---|---|---|
 | DEF-P5-1 | `promote_employee` has no ACTIVE check and does not validate the new job; `transfer_employee` does not validate a new job; `rehire_employee` does not validate the job | PKG_EMPLOYEE.pkb L581-642, L504-576, L750-793 | Fix under the OQ-04 policy (fix business-logic bugs, already accepted): **fixed in P5** (`EMPLOYEE_NOT_ACTIVE` / `INVALID_JOB`; `EmployeeCommandApiTest.promoteGoesThroughThePort`, `transferValidatesAndWritesHistory`) |
-| DEF-P5-2 | Promote reads the old salary with `ROWNUM = 1 … ORDER BY` (ROWNUM is applied before the sort, so an arbitrary active record is used) and writes `old_salary = 0` when none exists | PKG_EMPLOYEE.pkb L596-606 | Fix: P6's `currentBaseSalary` returns the record effective on the promotion date; NULL (not 0) when none |
+| DEF-P5-2 | Promote reads the old salary with `ROWNUM = 1 … ORDER BY` (ROWNUM is applied before the sort, so an arbitrary active record is used) and writes `old_salary = 0` when none exists | PKG_EMPLOYEE.pkb L596-606 | Fix: P6's `currentBaseSalary` returns the record effective on the promotion date; NULL (not 0) when none — **fixed in P6** (`2bf5a5c6326c`; `EmployeeCommandApiTest.promoteGoesThroughThePort` expects old salary 110000 and change −9.09%) |
+
+**Discovered in P6**
+
+| ID | Defect | Evidence | Recommended default |
+|---|---|---|---|
+| DEF-P6-1 | Run totals ignore BENEFIT rows: `TOTAL_DEDUCTIONS` counts DEDUCTION and TAX only and `TOTAL_NET` adds only those, while `get_payslip` and the pay register subtract BENEFIT too, so run totals disagree with the payslips | PKG_PAYROLL.pkb L334-341 vs L777-779 | Fix under the OQ-04 policy: **fixed in P6** (`2bf5a5c6326c`; totals = payslip sums; `PayrollApiTest.taxesDeductionsAndTotalsAreTableDriven`) |
+| DEF-P6-2 | Per-employee errors are inserted with `ELEMENT_ID = 0`, which `FK_PD_ELEMENT` rejects, so the error handler itself fails and the exception escapes the loop | PKG_PAYROLL.pkb L311-319; FK in 02_payroll_tables.sql | Fix: **fixed in P6** (V400: NULL element for `element_type = 'ERROR'`; `PayrollApiTest.missingSalary…`) |
+| DEF-P6-3 | `create_pay_periods` has no duplicate check: a re-run duplicates every period, and the biweekly period that spans a year boundary is created by both years | PKG_PAYROLL.pkb L110-182 | Fix: **fixed in P6** (overlapping periods skipped + unique index; `PayrollApiTest.generatesMonthlyAndBiweeklyPeriodsIdempotently`) |
+| DEF-P6-4 | `calculate_federal_tax` has brackets only for SINGLE, MARRIED_SEPARATE and MARRIED_JOINT; HEAD_OF_HOUSEHOLD (allowed by the CHECK) gets 0 federal tax plus the additional withholding | PKG_PAYROLL.pkb L645-677 | Parity kept (no HOH rows seeded); OQ-P6-1 |
+| DEF-P6-5 | Taxable income is the gross: pretax deductions (`PRETAX_FLAG`, e.g. 401(k), medical) are not subtracted ("Simplified; should subtract pretax deductions") | PKG_PAYROLL.pkb L437 | Parity kept; OQ-P6-2 |
 
 ---
 
@@ -832,6 +904,9 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented) |
 | OQ-P5-1 | TRG-011 (department audit) has no write path to attach to: no form, package routine or API route creates, updates or deletes departments. Should the program add department maintenance? | Raised in P5. Departments change only by SQL in legacy | No department write API in P5–P8. If one is added (P7 admin or later), it writes `audit_log` through `AuditWriter` in the same transaction (action-only payload, D-08), and TRG-011 is re-homed there. P8 marks TRG-011 dropped if still unused | open — provisional, awaiting user confirmation (nothing implemented) |
 | OQ-P5-2 | SSN capture: should the employee API accept an SSN on create/update, encrypted with a key from configuration (PKG-S03, PLL-003)? | The HRMS_EMPLOYEE form and `create_employee` never take an SSN; only `encrypt_ssn` exists. P5 added the stricter PLL-003 validator but no route | Do not accept SSN in the API until a key-management decision exists; P8 re-encrypts legacy `ssn_encrypted` with the external key, and adds an SSN write path (validator ready) at the same time | open — provisional, awaiting user confirmation (validator only) |
+| OQ-P6-1 | DEF-P6-4: should HEAD_OF_HOUSEHOLD employees get federal brackets (legacy: 0 federal tax)? | Raised in P6. A tax-amount change, so not decided by the phase. Brackets are data now, so the fix is rows only | Seed the 2024 HEAD_OF_HOUSEHOLD brackets (and use its own standard deduction) in a V4xx migration, with a parity test documenting the deviation | open — provisional, awaiting user confirmation (**parity kept**: no HOH rows) |
+| OQ-P6-2 | DEF-P6-5: should pretax deductions reduce federal/state taxable wages? | Raised in P6. Legacy taxed the full gross; changing it changes every payslip with a pretax element | Subtract `pretax_flag` DEDUCTION/BENEFIT amounts from federal and state taxable wages (not from FICA/Medicare), in a follow-up with its own parity test | open — provisional, awaiting user confirmation (**parity kept**) |
+| OQ-P6-3 | Who may close a period and reverse a run, and must approver ≠ calculator? | Raised in P6. Legacy had no gate for close/reverse (no form button) and no segregation of duties | Close = `PAYROLL:EDIT`, reverse = `PAYROLL:APPROVE` (implemented); no segregation of duties (legacy parity) | open — provisional, awaiting user confirmation (implemented as recommended) |
 
 ---
 
@@ -846,3 +921,4 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P3-01 | 2026-11-20 | P3 | **Contract frozen at `v1`** (`openapi-v1.yaml` 1.0.0): P2 routes unchanged; added 11 leave operations (`/api/v1/leave/types`, `/balances`, `/requests` GET+POST, `/requests/{requestId}` + `/approve` `/reject` `/cancel`, `/approvals`, `/team-calendar`, `/accrual-runs`), leave schemas, and the complete `ErrorCode` enum for every phase (D-05 codes for P4–P7 included so they need no amendment) | P3 exit criterion. Later changes need `v1.N` (additive) or `v2` (breaking) |
 | A-P3-02 | 2026-11-20 | P3 | D-05: `EMPLOYEE_NOT_ACTIVE` is always **422** (the -20012 transfer row said 409); `PARAM_NOT_EDITABLE` is always 409 and an unknown parameter is `NOT_FOUND` 404. Each `ErrorCode` now has exactly one HTTP status | One status per code keeps the frozen catalogue machine-checkable. Neither route exists yet (P5, P7), so no client is affected |
 | A-P5-01 (`v1.1-P5`) | 2026-11-20 | P5 | **Additive contract amendment** (`openapi-v1.yaml` 1.1.0, `x-contract-version: v1.1-P5`): `POST /api/v1/employees`; `PATCH` and `DELETE /api/v1/employees/{empId}` (DELETE always 405 `DELETE_FORBIDDEN`); `POST /api/v1/employees/{empId}/transfer`, `/promote`, `/terminate`, `/rehire`; `GET /api/v1/employees/{empId}/history`; schemas `CreateEmployeeRequest`, `UpdateEmployeeRequest`, `TransferRequest`, `PromoteRequest`, `TerminateRequest`, `RehireRequest`, `EmployeeMutation`, `Warning`, `WarningCode`, `EmploymentType`, `EmployeeHistoryEntry`; new `ErrorCode` `EMPLOYEE_NOT_TERMINATED` (409, no legacy code; extends the D-05 table — rehire of an employee who is not TERMINATED). `INVALID_SALARY` (-20101) is also raised by the employee service for hire/promote/rehire (code and status unchanged). `OpenApiContractTest` accepts `v1` or `v1.N[-Pn]` | P5 routes did not exist in v1. Rehire of a non-terminated employee (DEF-13) is a state conflict no v1 code describes (`REACTIVATION_FORBIDDEN` means the opposite direction). Nothing in v1 changed. Numbered `-P5` because P4 amends in parallel; the coordinator renumbers on merge |
+| A-P6-01 (`v1.2-P6`) | 2026-11-20 | P6 | **Additive contract amendment** (`openapi-v1.yaml` 1.2.0, `x-contract-version: v1.2-P6`): `GET /api/v1/payroll/pay-periods`, `GET /api/v1/payroll/pay-periods/{periodId}`, `POST /api/v1/payroll/pay-periods/generate`, `POST /api/v1/payroll/pay-periods/{periodId}/close`, `GET`+`POST /api/v1/payroll/runs`, `GET /api/v1/payroll/runs/{runId}`, `POST /api/v1/payroll/runs/{runId}/calculate`, `/approve`, `/reverse`, `GET /api/v1/payroll/runs/{runId}/payslips`, `/errors`, `GET /api/v1/payroll/employees/{empId}/salary-records`; schemas `PayFrequency`, `PayPeriodStatus`, `PayrollRunStatus`, `PayrollRunType`, `PayPeriod`, `GeneratePayPeriodsRequest`, `PayPeriodGeneration`, `CreatePayrollRunRequest`, `ReversePayrollRequest`, `PayrollRun`, `PayrollRunError`, `Payslip`, `SalaryRecord`; response `PayrollConflict`; parameters `PeriodId`, `RunId`. **No new error code** (the payroll codes were catalogued in v1); the FRM-062 calculate gate and the DEF-21 reverse gate use `INVALID_RUN_STATUS` with `legacyCode` null (D-05 "(new) calculate gate"). | P6 routes did not exist in v1 or v1.1-P5. Nothing existing changed. Numbered after v1.1-P5 on this branch; P4's parallel `v1.1-P4` is reconciled by the coordinator in P7 |

@@ -8,8 +8,8 @@ import java.util.Optional;
  * The employee module's outbound port for compensation (OQ-01). Replaces the direct calls from PKG_EMPLOYEE to
  * PKG_PAYROLL.create_salary_record (create, promote, rehire) and terminate's direct updates of SALARY_RECORDS and
  * EMPLOYEE_PAY_ELEMENTS. Called in-process and synchronously inside the employee transaction, so a failure rolls
- * the whole hire / promotion / rehire / termination back. P5 ships {@link RecordingSalaryRecordPort}; P6 provides
- * the payroll implementation (PKG-P01) and removes the stub.
+ * the whole hire / promotion / rehire / termination back. Implemented by payroll
+ * ({@code com.hrms.payroll.PayrollSalaryRecords}, PKG-P01); the employee module never depends on payroll.
  */
 public interface SalaryRecordPort {
 

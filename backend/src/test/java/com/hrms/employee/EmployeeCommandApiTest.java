@@ -10,9 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.hrms.auth.ApiTestSupport;
-import com.hrms.employee.RecordingSalaryRecordPort.EndCompensation;
-import com.hrms.employee.SalaryRecordPort.ChangeReason;
-import com.hrms.employee.SalaryRecordPort.SalaryChange;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -20,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -31,16 +27,12 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  */
 class EmployeeCommandApiTest extends ApiTestSupport {
 
-    @Autowired
-    RecordingSalaryRecordPort port;
-
     String admin;
     String employee;
 
     @BeforeEach
     void signIn() throws Exception {
         clock.set(Instant.parse("2026-03-02T09:00:00Z"));
-        port.clear();
         admin = tokenFor(1);
         employee = tokenFor(37);
     }
@@ -77,8 +69,11 @@ class EmployeeCommandApiTest extends ApiTestSupport {
         assertThat(mail.get(1)).containsEntry("recipient_emp_id", 31L)
                 .containsEntry("subject", "New Direct Report: Nina Lopez")
                 .containsEntry("body", "Nina Lopez has been added as your direct report, starting 03/16/2026.");
-        assertThat(port.calls()).containsExactly(new SalaryChange(id, java.time.LocalDate.parse("2026-03-16"),
-                new BigDecimal("30000"), ChangeReason.NEW_HIRE, null, "james.richardson@company.com"));
+        // Salary through the port, implemented by payroll (P6, PKG-P01)
+        assertThat(salaries(id)).singleElement().satisfies(r -> assertSalary(r, "2026-03-16", null, "30000",
+                "NEW_HIRE", true));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hrms.audit_log WHERE table_name = 'SALARY_RECORDS' "
+                + "AND action_type = 'INSERT' AND (new_values->>'empId')::bigint = ?", Long.class, id)).isEqualTo(1);
         // A second hire gets the next number from the sequence (D-02)
         JsonNode next = read(send(admin, post("/api/v1/employees"), hire("Omar", "Reyes", null, null, 50000))
                 .andExpect(status().isCreated())).get("employee");
@@ -202,12 +197,15 @@ class EmployeeCommandApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.employee.jobId").value(30))
                 .andExpect(jsonPath("$.warnings[0].message").value(
                         "Salary $100,000.00 is below minimum for grade Manager ($110,000.00)"));
-        assertThat(port.calls()).containsExactly(new SalaryChange(33, java.time.LocalDate.parse("2026-04-01"),
-                new BigDecimal("100000"), ChangeReason.PROMOTION, null, "james.richardson@company.com"));
+        List<Map<String, Object>> sal = salaries(33);
+        assertSalary(sal.get(0), "2023-01-01", "2026-03-31", "110000", "Annual review", false);
+        assertSalary(sal.get(1), "2026-04-01", null, "100000", "PROMOTION", true);
+        assertThat((BigDecimal) sal.get(1).get("change_pct")).isEqualByComparingTo("-9.09"); // DEF-P5-2
         Map<String, Object> h = jdbc.queryForMap("SELECT * FROM hrms.employee_history WHERE emp_id = 33");
         assertThat(h).containsEntry("change_type", "PROMOTION").containsEntry("old_job_id", 41L)
                 .containsEntry("new_job_id", 30L);
         assertThat(((BigDecimal) h.get("new_salary"))).isEqualByComparingTo("100000");
+        assertThat(((BigDecimal) h.get("old_salary"))).isEqualByComparingTo("110000");
         expect(send(admin, post("/api/v1/employees/" + inactive("ON_LEAVE") + "/promote"), Map.of("newJobId", 30,
                 "newSalary", 1)), 422,
                 "EMPLOYEE_NOT_ACTIVE", -20001);
@@ -243,8 +241,8 @@ class EmployeeCommandApiTest extends ApiTestSupport {
                 + "hrms.employees WHERE emp_id = 35");
         assertThat(emp).containsEntry("termination_reason", "VOLUNTARY")
                 .containsEntry("termination_date", java.sql.Date.valueOf("2026-03-31"));
-        assertThat(port.calls()).containsExactly(new EndCompensation(35, java.time.LocalDate.parse("2026-03-31"),
-                "james.richardson@company.com"));
+        assertThat(salaries(35)).singleElement().satisfies(r -> assertSalary(r, "2023-01-01", "2026-03-31", "78000",
+                "Annual review", false));
         assertThat(jdbc.queryForMap("SELECT change_type, reason_code, comments FROM hrms.employee_history "
                 + "WHERE emp_id = 35")).containsEntry("change_type", "TERMINATION")
                 .containsEntry("reason_code", "VOLUNTARY").containsEntry("comments", "Moving away");
@@ -282,8 +280,7 @@ class EmployeeCommandApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.warnings").isEmpty());
         assertThat(jdbc.queryForMap("SELECT termination_date, termination_reason FROM hrms.employees WHERE emp_id = 99"))
                 .containsEntry("termination_date", null).containsEntry("termination_reason", null);
-        assertThat(port.calls()).last().isEqualTo(new SalaryChange(99, java.time.LocalDate.parse("2026-03-16"),
-                new BigDecimal("75000"), ChangeReason.REHIRE, null, "james.richardson@company.com"));
+        assertThat(salaries(99)).last().satisfies(r -> assertSalary(r, "2026-03-16", null, "75000", "REHIRE", true));
         JsonNode history = read(as(admin, get("/api/v1/employees/99/history")).andExpect(status().isOk()));
         assertThat(history.findValuesAsText("changeType")).containsExactly("REHIRE");
         assertThat(history.get(0).get("oldDeptId").asLong()).isEqualTo(31);
@@ -292,6 +289,19 @@ class EmployeeCommandApiTest extends ApiTestSupport {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private List<Map<String, Object>> salaries(long empId) {
+        return jdbc.queryForList("SELECT * FROM hrms.salary_records WHERE emp_id = ? ORDER BY effective_date, "
+                + "salary_id", empId);
+    }
+
+    private static void assertSalary(Map<String, Object> r, String effective, String end, String salary,
+            String reason, boolean active) {
+        assertThat(r).containsEntry("effective_date", java.sql.Date.valueOf(effective))
+                .containsEntry("end_date", end == null ? null : java.sql.Date.valueOf(end))
+                .containsEntry("change_reason", reason).containsEntry("active_flag", active);
+        assertThat((BigDecimal) r.get("base_salary")).isEqualByComparingTo(salary);
+    }
 
     private long inactive(String status) {
         long id = insert(null);
