@@ -1,12 +1,13 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 0.2.0
-  x-contract-version: v0-draft
+  version: 1.0.0
+  x-contract-version: v1
   description: |
-    Draft contract (checkpoint §3, `contract_version: v0-draft`). Authored in P2 (auth, sessions,
-    permission matrix, menu backend, change-password, employee read model). P3 adds the leave pilot
-    and freezes this file as `v1`; after the freeze every change is a versioned amendment.
+    **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
+    sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
+    the leave pilot and froze the file. Any change to a route, schema, error code or status from
+    here on is a versioned amendment (`v1.N` additive, `v2` breaking) recorded in checkpoint §7.
 
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
@@ -14,7 +15,11 @@ info:
     `Authorization: Bearer <token>`.
 
     Errors are RFC 9457 `application/problem+json` with `code`, `legacyCode` and `traceId` (D-05).
-    `x-permission` names the module:action authority a route needs (D-06 matrix).
+    `ErrorCode` is the complete, stable catalogue for every phase; each code has exactly one HTTP
+    status (A-P3-02). `x-permission` names the module:action authority a route needs (D-06 matrix);
+    leave rows are additionally scoped to the caller (OQ-09).
+
+    Dates (`format: date`) are calendar dates; "today" is the UTC date of the server clock.
 servers:
   - url: /
 security:
@@ -24,6 +29,7 @@ tags:
   - name: menu
   - name: employees
   - name: lookups
+  - name: leave
 paths:
   /api/v1/auth/login:
     post:
@@ -211,13 +217,266 @@ paths:
               schema: { type: array, items: { $ref: '#/components/schemas/Location' } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/types:
+    get:
+      tags: [leave]
+      operationId: listLeaveTypes
+      summary: Active leave types (FRM-054 LOV)
+      x-permission: LEAVE:VIEW
+      responses:
+        '200':
+          description: Active leave types
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveType' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/balances:
+    get:
+      tags: [leave]
+      operationId: myLeaveBalances
+      summary: The caller's leave balances for a calendar year (default the current year)
+      x-permission: LEAVE:VIEW
+      parameters:
+        - { name: year, in: query, schema: { type: integer, minimum: 1900, maximum: 9999 } }
+      responses:
+        '200':
+          description: Balances; `available` is net of `pending`
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveBalance' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/requests:
+    get:
+      tags: [leave]
+      operationId: myLeaveRequests
+      summary: The caller's own leave requests, newest first (FRM-050)
+      x-permission: LEAVE:VIEW
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/LeaveStatus' } }
+        - { name: year, in: query, description: Calendar year of the start date, schema: { type: integer, minimum: 1900, maximum: 9999 } }
+      responses:
+        '200':
+          description: Requests
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveRequest' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [leave]
+      operationId: submitLeaveRequest
+      summary: Submit a leave request for the caller (replaces PKG_LEAVE.submit_leave_request)
+      description: |
+        Checks, in legacy order: employee ACTIVE (-20001), leave type active (-20203), MIN_TENURE_DAYS
+        (-20203), start <= end (-20210), start at most 5 days in the past (-20211), half-day shape
+        (DEF-01: `halfDayPeriod` required, start = end), business days > 0 (weekdays minus active
+        holidays of NULL or the employee's location, -20212), no overlap with PENDING/APPROVED requests
+        (AM and PM half days of one date do not overlap, -20202), and for accrual types the
+        current-year available balance (-20201). Types with `requiresApproval = false` are created
+        APPROVED and their days go straight to `used` (DEF-12); otherwise PENDING, the days go to
+        `pending` and the manager (the request's approver) is notified.
+      x-permission: LEAVE:CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitLeaveRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+  /api/v1/leave/requests/{requestId}:
+    get:
+      tags: [leave]
+      operationId: getLeaveRequest
+      summary: One request, visible to its owner, its approver and LEAVE:APPROVE holders (else 404)
+      x-permission: LEAVE:VIEW
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/leave/requests/{requestId}/approve:
+    post:
+      tags: [leave]
+      operationId: approveLeaveRequest
+      summary: Approve a PENDING request (PENDING → APPROVED, days pending → used, employee notified)
+      description: Allowed for the assigned approver or a LEAVE:APPROVE holder, never for the requester (403).
+      x-permission: LEAVE:VIEW + assigned approver or LEAVE:APPROVE
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveDecision' }
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/leave/requests/{requestId}/reject:
+    post:
+      tags: [leave]
+      operationId: rejectLeaveRequest
+      summary: Reject a PENDING request (PENDING → REJECTED, pending released, employee notified)
+      description: Same authorization as approve.
+      x-permission: LEAVE:VIEW + assigned approver or LEAVE:APPROVE
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveDecision' }
+      responses:
+        '200':
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/leave/requests/{requestId}/cancel:
+    post:
+      tags: [leave]
+      operationId: cancelLeaveRequest
+      summary: Cancel a PENDING or APPROVED request (FRM-051 gate, server-side)
+      description: |
+        Owner or LEAVE:ADMIN only. PENDING releases `pending`; APPROVED restores `used`. Any other
+        status is 409 `INVALID_REQUEST_STATUS` (-20204). No notification (PKG-L02 parity).
+      x-permission: LEAVE:VIEW + owner or LEAVE:ADMIN
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelLeaveRequest' }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/leave/approvals:
+    get:
+      tags: [leave]
+      operationId: myPendingApprovals
+      summary: PENDING requests assigned to the caller, oldest first (FRM-056, get_pending_requests)
+      x-permission: LEAVE:VIEW
+      responses:
+        '200':
+          description: Requests awaiting the caller
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveRequest' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/team-calendar:
+    get:
+      tags: [leave]
+      operationId: teamCalendar
+      summary: APPROVED/TAKEN leave of the caller's direct reports in [from, to] (FRM-056, get_team_calendar)
+      x-permission: LEAVE:VIEW
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Calendar entries
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/TeamCalendarEntry' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/leave/accrual-runs:
+    post:
+      tags: [leave]
+      operationId: runMonthlyAccrual
+      summary: Run the monthly accrual for the month of accrualDate (PKG_LEAVE.run_monthly_accrual)
+      description: |
+        Idempotent per calendar month: the first call returns 201, later calls for the same month
+        return 200 with the existing run and accrue nothing. The scheduled job (1st of the month,
+        `hrms.jobs.enabled=true`) uses the same service.
+      x-permission: LEAVE:ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccrualRunRequest' }
+      responses:
+        '201':
+          description: Run created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccrualRun' }
+        '200':
+          description: The month was already accrued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccrualRun' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       description: Opaque session token from /api/v1/auth/login
+  parameters:
+    RequestId: { name: requestId, in: path, required: true, schema: { type: integer, format: int64 } }
   responses:
+    NotFound:
+      description: NOT_FOUND (unknown, or not visible to the caller)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: LEAVE_OVERLAP (-20202), INVALID_REQUEST_STATUS (-20204) or CONCURRENT_MODIFICATION
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    BusinessRule:
+      description: |
+        422 business rule: EMPLOYEE_NOT_ACTIVE (-20001), INVALID_LEAVE_TYPE / MIN_TENURE_NOT_MET
+        (-20203), BACKDATE_LIMIT_EXCEEDED (-20211), NO_BUSINESS_DAYS (-20212),
+        INSUFFICIENT_LEAVE_BALANCE (-20201). INVALID_DATE_RANGE (-20210) is 400.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     Unauthenticated:
       description: UNAUTHENTICATED (missing, invalid, expired or revoked token)
       content:
@@ -258,9 +517,29 @@ components:
         message: { type: string }
     ErrorCode:
       type: string
+      description: |
+        Complete v1 catalogue (D-05). HTTP status / legacy code: EMPLOYEE_NOT_FOUND 404/-20001,
+        INVALID_CREDENTIALS 401/-20301, INVALID_CURRENT_PASSWORD 422, PASSWORD_POLICY 400,
+        UNAUTHENTICATED 401, FORBIDDEN 403, VALIDATION_FAILED 400, NOT_FOUND 404,
+        METHOD_NOT_ALLOWED 405, CONCURRENT_MODIFICATION 409, INTERNAL_ERROR 500,
+        EMPLOYEE_NOT_ACTIVE 422/-20001, EMP_NUMBER_CONFLICT 409/-20002, INVALID_DEPARTMENT 422/-20003,
+        INVALID_MANAGER 422/-20004, CIRCULAR_REPORTING 422/-20004, ALREADY_TERMINATED 409/-20005,
+        INVALID_JOB 422/-20011, HIRE_DATE_TOO_FAR 422/-20501, EMAIL_IN_USE 409/-20502,
+        REACTIVATION_FORBIDDEN 409/-20503, DELETE_FORBIDDEN 405/-20504, INVALID_SALARY 422/-20101,
+        PERIOD_CLOSED 409/-20102, INVALID_RUN_STATUS 409/-20103, NO_ACTIVE_SALARY 422/-20104,
+        INSUFFICIENT_LEAVE_BALANCE 422/-20201, LEAVE_OVERLAP 409/-20202, INVALID_LEAVE_TYPE 422/-20203,
+        MIN_TENURE_NOT_MET 422/-20203, INVALID_REQUEST_STATUS 409/-20204, INVALID_DATE_RANGE 400/-20210,
+        BACKDATE_LIMIT_EXCEEDED 422/-20211, NO_BUSINESS_DAYS 422/-20212, INVALID_CYCLE_STATUS 409/-20401,
+        INVALID_REVIEW_STATUS 409/-20402, INVALID_RATING 400/-20403, PARAM_NOT_EDITABLE 409/-20900.
       enum: [EMPLOYEE_NOT_FOUND, INVALID_CREDENTIALS, INVALID_CURRENT_PASSWORD, PASSWORD_POLICY,
              UNAUTHENTICATED, FORBIDDEN, VALIDATION_FAILED, NOT_FOUND, METHOD_NOT_ALLOWED,
-             CONCURRENT_MODIFICATION, INTERNAL_ERROR]
+             CONCURRENT_MODIFICATION, INTERNAL_ERROR, EMPLOYEE_NOT_ACTIVE, EMP_NUMBER_CONFLICT,
+             INVALID_DEPARTMENT, INVALID_MANAGER, CIRCULAR_REPORTING, ALREADY_TERMINATED, INVALID_JOB,
+             HIRE_DATE_TOO_FAR, EMAIL_IN_USE, REACTIVATION_FORBIDDEN, DELETE_FORBIDDEN, INVALID_SALARY,
+             PERIOD_CLOSED, INVALID_RUN_STATUS, NO_ACTIVE_SALARY, INSUFFICIENT_LEAVE_BALANCE,
+             LEAVE_OVERLAP, INVALID_LEAVE_TYPE, MIN_TENURE_NOT_MET, INVALID_REQUEST_STATUS,
+             INVALID_DATE_RANGE, BACKDATE_LIMIT_EXCEEDED, NO_BUSINESS_DAYS, INVALID_CYCLE_STATUS,
+             INVALID_REVIEW_STATUS, INVALID_RATING, PARAM_NOT_EDITABLE]
     Module:
       type: string
       enum: [EMPLOYEE, PAYROLL, LEAVE, PERFORMANCE, REPORTS, ADMIN]
@@ -385,3 +664,108 @@ components:
         locationName: { type: string }
         city: { type: string, nullable: true }
         timezone: { type: string, nullable: true }
+    LeaveStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, CANCELLED, TAKEN]
+    HalfDayPeriod:
+      type: string
+      enum: [AM, PM]
+    LeaveType:
+      type: object
+      properties:
+        leaveTypeId: { type: integer, format: int64 }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        paid: { type: boolean }
+        accrual: { type: boolean, description: Balance-checked on submit and accrued monthly }
+        accrualRate: { type: number, nullable: true }
+        accrualFrequency: { type: string, nullable: true, enum: [MONTHLY, BIWEEKLY, ANNUAL] }
+        maxBalance: { type: number, nullable: true }
+        minTenureDays: { type: integer, nullable: true }
+        requiresApproval: { type: boolean }
+        requiresDocument: { type: boolean }
+    LeaveBalance:
+      type: object
+      properties:
+        leaveTypeId: { type: integer, format: int64 }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        calendarYear: { type: integer }
+        openingBalance: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        adjustment: { type: number }
+        pending: { type: number }
+        available: { type: number, description: 'opening + accrued - used + adjustment - pending' }
+        carryoverFromPrev: { type: number }
+        carryoverExpiryDate: { type: string, format: date, nullable: true }
+    LeaveRequest:
+      type: object
+      properties:
+        requestId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        leaveTypeId: { type: integer, format: int64 }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number, description: Business days, or 0.5 for a half day }
+        halfDay: { type: boolean }
+        halfDayPeriod: { allOf: [{ $ref: '#/components/schemas/HalfDayPeriod' }], nullable: true }
+        status: { $ref: '#/components/schemas/LeaveStatus' }
+        reason: { type: string, nullable: true }
+        approverEmpId: { type: integer, format: int64, nullable: true, description: 'The manager at submit; the decider after approve/reject' }
+        approvalDate: { type: string, format: date-time, nullable: true }
+        approvalComments: { type: string, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        cancelledDate: { type: string, format: date-time, nullable: true }
+        createdDate: { type: string, format: date-time }
+    SubmitLeaveRequest:
+      type: object
+      required: [leaveTypeId, startDate, endDate]
+      properties:
+        leaveTypeId: { type: integer, format: int64 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        halfDay: { type: boolean, default: false }
+        halfDayPeriod: { $ref: '#/components/schemas/HalfDayPeriod' }
+        reason: { type: string, maxLength: 4000 }
+    LeaveDecision:
+      type: object
+      properties:
+        comments: { type: string, maxLength: 4000 }
+    CancelLeaveRequest:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 4000 }
+    TeamCalendarEntry:
+      type: object
+      properties:
+        requestId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string }
+        leaveTypeCode: { type: string }
+        leaveTypeName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totalDays: { type: number }
+        status: { $ref: '#/components/schemas/LeaveStatus' }
+        halfDay: { type: boolean }
+        halfDayPeriod: { allOf: [{ $ref: '#/components/schemas/HalfDayPeriod' }], nullable: true }
+    AccrualRunRequest:
+      type: object
+      required: [accrualDate]
+      properties:
+        accrualDate: { type: string, format: date }
+    AccrualRun:
+      type: object
+      properties:
+        runId: { type: integer, format: int64 }
+        accrualPeriod: { type: string, format: date, description: First day of the accrued month }
+        accrualDate: { type: string, format: date }
+        employeesProcessed: { type: integer }
+        entriesCreated: { type: integer }
+        totalAccrued: { type: number }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }

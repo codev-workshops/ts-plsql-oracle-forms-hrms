@@ -9,6 +9,7 @@ import com.hrms.auth.CurrentUser;
 import com.hrms.auth.MenuController;
 import com.hrms.auth.Module;
 import com.hrms.common.ErrorCode;
+import com.hrms.leave.LeaveModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
 import com.hrms.employee.LookupController;
@@ -56,9 +57,9 @@ class OpenApiContractTest extends ApiTestSupport {
     }
 
     @Test
-    void contractIsTheP2Draft() {
+    void contractIsFrozenV1() {
         assertThat((String) spec.get("openapi")).startsWith("3.");
-        assertThat(map(spec, "info").get("x-contract-version")).isEqualTo("v0-draft");
+        assertThat(map(spec, "info").get("x-contract-version")).isEqualTo("v1");
     }
 
     @Test
@@ -80,17 +81,27 @@ class OpenApiContractTest extends ApiTestSupport {
 
     @Test
     void responseSchemasMatchTheJavaRecords() {
-        Map<String, Class<?>> records = Map.of(
-                "LoginRequest", AuthController.LoginRequest.class,
-                "LoginResponse", AuthController.LoginResponse.class,
-                "ChangePasswordRequest", AuthController.ChangePasswordRequest.class,
-                "CurrentUser", CurrentUser.class,
-                "Menu", MenuController.Menu.class,
-                "MenuEntry", MenuController.MenuEntry.class,
-                "EmployeeView", EmployeeView.class,
-                "EmployeePage", EmployeePage.class,
-                "Department", LookupController.Department.class,
-                "JobTitle", LookupController.JobTitle.class);
+        Map<String, Class<?>> records = Map.ofEntries(
+                Map.entry("LeaveType", LeaveModels.LeaveType.class),
+                Map.entry("LeaveBalance", LeaveModels.LeaveBalance.class),
+                Map.entry("LeaveRequest", LeaveModels.LeaveRequest.class),
+                Map.entry("SubmitLeaveRequest", LeaveModels.SubmitLeaveRequest.class),
+                Map.entry("LeaveDecision", LeaveModels.LeaveDecision.class),
+                Map.entry("CancelLeaveRequest", LeaveModels.CancelLeaveRequest.class),
+                Map.entry("TeamCalendarEntry", LeaveModels.TeamCalendarEntry.class),
+                Map.entry("AccrualRunRequest", LeaveModels.AccrualRunRequest.class),
+                Map.entry("AccrualRun", LeaveModels.AccrualRun.class),
+                Map.entry("Location", LookupController.Location.class),
+                Map.entry("LoginRequest", AuthController.LoginRequest.class),
+                Map.entry("LoginResponse", AuthController.LoginResponse.class),
+                Map.entry("ChangePasswordRequest", AuthController.ChangePasswordRequest.class),
+                Map.entry("CurrentUser", CurrentUser.class),
+                Map.entry("Menu", MenuController.Menu.class),
+                Map.entry("MenuEntry", MenuController.MenuEntry.class),
+                Map.entry("EmployeeView", EmployeeView.class),
+                Map.entry("EmployeePage", EmployeePage.class),
+                Map.entry("Department", LookupController.Department.class),
+                Map.entry("JobTitle", LookupController.JobTitle.class));
         records.forEach((schema, type) -> assertThat(properties(schema))
                 .as(schema).isEqualTo(Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName).collect(Collectors.toSet())));
@@ -103,6 +114,8 @@ class OpenApiContractTest extends ApiTestSupport {
         assertThat(enumOf("ErrorCode")).isEqualTo(names(ErrorCode.values()));
         assertThat(enumOf("Module")).isEqualTo(names(Module.values()));
         assertThat(enumOf("Action")).isEqualTo(names(Action.values()));
+        assertThat(enumOf("LeaveStatus")).isEqualTo(names(LeaveModels.LeaveStatus.values()));
+        assertThat(enumOf("HalfDayPeriod")).isEqualTo(names(LeaveModels.HalfDayPeriod.values()));
     }
 
     @Test
