@@ -6,7 +6,7 @@
 
 | Field | Value |
 |---|---|
-| `contract_version` | **`v1.3`** (v1 frozen by P3; additive amendments v1.1 (P4, A-P4-01), v1.2 (P5, A-P5-01) and v1.3 (P6, A-P6-01). The parallel branch labels `v1.1-P4`/`v1.1-P5`/`v1.2-P6` were renumbered linearly by P7 when it merged P4 into the P6 line (A-P7-00)) |
+| `contract_version` | **`v1.4`** (v1 frozen by P3; additive amendments v1.1 (P4, A-P4-01), v1.2 (P5, A-P5-01), v1.3 (P6, A-P6-01) and v1.4 (P7, A-P7-01). The parallel branch labels `v1.1-P4`/`v1.1-P5`/`v1.2-P6` were renumbered linearly by P7 when it merged P4 into the P6 line (A-P7-00)) |
 | `checkpoint_status` | `in-progress` |
 | `last_updated_by_phase` | `P7` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
@@ -277,11 +277,11 @@ is reported in the PR and the final message.
 
 | Field | Value |
 |---|---|
-| `contract_version` | `v1.3` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.3.0`, `info.x-contract-version: v1.3`) |
+| `contract_version` | `v1.4` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.4.0`, `info.x-contract-version: v1.4`) |
 | Frozen? | **Yes — frozen at v1 by P3 on 2026-11-20 (A-P3-01).** P4–P8 add routes only through `v1.N` amendments in §7; `OpenApiContractTest` keeps the file and the controllers in sync. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P4: `v1.1-P4` → `v1.1`** — additive: 20 performance operations under `/api/v1/performance`, no v1 route/schema/code/status changed (A-P4-01). **P5: `v1.1-P5` → `v1.2`** — additive: 8 employee operations (create, partial update, delete=405, transfer, promote, terminate, rehire, history), their schemas, `EmployeeMutation.warnings[]`, error code `EMPLOYEE_NOT_TERMINATED` (A-P5-01). **P6: `v1.2-P6` → `v1.3`** — additive: 13 payroll operations under `/api/v1/payroll` and their schemas; no new error code (A-P6-01). **P7 renumbering (A-P7-00):** P7 merged P4 (PR #85) into the P6 line and made the parallel labels linear: `v1.1-P4` → `v1.1`, `v1.1-P5` → `v1.2`, `v1.2-P6` → `v1.3`; contents unchanged |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P4: `v1.1-P4` → `v1.1`** — additive: 20 performance operations under `/api/v1/performance`, no v1 route/schema/code/status changed (A-P4-01). **P5: `v1.1-P5` → `v1.2`** — additive: 8 employee operations (create, partial update, delete=405, transfer, promote, terminate, rehire, history), their schemas, `EmployeeMutation.warnings[]`, error code `EMPLOYEE_NOT_TERMINATED` (A-P5-01). **P6: `v1.2-P6` → `v1.3`** — additive: 13 payroll operations under `/api/v1/payroll` and their schemas; no new error code (A-P6-01). **P7 renumbering (A-P7-00):** P7 merged P4 (PR #85) into the P6 line and made the parallel labels linear: `v1.1-P4` → `v1.1`, `v1.1-P5` → `v1.2`, `v1.2-P6` → `v1.3`; contents unchanged. **P7: `v1.4`** — additive: 6 report operations under `/api/v1/reports` (catalogue, pending-approvals, leave-summary, org-hierarchy, employee-compensation, payroll-latest) and their schemas; `MenuEntry` gains optional `route` and `apiPath`; no new error code (A-P7-01) |
 
 ---
 
@@ -299,8 +299,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P4 Performance | accepted | `modernization/p4-performance` | #85 | `2d4d2094c777` | v1.1-P4 (renumbered `v1.1`, A-P7-00) | 2026-11-20 | Flyway V200 (reserved range V200–V299), `com.hrms.performance` service + API, contract amendment v1.1-P4. Details: §4.4. PR head `71f773356d30`. Accepted by the coordinator (76 tests green) (recorded by P6). **Merged into the P6 line by P7** (merge commit on `modernization/p7-nav-reporting`). |
 | P5 Employee core | accepted | `modernization/p5-employee` | #86 | `f9d91aed89db` | **v1.1-P5** (renumbered `v1.2`, A-P7-00) | 2026-11-20 | Employee commands (create/update/transfer/promote/terminate/rehire/history, DELETE=405), `SalaryRecordPort` + recording stub (OQ-01), contract amendment v1.1-P5. No Flyway migration needed (reserved V300–V399 unused). `mvn -f backend/pom.xml test`: 80 tests green. No frontend. Details: §4.5. PR head `7cb802b364a9`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P6). |
 | P6 Payroll | accepted | `modernization/p6-payroll` | #87 | `2bf5a5c6326c` | **v1.2-P6** (renumbered `v1.3`, A-P7-00) | 2026-11-20 | Flyway V400 (tax parameters + 2024 brackets, nullable error-row element, unique period start). `SalaryRecordPort` implemented by payroll (stub deleted), pay-period generation, runs (create/calculate/approve/reverse, payslips, errors), table-driven taxes, payroll batch job, contract v1.2-P6. `mvn -f backend/pom.xml test`: 90 tests green. No frontend. Details: §4.6. PR head `3ab86ffa73a8`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P7). |
-| P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
-| P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. |
+| P7 Navigation + reporting | submitted | `modernization/p7-nav-reporting` | (see PR) | `3fb4e77c9b1a` (code + contract), P4 merge `7ff50b996f4c` | **v1.4** | 2026-11-20 | Merged P4 (PR #85) into the P6 line and renumbered the amendments linearly (A-P7-00). Menu navigation targets (`route`, `apiPath`), `com.hrms.reporting` (6 read-only endpoints behind `REPORTS:VIEW`; compensation and payroll also `PAYROLL:VIEW`), contract v1.4 (A-P7-01). No Flyway migration. `mvn -f backend/pom.xml test`: 107 tests green. No React UI (OQ-16 undecided). Details: §4.7. |
+| P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. Cutover runbook must note that P4's `V200` sorts below P6's `V400` (see §4.7). |
 
 ### 4.1 P1 notes (Postgres schema)
 
@@ -639,6 +639,44 @@ P7). PAID transition (no legacy code path), bank deposits, employer cost (`total
 legacy). Tax-table maintenance API (rows are changed by migration). Segregation of duties between calculate and
 approve (OQ-P6-3). No React UI.
 
+### 4.7 P7 notes (navigation + reporting)
+
+**P4 integration.** P7 merged `origin/modernization/p4-performance` (PR #85, head `71f773356d30`) into the
+P6 line (merge `7ff50b996f4c`). Conflicts in this file, `openapi-v1.yaml` and `OpenApiContractTest` were resolved by
+keeping both sides. Amendment labels were made linear without changing content (A-P7-00).
+**Flyway ordering (for the P8 cutover runbook):** P4's `V200__performance_workflow.sql` sorts below P6's
+`V400__payroll.sql`. Fresh installs apply V1–V10, V200, V400 in order (`ProductionMigrationTest` expects
+12 versioned migrations). A database that already ran V400 without V200 would need
+`flyway.outOfOrder=true` or a fresh install; no such database exists yet.
+
+**Navigation (HRMS_MENU).** `GET /api/v1/menu` keeps the P2 gates (Employee, Leave, Performance for every
+authenticated user; Payroll needs `PAYROLL:VIEW`; Reports needs `REPORTS:VIEW`; Admin is not returned,
+OQ-03) and each entry now carries `route` (client route: `/employees`, `/payroll`, `/leave`,
+`/performance`, `/reports`, `/account/password`; null for Logout) and `apiPath` (the API entry point).
+Disabled entries are still returned with `enabled: false` (legacy WNFI disabled, not hid, them). The
+matrix is still enforced on every API route; the menu is advisory.
+
+**Reports (`com.hrms.reporting`, all `REPORTS:VIEW`, read-only):**
+- `GET /api/v1/reports` — catalogue; `available` is false where the caller lacks `PAYROLL:VIEW`.
+- `GET /api/v1/reports/pending-approvals` — VW_PENDING_APPROVALS; filters `approverId`, `approvalType`.
+- `GET /api/v1/reports/leave-summary` — VW_LEAVE_SUMMARY columns for ACTIVE employees; filters `year`
+  (default: the injected clock's year, not `CURRENT_DATE`), `empId`, `deptId`. Queries the tables with the
+  view's formulas so the year is explicit (§4.1 note). Returns `pending`, `available` (net of pending,
+  = `leave_balances.available`) and `availableBeforePending` (the legacy view value). **OQ-14 provisional.**
+- `GET /api/v1/reports/org-hierarchy` — VW_ORG_HIERARCHY; with `rootEmpId` (+ `maxDepth`, default 10)
+  it follows `PKG_EMPLOYEE.get_org_chart`: the walk passes through inactive employees, only ACTIVE rows
+  are returned, siblings ordered by last/first name, unknown root 404 `EMPLOYEE_NOT_FOUND`.
+- `GET /api/v1/reports/employee-compensation` — VW_EMPLOYEE_COMPENSATION; also needs `PAYROLL:VIEW`
+  (VW-003 Dest).
+- `GET /api/v1/reports/payroll-latest` — VW_PAYROLL_LATEST (VW-005); also needs `PAYROLL:VIEW`.
+
+Rows are not scoped to the caller: these are HR-wide reports and the legacy views had no scoping.
+Tests: `ReportApiTest` (7), `PermissionMatrixTest.menuFollowsTheLegacyGates`, `OpenApiContractTest`.
+
+**Not done in P7 (by design).** The other PKG_REPORTING reports (PKG-R01) and the pay register CSV
+(PKG-P06) are deferred (OQ-03). System Admin (parameters, user management) is out of scope (OQ-03).
+No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
+
 ---
 
 ## 5. Re-homed logic registry
@@ -697,11 +735,11 @@ approve (OQ-P6-3). No React UI.
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | in-progress (P2: matrix + `GET /api/v1/menu` PAYROLL gate, `PermissionMatrixTest.menuFollowsTheLegacyGates`; P7 navigation remains) |
-| FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
-| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | re-homed (P7, `3fb4e77c9b1a`: P2 matrix gate + menu `PAYROLL` entry with `route`/`apiPath`; `menuFollowsTheLegacyGates`) |
+| FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | dropped (P7, OQ-03: Admin is out of scope; the entry is not returned by `GET /api/v1/menu`; only change-password is kept, FRM-015) |
+| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: menu `REPORTS` entry gated by `REPORTS:VIEW` → `/api/v1/reports`; `ReportApiTest`.everyReportNeedsReportsView) |
 | FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | re-homed (P2, `POST /api/v1/auth/logout`; `AuthApiTest.logoutRevokesTheSession`) |
-| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | in-progress (P2: menu entries enabled for every authenticated user, `menuFollowsTheLegacyGates`; P7 navigation remains) |
+| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | re-homed (P7, `3fb4e77c9b1a`: Employee/Leave/Performance entries enabled for every authenticated user, with navigation targets; `menuFollowsTheLegacyGates`) |
 | FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | re-homed (P2, `POST /api/v1/auth/change-password`; `ChangePasswordTest`) |
 | FRM-016 | MI_ABOUT shows a version message | P7 ui-only | drop-proposed |
 
@@ -773,13 +811,13 @@ approve (OQ-P6-3). No React UI.
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | open |
-| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
-| MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
-| MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | re-homed (P7, `3fb4e77c9b1a`: `MenuEntry.route`/`apiPath` per module; React routes follow if OQ-16 adds UI scope) |
+| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: Reports target is `/api/v1/reports`, 4 named views + VW_PAYROLL_LATEST; OQ-03) |
+| MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | dropped (P7, OQ-03: Admin out of scope; menu entry hidden) |
+| MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | dropped (P7, OQ-03: System Parameters / User Management out of scope; change-password kept, MNU-005) |
 | MNU-005 | Admin → Change Password | P2 (= FRM-015) | re-homed (P2, = FRM-015; menu `CHANGE_PASSWORD` entry) |
 | MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | drop-proposed |
-| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | in-progress (P2: `GET /api/v1/menu` filtered by the matrix; P7 navigation remains) |
+| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | re-homed (P7, `3fb4e77c9b1a`: menu filtered by the D-06 matrix; disabled entries returned with `enabled: false`) |
 
 ### 5.4 PLL libraries (`forms/libraries/`)
 
@@ -814,7 +852,7 @@ re-homing boundary.
 | PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | re-homed (P5, `f9d91aed89db`: history written in the business transaction; errors propagate) |
 | PKG-E05 | PKG_EMPLOYEE.update_employee / transfer / promote / terminate / rehire | See inventory §I-3.1. Terminate auto-cancels PENDING leave and end-dates salary and pay elements. Promote calls create_salary_record (PROMOTION). Rehire calls create_salary_record (REHIRE) | P5 (salary through the interface) | re-homed (P5, `f9d91aed89db`: update/transfer/promote/terminate/rehire; terminate cancels PENDING leave through `LeaveService.cancelPendingRequestsOf` and ends compensation through the port; promote/rehire through the port; `EmployeeCommandApiTest`) |
 | PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | re-homed (P2, `EmployeeReadService.search`, bind parameters only; `EmployeeReadApiTest.searchIsInjectionSafe` (DEF-09 fixed)) |
-| PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | open |
+| PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | re-homed (P7, `3fb4e77c9b1a`: `GET /api/v1/reports/org-hierarchy?rootEmpId=&maxDepth=` recursive CTE; `ReportApiTest`.orgChartFromARootFollowsGetOrgChart) |
 | PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | re-homed (P2, request-scoped `HrmsPrincipal`; no package/global state) |
 | PKG-L01 | PKG_LEAVE.submit_leave_request | -20001, -20203 (type, tenure), -20210, -20211 (backdating > 5 days), business days (-20212), overlap (-20202), balance when ACCRUAL_FLAG='Y' (-20201), status PENDING/APPROVED by REQUIRES_APPROVAL, PENDING balance increment, manager notification, audit | P3 | done (P3: `LeaveService.submit`; DEF-01, DEF-12 fixed) |
 | PKG-L02 | PKG_LEAVE.approve / reject / cancel | PENDING only for approve and reject; PENDING or APPROVED for cancel (-20204). Balance moves PENDING→USED, PENDING release, or USED restore. Notifications on approve and reject (none on cancel) | P3 | done (P3: approve/reject/cancel; outbox notifications; status audit) |
@@ -826,7 +864,7 @@ re-homing boundary.
 | PKG-P03 | PKG_PAYROLL.calculate_payroll / calculate_employee_pay | No status gate (FRM-062). Commits every 50 (DEF-16). Gross = annual / periods. Fed, state, FICA and Medicare. Deductions by element | P6 | re-homed (P6, `2bf5a5c6326c`: `PayrollRunService.calculate`, PENDING gate, one transaction (DEF-16), YTD fix (DEF-06), totals fix (DEF-P6-1); `PayrollApiTest`) |
 | PKG-P04 | PKG_PAYROLL.approve_payroll / reverse_payroll / close_pay_period / create_payroll_run | Approve needs CALCULATED (-20103). Reverse has **no** status check. Close rejects CLOSED (-20102). Create rejects CLOSED (-20102) | P6 domain | re-homed (P6, `2bf5a5c6326c`: create (-20102), approve (-20103), reverse with state check (DEF-21), close (-20102), all audited; `PayrollApiTest`) |
 | PKG-P05 | PKG_PAYROLL.calculate_federal_tax / state / fica / medicare | Hard-coded 2024 brackets and constants; flat state rates | P6 (DEF-05) | re-homed (P6, `2bf5a5c6326c`: `TaxCalculator`, brackets/constants from `tax_brackets` + `payroll_tax_parameters` (DEF-05); `TaxCalculatorTest`, `PayrollApiTest.taxesDeductionsAndTotalsAreTableDriven`) |
-| PKG-P06 | PKG_PAYROLL.generate_pay_register | UTL_FILE CSV | P7 report endpoint (CSV) or drop; OQ-03 | open |
+| PKG-P06 | PKG_PAYROLL.generate_pay_register | UTL_FILE CSV | P7 report endpoint (CSV) or drop; OQ-03 | open — deferred by OQ-03 (pay register not in P7 scope); P8 records the final drop/defer |
 | PKG-P07 | Payroll batch "DBMS_SCHEDULER" (header comment; no job DDL in the repo) | Batch calculate | P6 `job` (Spring scheduler; no DBMS_SCHEDULER) | re-homed (P6, `2bf5a5c6326c`: `PayrollBatch` + `ScheduledJobs.payrollBatch` (`hrms.jobs.payroll-batch-cron`); `PayrollApiTest.batchJobCalculatesEveryPendingRun`) |
 | PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: DRAFT→OPEN→CLOSED, -20401 on any other transition; DEF-21 close fixed) |
 | PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: -20402 status gates incl. manager review and acknowledge (DEF-21), -20403 rating 1.0–5.0 one decimal, legacy label bands) |
@@ -838,7 +876,7 @@ re-homing boundary.
 | PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
 | PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | done (P3: `NotificationService` transactional outbox + `NotificationDispatcher`; SMTP adapter at P8 cutover) |
 | PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | in-progress (P3: business days. P5: email/phone/SSN/date validators in `EmployeeValidators`, `f9d91aed89db`. Others per consuming phase) |
-| PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | open — deferred by OQ-03 (only the 4 named views are exposed in P7); P8 records the final drop/defer |
 | PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | drop-proposed (OQ-13 closed: out of scope for P1–P8, follow-up; the tables it reads are migrated in P1) |
 
 ### 5.6 Views (`schema/views/hrms_views.sql`)
@@ -846,11 +884,11 @@ re-homing boundary.
 | ID | View | Dest | Status |
 |---|---|---|---|
 | VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | re-homed (P1: `hrms.vw_active_employees` in V7; P2: the read model applies the same filter in `EmployeeReadService`, `defaultReadsAreActiveOnly`) |
-| VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | in-progress (P1: recursive CTE `hrms.vw_org_hierarchy` in V7, test `orgHierarchyKeepsConnectBySemantics`; P7 endpoint remains) |
-| VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | in-progress (P1: `hrms.vw_employee_compensation` in V7; P7 endpoint remains) |
-| VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | in-progress (P1: `hrms.vw_leave_summary` in V7, parity incl. DEF-23; P7 endpoint remains) |
-| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | in-progress (P1: `hrms.vw_payroll_latest` in V7; P6 needed no change — the view reads the same tables; P7 endpoint remains) |
-| VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | in-progress (P1: `hrms.vw_pending_approvals` in V7, test `reportingViewsAreQueryable`; P7 endpoint remains) |
+| VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | re-homed (P1 view + P7 `3fb4e77c9b1a`: `GET /api/v1/reports/org-hierarchy`; `ReportApiTest`) |
+| VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | re-homed (P1 view + P7 `3fb4e77c9b1a`: `GET /api/v1/reports/employee-compensation`, `REPORTS:VIEW` + `PAYROLL:VIEW`; `ReportApiTest`) |
+| VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | re-homed (P1 view + P7 `3fb4e77c9b1a`: `GET /api/v1/reports/leave-summary` with `pending`, `available` (net) and `availableBeforePending` (legacy); OQ-14 provisional; `ReportApiTest`) |
+| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | re-homed (P1 view + P7 `3fb4e77c9b1a`: `GET /api/v1/reports/payroll-latest`, `REPORTS:VIEW` + `PAYROLL:VIEW`; `ReportApiTest`) |
+| VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | re-homed (P1 view + P7 `3fb4e77c9b1a`: `GET /api/v1/reports/pending-approvals`; `ReportApiTest`) |
 
 ### 5.7 Defects (port-vs-fix candidates; the decision belongs to the user, see OQ-04)
 
@@ -936,9 +974,9 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-11 | Salary outside the grade range: soft warning with a manager override, or a hard error? | Server code only prints a debug message. The PLL and PKG_VALIDATION return messages. The override flow is undocumented | Soft warning: the response carries a `warnings[]` entry and the save is not blocked. No override workflow | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
-| OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
+| OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open — **provisional default implemented in P7** (`LeaveSummaryRow.pending`, `available` = net of pending, `availableBeforePending` = legacy view value), awaiting user confirmation |
 | OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists | Coordinator-applied default: **production** — the P8 data migration creates a credential per ACTIVE employee with an unusable hash and a one-time reset link (sent through the P3 outbox). **Dev/test only** — `db/seed/R__dev_seed_p3.sql` gives every seeded ACTIVE employee the password `Hrms#2026` (bcrypt); it is in `db/seed`, which Flyway loads only with the `dev` profile or in tests, never on the production path (`ProductionMigrationTest`). Documented in `backend/README.md` | open — provisional, awaiting user confirmation (dev half implemented in P3; production half is P8) |
-| OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented) |
+| OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented; P7 delivered the backend only, and the menu's `route` values are ready for a UI) |
 | OQ-P4-1 | Should review and goal writes (self-assessment, manager review, acknowledge, goals) and review generation be refused when the cycle is not OPEN (e.g. DRAFT or CLOSED)? Legacy never checked the cycle status | Raised in P4. Closing a cycle currently does not freeze its reviews | Refuse with 409 `INVALID_CYCLE_STATUS` (-20401) unless the cycle is OPEN (generation allowed in DRAFT and OPEN) | open — provisional, awaiting user confirmation (**not implemented**: P4 keeps parity because it is not blocked) |
 | OQ-P4-2 | Should `PERFORMANCE:VIEW` (grade ≥ 5 under the D-06 matrix) read every review and its goals? The legacy form showed every review to every user | Raised in P4. Implemented as the minimal HR read scope of OQ-09 | Keep: employee + reviewer + `PERFORMANCE:VIEW`; alternatively restrict to `PERFORMANCE:ADMIN` or the management chain | open — provisional, awaiting user confirmation (implemented) |
 | OQ-P4-3 | Should HR (`PERFORMANCE:ADMIN`) be able to act on a review on behalf of the employee or reviewer, or reassign the reviewer (e.g. after a manager change)? | Raised in P4. Legacy had no reassignment; OQ-09 says the reviewer or the employee | No override and no reassignment in P4; add a `PERFORMANCE:ADMIN` reassign command later if the user wants it | open — provisional, awaiting user confirmation (no override implemented) |
@@ -964,4 +1002,5 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P4-02 | 2026-11-20 | P4 | D-10: P4 migrations use the coordinator-reserved range `V200–V299` (`V200__performance_workflow.sql`) instead of the next global number | Parallel-phase rule: P4 and P5 branch from the same P3 head; disjoint ranges avoid Flyway version clashes. Flyway orders V200 after V10; `ProductionMigrationTest` now expects 11 migrations |
 | A-P5-01 (`v1.1-P5` → `v1.2`) | 2026-11-20 | P5 | **Additive contract amendment** (`openapi-v1.yaml` 1.1.0, `x-contract-version: v1.1-P5`): `POST /api/v1/employees`; `PATCH` and `DELETE /api/v1/employees/{empId}` (DELETE always 405 `DELETE_FORBIDDEN`); `POST /api/v1/employees/{empId}/transfer`, `/promote`, `/terminate`, `/rehire`; `GET /api/v1/employees/{empId}/history`; schemas `CreateEmployeeRequest`, `UpdateEmployeeRequest`, `TransferRequest`, `PromoteRequest`, `TerminateRequest`, `RehireRequest`, `EmployeeMutation`, `Warning`, `WarningCode`, `EmploymentType`, `EmployeeHistoryEntry`; new `ErrorCode` `EMPLOYEE_NOT_TERMINATED` (409, no legacy code; extends the D-05 table — rehire of an employee who is not TERMINATED). `INVALID_SALARY` (-20101) is also raised by the employee service for hire/promote/rehire (code and status unchanged). `OpenApiContractTest` accepts `v1` or `v1.N[-Pn]` | P5 routes did not exist in v1. Rehire of a non-terminated employee (DEF-13) is a state conflict no v1 code describes (`REACTIVATION_FORBIDDEN` means the opposite direction). Nothing in v1 changed. Numbered `-P5` because P4 amends in parallel; the coordinator renumbers on merge |
 | A-P6-01 (`v1.2-P6` → `v1.3`) | 2026-11-20 | P6 | **Additive contract amendment** (`openapi-v1.yaml` 1.2.0, `x-contract-version: v1.2-P6`): `GET /api/v1/payroll/pay-periods`, `GET /api/v1/payroll/pay-periods/{periodId}`, `POST /api/v1/payroll/pay-periods/generate`, `POST /api/v1/payroll/pay-periods/{periodId}/close`, `GET`+`POST /api/v1/payroll/runs`, `GET /api/v1/payroll/runs/{runId}`, `POST /api/v1/payroll/runs/{runId}/calculate`, `/approve`, `/reverse`, `GET /api/v1/payroll/runs/{runId}/payslips`, `/errors`, `GET /api/v1/payroll/employees/{empId}/salary-records`; schemas `PayFrequency`, `PayPeriodStatus`, `PayrollRunStatus`, `PayrollRunType`, `PayPeriod`, `GeneratePayPeriodsRequest`, `PayPeriodGeneration`, `CreatePayrollRunRequest`, `ReversePayrollRequest`, `PayrollRun`, `PayrollRunError`, `Payslip`, `SalaryRecord`; response `PayrollConflict`; parameters `PeriodId`, `RunId`. **No new error code** (the payroll codes were catalogued in v1); the FRM-062 calculate gate and the DEF-21 reverse gate use `INVALID_RUN_STATUS` with `legacyCode` null (D-05 "(new) calculate gate"). | P6 routes did not exist in v1 or v1.1-P5. Nothing existing changed. Numbered after v1.1-P5 on this branch; P4's parallel `v1.1-P4` is reconciled by the coordinator in P7 |
-| A-P7-00 (`v1.3`) | 2026-11-20 | P7 | **Amendment renumbering only.** P7 merged P4 (PR #85, `71f773356d30`) into the P6 line. The parallel labels become one linear history: `v1.1-P4` (A-P4-01) → **`v1.1`**, `v1.1-P5` (A-P5-01) → **`v1.2`**, `v1.2-P6` (A-P6-01) → **`v1.3`**. `openapi-v1.yaml` is `info.version: 1.3.0`, `x-contract-version: v1.3`, with all three amendments' routes and schemas. `OpenApiContractTest` now accepts `v1` or `v1.N` only (no `-Pn` suffix). Flyway: P4's `V200` sorts below P6's `V400`; both apply in order on a fresh install (`ProductionMigrationTest` expects 12 migrations). | Coordinator instruction. Each amendment's content (routes, schemas, codes, rationale) is unchanged; the old labels are kept in parentheses so earlier references still resolve. No route, schema, code or status changed |
+| A-P7-00 (`v1.3`) | 2026-11-20 | P7 | **Amendment renumbering only.** P7 merged P4 (PR #85, `71f773356d30`) into the P6 line. The parallel labels become one linear history: `v1.1-P4` (A-P4-01) → **`v1.1`**, `v1.1-P5` (A-P5-01) → **`v1.2`**, `v1.2-P6` (A-P6-01) → **`v1.3`**. At the merge commit `openapi-v1.yaml` is `info.version: 1.3.0`, `x-contract-version: v1.3` (P7's own additions then made it 1.4.0, A-P7-01), with all three amendments' routes and schemas. `OpenApiContractTest` now accepts `v1` or `v1.N` only (no `-Pn` suffix). Flyway: P4's `V200` sorts below P6's `V400`; both apply in order on a fresh install (`ProductionMigrationTest` expects 12 migrations). | Coordinator instruction. Each amendment's content (routes, schemas, codes, rationale) is unchanged; the old labels are kept in parentheses so earlier references still resolve. No route, schema, code or status changed |
+| A-P7-01 (`v1.4`) | 2026-11-20 | P7 | **Additive contract amendment** (`openapi-v1.yaml` 1.4.0, `x-contract-version: v1.4`): tag `reports`; `GET /api/v1/reports`, `/reports/pending-approvals`, `/reports/leave-summary`, `/reports/org-hierarchy`, `/reports/employee-compensation`, `/reports/payroll-latest`; schemas `ReportDescriptor`, `PendingApproval`, `LeaveSummaryRow`, `OrgNode`, `EmployeeCompensation`, `PayrollLatest`; `MenuEntry` gains optional nullable `route` and `apiPath`. No new error code (uses `FORBIDDEN`, `VALIDATION_FAILED`, `EMPLOYEE_NOT_FOUND`). Nothing in v1–v1.3 changed. | OQ-03 (closed): the 4 named views behind `REPORTS:VIEW`; VW_PAYROLL_LATEST added because VW-005's Dest is P7. Compensation and payroll figures also need `PAYROLL:VIEW` (VW-003 Dest). The new `MenuEntry` fields are additive; existing clients ignore them. OQ-14 provisional: `available` (net of pending) and `availableBeforePending` (legacy) are both returned |
