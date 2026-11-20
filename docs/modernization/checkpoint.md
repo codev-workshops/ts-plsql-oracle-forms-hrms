@@ -8,7 +8,7 @@
 |---|---|
 | `contract_version` | **`v0-draft`** |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P0` |
+| `last_updated_by_phase` | `P1` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -242,6 +242,34 @@ The ledger format is in §4. A phase records the SHAs of its **content commits**
 which only writes the ledger row, is excluded because it cannot contain its own SHA. The PR head SHA
 is reported in the PR and the final message.
 
+### D-10 Backend build layout and migration conventions (P1, amendment A-P1-01)
+
+- **Build:** one Maven module in `backend/` (`backend/pom.xml`), parent
+  `spring-boot-starter-parent` 3.3.5, Java 21, groupId `com.hrms`, base package `com.hrms`
+  (`com.hrms.HrmsApplication`). Later phases add packages per module (e.g. `com.hrms.auth`,
+  `com.hrms.leave`) inside this module; splitting into several Maven modules needs an amendment.
+- **Migrations:** `backend/src/main/resources/db/migration/V<n>__<desc>.sql`, one global,
+  strictly increasing version sequence. P1 owns V1–V8. Each later phase appends `V<next>__…`;
+  an applied migration is never edited (Flyway `validate` fails on checksum drift).
+- **Dev/test seed:** `backend/src/main/resources/db/seed/R__dev_seed.sql`, a repeatable,
+  idempotent (`ON CONFLICT DO NOTHING`) migration **generated** from `data/seed/*.sql` by
+  `backend/scripts/port_seed.py`. It is loaded only with the `dev` Spring profile or in tests
+  (`spring.flyway.locations=classpath:db/migration,classpath:db/seed`), never in production.
+  `data/seed/*.sql` stays the Oracle original. Phases that need more fixture rows add them to the
+  generator or to their own test fixtures, not to `db/migration`.
+- **Ownership and grants:** the Flyway user owns every object in schema `hrms`. The application
+  connects as a login role that is a member of the NOLOGIN role `${app_role}` (Flyway
+  placeholder, default `hrms_app`; env `HRMS_APP_ROLE`). V8 grants it SELECT/INSERT/UPDATE on
+  all tables, USAGE/SELECT on sequences, and default privileges so later tables get the same.
+  It has **no DELETE or TRUNCATE anywhere** (D-03). A phase that needs a physical delete on a
+  table without `active_flag` (e.g. the audit purge, PKG-A02) grants it in its own migration and
+  records a D-03 exception amendment.
+- **Tests:** JUnit 5 + Spring Boot test against an embedded PostgreSQL **16.4** (zonky
+  `embedded-postgres` 2.0.7 with the 16.4.0 binaries BOM; no Docker). Run
+  `mvn -f backend/pom.xml test`. Each test class gets its own database.
+- **Runtime config:** `HRMS_DB_URL`, `HRMS_DB_USER`, `HRMS_DB_PASSWORD` (see
+  `backend/src/main/resources/application.yml`).
+
 ---
 
 ## 3. Contract version
@@ -263,8 +291,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 
 | Phase | Status | Branch | PR | Content commit SHAs | Contract version at exit | Date | Notes |
 |---|---|---|---|---|---|---|---|
-| P0 Inventory & checkpoint | submitted | `modernization/p0-inventory` | _see PR_ | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. |
-| P1 Postgres schema | pending | | | | | | |
+| P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
+| P1 Postgres schema | submitted | `modernization/p1-schema` | _see PR_ | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. |
 | P2 Auth + employee read model | pending | | | | | | |
 | P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
@@ -272,6 +300,95 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P6 Payroll | pending | | | | | | Starts after P5. |
 | P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
 | P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. |
+
+### 4.1 P1 notes (Postgres schema)
+
+**Files.** `backend/src/main/resources/db/migration/`: `V1__schema_and_app_role`,
+`V2__core_tables`, `V3__payroll_tables`, `V4__leave_tables`, `V5__performance_and_system_tables`,
+`V6__indexes`, `V7__views`, `V8__app_role_grants`. Seed: `db/seed/R__dev_seed.sql` (generated).
+Tests: `backend/src/test/java/com/hrms/schema/` (`SchemaMigrationTest`, `ProductionMigrationTest`).
+All 30 tables, 6 views and the 29 sequences are covered.
+
+**D-01 applications that D-01 asked P1 to list.**
+- `NUMBER(p)` → `INTEGER`: `calendar_year`, `tax_year`, `cycle_year`, `priority_order`
+  (emergency_contacts, pay_elements, employee_bank_accounts), `notification_queue.priority`,
+  `employee_count`, `error_count`, `retry_count`, `display_order`, `federal_allowances`,
+  `state_allowances`, `leave_types.carryover_expiry` (months), `leave_types.min_tenure_days`.
+- `NUMBER` ids → `BIGINT`: every PK/FK `*_id`, including the `NUMBER(5)` keys (`grade_id`,
+  `leave_type_id`, `holiday_id`, `param_id`), plus `audit_log.record_id`,
+  `notification_queue.reference_id`, `leave_accrual_log.run_id`, `salary_records.approved_by`
+  (an employee id).
+- `DATE` columns not in the D-01 lists: `employee_tax_info.w4_received_date` and
+  `employee_bank_accounts.prenote_date` → `DATE` (business dates). `payroll_runs.run_date`,
+  `pay_periods.closed_date`, `payroll_runs.submitted_date`/`approved_date`,
+  `salary_records.approval_date`, `leave_requests.approval_date`/`cancelled_date`,
+  `performance_reviews.employee_ack_date`, `notification_queue.sent_date`,
+  `user_sessions.login_time`/`logout_time` → `TIMESTAMPTZ` (as listed in D-01).
+- Flags → `BOOLEAN NOT NULL` (30 columns; 14 nullable-with-default Oracle flags became
+  `NOT NULL DEFAULT`): all 16 `active_flag`, `overtime_eligible`, `benefits_enrolled`,
+  `taxable_flag`, `pretax_flag`, `employer_paid`, `exempt_flag`, `prenote_sent`, `paid_flag`,
+  `accrual_flag`, `requires_approval`, `requires_document`, `half_day_flag`, `floating_flag`,
+  `editable_flag`. Other nullable Oracle columns with defaults (e.g. `status`,
+  `employment_status`) keep their nullability, for parity.
+- Actor columns → `VARCHAR(100)` (D-04): every `created_by`/`modified_by`, `changed_by`,
+  `closed_by`, `submitted_by`, `payroll_runs.approved_by`, `user_sessions.username` (DEF-17).
+- `audit_log.action_type` widened `VARCHAR2(10)` → `VARCHAR(20)`, because `'STATUS_CHANGE'`
+  (D-08) is 13 characters. `old_values`/`new_values` are `JSONB` with a CHECK that each is a JSON
+  object.
+- Identities use the Oracle `START WITH` (100 for departments, job grades and job titles; 10000
+  for employees; 1 elsewhere; audit keeps `CACHE 100`). `employee_tax_info` and
+  `employee_bank_accounts` had no Oracle sequence; they start at 1. `SEQ_LOCATION` had no column
+  to feed (`locations` uses the natural key `location_code`) and is dropped. `hrms.seq_emp_number`
+  (START 1000) is the only standalone sequence (D-02).
+
+**Schema additions beyond the Oracle DDL** (integrity only, D-07):
+- FKs the Oracle DDL documented but never declared: `departments.parent_dept_id` → departments,
+  `departments.manager_emp_id` → employees, `departments.location_code` → locations,
+  `holidays.location_code` → locations, `salary_records.approved_by` → employees,
+  `lookup_values.parent_lookup_id` → lookup_values. The seed satisfies all of them; P8 data
+  migration must check legacy rows against them.
+- Indexes (V6): an index on every FK column (PostgreSQL does not create them), the TRG-004
+  partial unique index `uq_employees_email_active` on `lower(email) WHERE active_flag`, a
+  `lower(email)` index for login (D-06), and lookup indexes for leave overlap, holidays by date
+  and location, approvals by approver and status, the pending-notification queue and audit
+  lookups.
+- `CHECK (x IN (…, NULL))` became `x IS NULL OR x IN (…)` for `chk_accrual_freq` and
+  `chk_half_day` (D-01). This **tightens** them: see DEF-24. `chk_emp_gender` is written the
+  same way (same semantics as Oracle).
+
+**View porting (V7).** `SYSDATE` → `CURRENT_DATE`. Boolean flags replace `= 'Y'`. Column names are
+unchanged. Deviations from Oracle output:
+- `vw_org_hierarchy`: recursive CTE. It keeps Oracle's order of evaluation: the tree is built
+  over **all** employees from the roots and the ACTIVE filter applies afterwards, so an active
+  employee under a terminated manager still appears. `org_path` keeps the leading `' > '` of
+  `SYS_CONNECT_BY_PATH`. `is_leaf` is `BOOLEAN` (Oracle `CONNECT_BY_ISLEAF` returned 1/0).
+  `ORDER SIBLINGS BY last_name` is reproduced with a per-level sort path (ties by `emp_id`). A
+  `CYCLE` clause drops manager loops instead of raising ORA-01436.
+- `vw_active_employees.tenure_years` reproduces `TRUNC(MONTHS_BETWEEN(…)/12, 1)` with `age()`
+  (remaining days / 31). It uses the date only, not the time of day.
+- `vw_pending_approvals.details` uses `trim_scale(total_days)`: `3.0` → `'3'` as in Oracle, but
+  `0.5` → `'0.5'` where Oracle printed `'.5'`.
+- `vw_leave_summary.available` is kept at parity: it **excludes** `pending` (DEF-23).
+- Views read the DB clock (`CURRENT_DATE`), not the injected `java.time.Clock` (D-04). P2/P7
+  endpoints that need a fixed clock should pass the date as a parameter or query the tables.
+
+**Seed-vs-DDL mismatches and how P1 handled them** (`backend/scripts/port_seed.py`):
+
+| Mismatch | Handling |
+|---|---|
+| `LOCATIONS.PHONE` (DDL `PHONE_NUMBER`) | Renamed to `phone_number`. |
+| `JOB_GRADES.GRADE_LEVEL` (not in DDL) and missing `GRADE_CODE NOT NULL` | `grade_level` dropped; it equals `grade_id` in every row, and `has_permission` uses `GRADE_ID`. `grade_code` is derived as `'G' || lpad(level, 2, '0')` (`G01`…`G10`). |
+| `SYSTEM_PARAMETERS.DESCRIPTION` (DDL `PARAM_DESCRIPTION`) | Renamed to `param_description`. |
+| START-1 sequences collide with seeded IDs (salary 1–43, pay elements 1–205, leave types 1–6, holidays 1–10, system parameters 1–10) | After loading, every identity is set to `GREATEST(max(id) + 1, START WITH)` (D-02). It never lowers a start, so employees still start at 10000 and departments at 100. `seq_emp_number` is set to `GREATEST(max numeric EMP- suffix + 1, 1000)` (seed max is 99, so 1000). Test `identitiesMovedPastSeededIds`. |
+| `'Y'`/`'N'` strings, `SYSDATE`, `TO_DATE(…)` | Converted to `true`/`false`, `CURRENT_TIMESTAMP`, `DATE '…'`. |
+| `CREATED_BY = 'SYSTEM'` | Written as `system:seed` (D-04 `system:<job-name>`). |
+| Seed header says "25 employees" | The file has **24** (23 active + EMP-000099 terminated) and 23 salary records (none for the terminated employee). DEF-25, informational. |
+| `LEAVE_TYPES` SICK `ACCRUAL_RATE 0.833` into `NUMBER(6,2)` | Stored as `0.83` (Oracle rounds the same way). Recorded so P3 accrual parity tests expect 0.83. |
+| Seed `UPDATE DEPARTMENTS SET MANAGER_EMP_ID` for dept 30 twice (3, then 30) | Ported as is; the final value is 30. |
+
+**Left for later phases (schema they will add in their own migrations):** `user_credentials`,
+token-hash/expiry columns on `user_sessions` and lockout counters (P2: D-06, OQ-07, OQ-08); a
+carryover idempotency record (DEF-03; P3 or P8 per OQ-12); any DELETE grant (D-03 exception).
 
 ---
 
@@ -305,13 +422,13 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | ID | Trigger (file) | Rule | Legacy code | Dest | Status |
 |---|---|---|---|---|---|
 | TRG-001 | TRG_EMP_BEFORE_INSERT (trg_employees.sql) | Default `CREATED_BY := USER` and `CREATED_DATE := SYSDATE` | – | P5 service (D-04) | open |
-| TRG-002 | TRG_EMP_BEFORE_INSERT | Default `ACTIVE_FLAG='Y'` and `EMPLOYMENT_STATUS='ACTIVE'` | – | P1 column defaults + P5 service | open |
+| TRG-002 | TRG_EMP_BEFORE_INSERT | Default `ACTIVE_FLAG='Y'` and `EMPLOYMENT_STATUS='ACTIVE'` | – | P1 column defaults + P5 service | in-progress (P1: column defaults `active_flag DEFAULT true`, `employment_status DEFAULT 'ACTIVE'` in V2; P5 service remains) |
 | TRG-003 | TRG_EMP_BEFORE_INSERT | `HIRE_DATE ≤ SYSDATE + 180` | -20501 | P5 domain. Conflicts with FRM-035 (+90); see OQ-10 | open |
-| TRG-004 | TRG_EMP_BEFORE_INSERT | Email unique, case-insensitive, among `ACTIVE_FLAG='Y'` rows (no DB unique constraint exists) | -20502 | P1 partial unique index `lower(email) WHERE active_flag` + P5 domain (409) | open |
+| TRG-004 | TRG_EMP_BEFORE_INSERT | Email unique, case-insensitive, among `ACTIVE_FLAG='Y'` rows (no DB unique constraint exists) | -20502 | P1 partial unique index `lower(email) WHERE active_flag` + P5 domain (409) | in-progress (P1: partial unique index `uq_employees_email_active` in V6, test `activeEmailIsUniqueCaseInsensitively`; P5 domain 409 remains) |
 | TRG-005 | TRG_EMP_BEFORE_UPDATE | `MODIFIED_BY := NVL(:NEW, USER)` and `MODIFIED_DATE := SYSDATE` | – | P5 service (D-04) | open |
 | TRG-006 | TRG_EMP_BEFORE_UPDATE | Block the `TERMINATED → ACTIVE` transition, except through rehire | -20503 | P5 domain state machine. Note DEF-13 | open |
 | TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | open |
-| TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | open |
+| TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | in-progress (P1: V8 grants no DELETE/TRUNCATE to `hrms_app`, test `appRoleCannotDeleteAnything`; P5 405 remains) |
 | TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | open |
 | TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | open |
 | TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | open |
@@ -332,8 +449,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | ID | Rule | Dest | Status |
 |---|---|---|---|
 | FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | open |
-| FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | blocked (OQ-03) |
-| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | blocked (OQ-03) |
+| FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | open |
 | FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | open |
 | FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | open |
@@ -354,7 +471,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | FRM-032 | PRE-INSERT sets `EMP_ID := SEQ_EMPLOYEE.NEXTVAL`, `EMP_NUMBER := generate_emp_number`, `ACTIVE_FLAG`, status `ACTIVE`, `CREATED_BY := :GLOBAL.current_user` | P5 service (D-02, D-04) | open |
 | FRM-033 | PRE-UPDATE sets `MODIFIED_BY` and `MODIFIED_DATE` | P5 service (D-04) | open |
 | FRM-034 | WVI EMAIL: `PKG_VALIDATION.validate_email_format` (the server regex, **not** the PLL) | P5 domain validation. Note DEF-04 | open |
-| FRM-035 | WVI HIRE_DATE: `> SYSDATE + 90` rejected | P5 domain. Conflicts with TRG-003 (+180); see OQ-10 | blocked (OQ-10) |
+| FRM-035 | WVI HIRE_DATE: `> SYSDATE + 90` rejected | P5 domain. Conflicts with TRG-003 (+180); see OQ-10 | open (unblocked: OQ-10 closed, user accepted 180 days) |
 | FRM-036 | WVI DEPT_ID must be an active department | P5 domain (= validate_dept -20003) | open |
 | FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | open |
 | FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | open |
@@ -364,7 +481,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | drop-proposed |
 | FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | open |
 | FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
-| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | blocked (OQ-11) |
+| FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | open (unblocked: OQ-11 closed, user accepted soft warning) |
 | FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | open |
 
 **HRMS_LEAVE**
@@ -400,7 +517,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | FRM-073 | PERFORMANCE_REVIEW.STATUS item `UpdateAllowed=No` | P4 domain (status changes only through workflow commands) | open |
 | FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | open |
 | FRM-075 | PERFORMANCE_GOAL insert and update are allowed | P4 api (add goal, update progress) | open |
-| FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | blocked (OQ-09) |
+| FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | open (unblocked: OQ-09 closed, user accepted the default) |
 | FRM-077 | POST-QUERY looks up the employee name | P4 read model | open |
 
 ### 5.3 Menu module (`forms/menus/HRMS_MENU.mmb.sql`)
@@ -408,9 +525,9 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | ID | Rule | Dest | Status |
 |---|---|---|---|
 | MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | open |
-| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | blocked (OQ-03) |
-| MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | blocked (OQ-03) |
-| MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | blocked (OQ-03) |
+| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | MNU-005 | Admin → Change Password | P2 (= FRM-015) | open |
 | MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | drop-proposed |
 | MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | open |
@@ -442,7 +559,7 @@ re-homing boundary.
 
 | ID | Package.routine | Rule summary | Dest | Status |
 |---|---|---|---|---|
-| PKG-E01 | PKG_EMPLOYEE.generate_emp_number | `MAX()+1` race with a sequence fallback | P5 (D-02) | open |
+| PKG-E01 | PKG_EMPLOYEE.generate_emp_number | `MAX()+1` race with a sequence fallback | P5 (D-02) | in-progress (P1: `hrms.seq_emp_number` START 1000 in V2; P5 generator remains) |
 | PKG-E02 | PKG_EMPLOYEE.validate_dept / validate_manager | Active dept (-20003). Manager ACTIVE (-20004). Cycle walk up to depth 15 (`c_max_hierarchy_depth`) (-20004); cycle check only when `p_emp_id` is not null | P5 domain | open |
 | PKG-E03 | PKG_EMPLOYEE.create_employee | Names required (-20010), dept, manager, job active (-20011). Salary vs grade is only a debug warning. Location defaults from dept. Names UPPER/TRIM, email lower/TRIM. Calls **PKG_PAYROLL.create_salary_record** (NEW_HIRE). HIRE history, audit, welcome and manager notifications | P5 service. Salary goes through the interface (OQ-01) | open |
 | PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | open |
@@ -468,23 +585,23 @@ re-homing boundary.
 | PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | open |
 | PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | open |
 | PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | open |
-| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | open |
+| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; each phase's service writes remain) |
 | PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
 | PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | open |
 | PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | open |
-| PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | blocked (OQ-03) |
-| PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | blocked (OQ-13) |
+| PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
+| PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | drop-proposed (OQ-13 closed: out of scope for P1–P8, follow-up; the tables it reads are migrated in P1) |
 
 ### 5.6 Views (`schema/views/hrms_views.sql`)
 
 | ID | View | Dest | Status |
 |---|---|---|---|
-| VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | open |
-| VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | open |
-| VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | open |
-| VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | open |
-| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | open |
-| VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | open |
+| VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | in-progress (P1: `hrms.vw_active_employees` in V7, test `reportingViewsAreQueryable`; P2 read model remains) |
+| VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | in-progress (P1: recursive CTE `hrms.vw_org_hierarchy` in V7, test `orgHierarchyKeepsConnectBySemantics`; P7 endpoint remains) |
+| VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | in-progress (P1: `hrms.vw_employee_compensation` in V7; P7 endpoint remains) |
+| VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | in-progress (P1: `hrms.vw_leave_summary` in V7, parity incl. DEF-23; P7 endpoint remains) |
+| VW-005 | VW_PAYROLL_LATEST | P1 + P6/P7 | in-progress (P1: `hrms.vw_payroll_latest` in V7; P6/P7 remains) |
+| VW-006 | VW_PENDING_APPROVALS | P1 + P7 endpoint | in-progress (P1: `hrms.vw_pending_approvals` in V7, test `reportingViewsAreQueryable`; P7 endpoint remains) |
 
 ### 5.7 Defects (port-vs-fix candidates; the decision belongs to the user, see OQ-04)
 
@@ -522,6 +639,16 @@ re-homing boundary.
 
 ---
 
+**Discovered in P1**
+
+| ID | Defect | Evidence | Recommended default |
+|---|---|---|---|
+| DEF-23 | `VW_LEAVE_SUMMARY.AVAILABLE` is `OPENING_BALANCE + ACCRUED - USED + ADJUSTMENT`, which **ignores PENDING**, while `LEAVE_BALANCES.AVAILABLE` subtracts it. The report can show more days than a request may use | schema/views/hrms_views.sql L96; 03_leave_tables.sql L47 | P1 keeps parity in the view. P7 endpoint returns both `pending` and the generated `available` (net of pending). See OQ-14 |
+| DEF-24 | Oracle `CHECK (X IN ('A','B', NULL))` never rejects anything, because `X IN (…, NULL)` is UNKNOWN for a non-matching value and UNKNOWN passes a CHECK. `CHK_ACCRUAL_FREQ` and `CHK_HALF_DAY` were no-ops | 03_leave_tables.sql L31, L90 | Fix (already done by D-01's explicit `x IS NULL OR x IN (…)`). P8 data migration must report legacy rows that violate the tightened checks |
+| DEF-25 | The employee seed header claims 25 employees; it inserts 24 | data/seed/02_employee_data.sql L4 | Informational; no action |
+
+---
+
 ## 6. Open questions
 
 Format: ID · question · findings · **recommended default** · status. The coordinator relays the
@@ -530,19 +657,20 @@ marks it **"provisional — awaiting user confirmation"**.
 
 | ID | Question | P0 findings | Recommended default | Status |
 |---|---|---|---|---|
-| OQ-01 | How should the PKG_EMPLOYEE ↔ PKG_PAYROLL "circular dependency" be resolved? | **It is not circular in code.** Grepping `PKG_x.` usages shows `PKG_EMPLOYEE → PKG_PAYROLL.create_salary_record` (create L275, promote L617, rehire L778), while `PKG_PAYROLL` calls only `PKG_AUDIT` and `PKG_COMMON`. **There is no call to `PKG_EMPLOYEE.is_active` anywhere.** `is_active` (PKG_EMPLOYEE.pkb L885) is never called. `PKG_PAYROLL` reads `EMPLOYEES` directly (L298-300, L787, L862). The "Circular dependency" notes in PKG_EMPLOYEE.pks L9, PKG_PAYROLL.pks L9 and the PKG_EMPLOYEE.pkb L273-274 comment are wrong. The header `Dependencies:` lists are wrong too: PKG_PAYROLL, PKG_LEAVE, PKG_PERFORMANCE, PKG_REPORTING and PKG_INTEGRATION claim to depend on PKG_EMPLOYEE, but none of them calls it. The only other real cross-module call is `PKG_SECURITY → PKG_EMPLOYEE.set_session_context`. Full call graph: inventory §I-2. | P5 defines a `SalaryRecordPort` (in-process Java interface, called synchronously in the same transaction, so hire, promote and rehire stay atomic). P5 ships a no-op or recording stub. P6 provides the real implementation. Payroll reads employee status through the employee module's read API or repository, never through a reverse service call. Async events or an outbox are deferred. | open (the default is consistent with the program's P5 text) |
-| OQ-02 | Are there unverified server-side status checks in truncated package bodies? | **None of the package bodies in the repo is truncated.** All 11 `.pkb` files are complete and end with `END PKG_x; /`. Every status check is verified: present = leave approve/reject (PENDING), leave cancel (PENDING/APPROVED), approve_payroll (CALCULATED), close_pay_period and create_payroll_run (not CLOSED), open_review_cycle (DRAFT), submit_self_assessment (NOT_STARTED/SELF_REVIEW), acknowledge (COMPLETED, silent), terminate (not TERMINATED), transfer (ACTIVE). **Absent** = calculate_payroll (the Forms PENDING gate is the only guard), reverse_payroll, close_review_cycle, submit_manager_review, update_goal_progress, rehire_employee. | Treat the Forms gates as authoritative requirements and enforce every state machine server-side (DEF-21, FRM-062). | open (needs confirmation that nothing exists outside the repo) |
-| OQ-03 | What is the scope of the dead menu items HRMS_REPORTS and HRMS_ADMIN? | Neither form exists in `forms/xml-exports/`. A backend exists: PKG_REPORTING (7 reports) and SYSTEM_PARAMETERS + `PKG_COMMON.set_param`. The menu says Admin needs the ADMIN permission. | REPORTS: P7 exposes read-only endpoints for the 4 named views (VW_PENDING_APPROVALS, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_ORG_HIERARCHY) behind `REPORTS:VIEW`. The other PKG_REPORTING reports and the pay register are deferred. ADMIN: out of scope, except change-password (P2). The menu entry is hidden. | open |
-| OQ-04 | What is the port-vs-fix policy for documented bugs (DEF-01…07) and discovered bugs (DEF-12…22)? | §5.7 | Security bugs are already fixed by D-02, D-04, D-06 and D-08. For business-logic bugs: **fix**, as recommended per row in §5.7. Each fix gets a parity test that documents how it deviates from legacy. P8 records the final decision for each bug. | open (user decision) |
+| OQ-01 | How should the PKG_EMPLOYEE ↔ PKG_PAYROLL "circular dependency" be resolved? | **It is not circular in code.** Grepping `PKG_x.` usages shows `PKG_EMPLOYEE → PKG_PAYROLL.create_salary_record` (create L275, promote L617, rehire L778), while `PKG_PAYROLL` calls only `PKG_AUDIT` and `PKG_COMMON`. **There is no call to `PKG_EMPLOYEE.is_active` anywhere.** `is_active` (PKG_EMPLOYEE.pkb L885) is never called. `PKG_PAYROLL` reads `EMPLOYEES` directly (L298-300, L787, L862). The "Circular dependency" notes in PKG_EMPLOYEE.pks L9, PKG_PAYROLL.pks L9 and the PKG_EMPLOYEE.pkb L273-274 comment are wrong. The header `Dependencies:` lists are wrong too: PKG_PAYROLL, PKG_LEAVE, PKG_PERFORMANCE, PKG_REPORTING and PKG_INTEGRATION claim to depend on PKG_EMPLOYEE, but none of them calls it. The only other real cross-module call is `PKG_SECURITY → PKG_EMPLOYEE.set_session_context`. Full call graph: inventory §I-2. | P5 defines a `SalaryRecordPort` (in-process Java interface, called synchronously in the same transaction, so hire, promote and rehire stay atomic). P5 ships a no-op or recording stub. P6 provides the real implementation. Payroll reads employee status through the employee module's read API or repository, never through a reverse service call. Async events or an outbox are deferred. | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-02 | Are there unverified server-side status checks in truncated package bodies? | **None of the package bodies in the repo is truncated.** All 11 `.pkb` files are complete and end with `END PKG_x; /`. Every status check is verified: present = leave approve/reject (PENDING), leave cancel (PENDING/APPROVED), approve_payroll (CALCULATED), close_pay_period and create_payroll_run (not CLOSED), open_review_cycle (DRAFT), submit_self_assessment (NOT_STARTED/SELF_REVIEW), acknowledge (COMPLETED, silent), terminate (not TERMINATED), transfer (ACTIVE). **Absent** = calculate_payroll (the Forms PENDING gate is the only guard), reverse_payroll, close_review_cycle, submit_manager_review, update_goal_progress, rehire_employee. | Treat the Forms gates as authoritative requirements and enforce every state machine server-side (DEF-21, FRM-062). | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-03 | What is the scope of the dead menu items HRMS_REPORTS and HRMS_ADMIN? | Neither form exists in `forms/xml-exports/`. A backend exists: PKG_REPORTING (7 reports) and SYSTEM_PARAMETERS + `PKG_COMMON.set_param`. The menu says Admin needs the ADMIN permission. | REPORTS: P7 exposes read-only endpoints for the 4 named views (VW_PENDING_APPROVALS, VW_EMPLOYEE_COMPENSATION, VW_LEAVE_SUMMARY, VW_ORG_HIERARCHY) behind `REPORTS:VIEW`. The other PKG_REPORTING reports and the pay register are deferred. ADMIN: out of scope, except change-password (P2). The menu entry is hidden. | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-04 | What is the port-vs-fix policy for documented bugs (DEF-01…07) and discovered bugs (DEF-12…22)? | §5.7 | Security bugs are already fixed by D-02, D-04, D-06 and D-08. For business-logic bugs: **fix**, as recommended per row in §5.7. Each fix gets a parity test that documents how it deviates from legacy. P8 records the final decision for each bug. | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-05 | Target stack | — | — | **closed by D-00 (user decision, 2026-11-20)** |
-| OQ-06 | Two ACTIVE employees can share an email (uniqueness is enforced only among `ACTIVE_FLAG='Y'` rows, and only by a trigger). What should login do? | authenticate takes `MIN(emp_id)`; the login form takes `ROWNUM=1` | Port MIN(emp_id) in P2. TRG-004 and the P1 partial unique index then prevent new duplicates. P8 data migration reports any existing duplicates. | open |
-| OQ-07 | Lockout policy numbers | Legacy has no lockout | 5 consecutive failures → 15-minute lock; counter resets on success | open (provisional when P2 implements it) |
-| OQ-08 | Session timeout: absolute or sliding? | Legacy: 30 minutes absolute from LOGIN_TIME | Port 30 minutes absolute in P2 | open |
-| OQ-09 | Row-level scoping and the finer permission matrix: own records, own department, manager/reviewer rights, PAYROLL CREATE, PERFORMANCE write | `has_permission` comments promise "edit own department / own records" but the code does not implement it. The Performance form has no permission check | Keep exact legacy matrix parity (D-06). Add only the minimal scoping that the forms implied: leave lists are self-only, approvals go to the assigned approver, a review is updated by its reviewer or employee, and payroll create and calculate need `PAYROLL:EDIT`/grade ≥ 8. Each addition is marked provisional. | open |
-| OQ-10 | Hire-date future limit: 90 days (Forms) or 180 days (trigger)? | DEF-19 | 180 days (the DB trigger was the authoritative server rule) | open |
-| OQ-11 | Salary outside the grade range: soft warning with a manager override, or a hard error? | Server code only prints a debug message. The PLL and PKG_VALIDATION return messages. The override flow is undocumented | Soft warning: the response carries a `warnings[]` entry and the save is not blocked. No override workflow | open |
-| OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | open |
-| OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | open |
+| OQ-06 | Two ACTIVE employees can share an email (uniqueness is enforced only among `ACTIVE_FLAG='Y'` rows, and only by a trigger). What should login do? | authenticate takes `MIN(emp_id)`; the login form takes `ROWNUM=1` | Port MIN(emp_id) in P2. TRG-004 and the P1 partial unique index then prevent new duplicates. P8 data migration reports any existing duplicates. | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-07 | Lockout policy numbers | Legacy has no lockout | 5 consecutive failures → 15-minute lock; counter resets on success | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-08 | Session timeout: absolute or sliding? | Legacy: 30 minutes absolute from LOGIN_TIME | Port 30 minutes absolute in P2 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-09 | Row-level scoping and the finer permission matrix: own records, own department, manager/reviewer rights, PAYROLL CREATE, PERFORMANCE write | `has_permission` comments promise "edit own department / own records" but the code does not implement it. The Performance form has no permission check | Keep exact legacy matrix parity (D-06). Add only the minimal scoping that the forms implied: leave lists are self-only, approvals go to the assigned approver, a review is updated by its reviewer or employee, and payroll create and calculate need `PAYROLL:EDIT`/grade ≥ 8. Each addition is marked provisional. | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-10 | Hire-date future limit: 90 days (Forms) or 180 days (trigger)? | DEF-19 | 180 days (the DB trigger was the authoritative server rule) | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-11 | Salary outside the grade range: soft warning with a manager override, or a hard error? | Server code only prints a debug message. The PLL and PKG_VALIDATION return messages. The override flow is undocumented | Soft warning: the response carries a `warnings[]` entry and the save is not blocked. No override workflow | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
+| OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
 
 ---
 
@@ -551,3 +679,5 @@ marks it **"provisional — awaiting user confirmation"**.
 | Version / ID | Date | Phase | Change | Rationale |
 |---|---|---|---|---|
 | — | 2026-11-20 | P0 | Initial locked decisions D-00…D-09; contract `v0-draft` | Phase 0 deliverable. D-00 is a user decision relayed by the coordinator |
+| A-P1-01 | 2026-11-20 | P1 | Added D-10 (backend Maven layout, Flyway conventions, dev seed, app-role grants, embedded-PG16 tests) | D-00 asked P1 to record the build layout. Additive; no locked decision changed |
+| A-P1-02 | 2026-11-20 | P1 | **User decision:** the recommended defaults of OQ-01…OQ-04 and OQ-06…OQ-13 are accepted and closed; they are no longer provisional. Registry rows blocked on OQ-03, OQ-09, OQ-10, OQ-11 are unblocked; PKG-I01 is drop-proposed (OQ-13) | Relayed by the coordinator. Schema effects applied in P1: OQ-06 partial unique index (V6); OQ-13 tables migrated. OQ-07/OQ-08 need no P1 columns (P2 adds them with `user_credentials`) |
