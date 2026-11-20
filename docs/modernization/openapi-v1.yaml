@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 1.3.0
-  x-contract-version: v1.3
+  version: 1.4.0
+  x-contract-version: v1.4
   description: |
     **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
     sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
@@ -34,6 +34,14 @@ info:
     (P5) and `v1.3` (P6) when P7 merged P4 into the P6 line. Only the labels changed; each
     amendment's content is as written above.
 
+    **Amendment v1.4 (additive, checkpoint §7 A-P7-01, P7 navigation + reporting):** the `reports`
+    tag — `GET /api/v1/reports` (catalogue) and `GET /api/v1/reports/{pending-approvals,
+    leave-summary,org-hierarchy,employee-compensation,payroll-latest}` over VW_PENDING_APPROVALS,
+    VW_LEAVE_SUMMARY, VW_ORG_HIERARCHY, VW_EMPLOYEE_COMPENSATION and VW_PAYROLL_LATEST, all behind
+    REPORTS:VIEW (OQ-03); compensation and payroll figures also need PAYROLL:VIEW. `MenuEntry` gains
+    the optional navigation targets `route` and `apiPath`. No new error code; nothing in v1–v1.3
+    changed. The other PKG_REPORTING reports and the pay register stay deferred (OQ-03).
+
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
     failed logins lock the credential for 15 minutes (OQ-07). Every other route needs
@@ -57,6 +65,7 @@ tags:
   - name: leave
   - name: payroll
   - name: performance
+  - name: reports
 paths:
   /api/v1/auth/login:
     post:
@@ -140,7 +149,9 @@ paths:
       description: |
         Employee, Leave and Performance are enabled for every authenticated user (FRM-014 parity);
         Payroll needs PAYROLL:VIEW and Reports needs REPORTS:VIEW. System Admin is not returned
-        (OQ-03). Navigation targets are defined in P7.
+        (OQ-03); its only kept function is Change Password under `account`. Since v1.4 each entry
+        carries its navigation target: `route` (client route, null for the Logout action) and
+        `apiPath` (the API entry point the screen uses).
       responses:
         '200':
           description: Menu
@@ -1355,6 +1366,151 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/reports:
+    get:
+      tags: [reports]
+      operationId: listReports
+      summary: Reports available to the caller (replaces the dead HRMS_REPORTS target)
+      description: |
+        Catalogue of the P7 reports; `available` is false where the caller lacks the extra PAYROLL:VIEW.
+      x-permission: REPORTS:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ReportDescriptor' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/pending-approvals:
+    get:
+      tags: [reports]
+      operationId: reportPendingApprovals
+      summary: VW_PENDING_APPROVALS
+      description: |
+        Pending leave requests and performance reviews awaiting manager review, oldest first.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: approverId
+          in: query
+          required: false
+          description: Only items awaiting this approver
+          schema: { type: integer, format: int64 }
+        - name: approvalType
+          in: query
+          required: false
+          description: LEAVE or PERFORMANCE
+          schema: { type: string, enum: [LEAVE, PERFORMANCE] }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PendingApproval' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/leave-summary:
+    get:
+      tags: [reports]
+      operationId: reportLeaveSummary
+      summary: VW_LEAVE_SUMMARY
+      description: |
+        Leave balances of ACTIVE employees for one calendar year (default: the server clock's year).
+        `pending` is the days held by PENDING requests. `available` is net of pending
+        (= leave_balances.available, what a new request may use); `availableBeforePending` is the
+        legacy view's AVAILABLE, which ignores pending (DEF-23). OQ-14 provisional.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: Calendar year (default current year)
+          schema: { type: integer }
+        - name: empId
+          in: query
+          required: false
+          description: Only this employee
+          schema: { type: integer, format: int64 }
+        - name: deptId
+          in: query
+          required: false
+          description: Only this department
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveSummaryRow' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/org-hierarchy:
+    get:
+      tags: [reports]
+      operationId: reportOrgHierarchy
+      summary: VW_ORG_HIERARCHY / PKG_EMPLOYEE.get_org_chart
+      description: |
+        Without `rootEmpId`: the whole active reporting tree (VW_ORG_HIERARCHY, roots are active
+        employees without a manager, org_level from 1). With `rootEmpId`: get_org_chart semantics —
+        the subtree under that employee to `maxDepth` levels (default 10), walking through inactive
+        employees but returning only ACTIVE ones, siblings ordered by last and first name.
+        `maxDepth` without `rootEmpId` is a 400.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: rootEmpId
+          in: query
+          required: false
+          description: Root employee of the subtree
+          schema: { type: integer, format: int64 }
+        - name: maxDepth
+          in: query
+          required: false
+          description: Levels to return, at least 1 (default 10)
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/OrgNode' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/employee-compensation:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeCompensation
+      summary: VW_EMPLOYEE_COMPENSATION
+      description: |
+        Active employees with their active salary record, grade range and compa-ratio.
+      x-permission: REPORTS:VIEW and PAYROLL:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EmployeeCompensation' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/payroll-latest:
+    get:
+      tags: [reports]
+      operationId: reportPayrollLatest
+      summary: VW_PAYROLL_LATEST
+      description: |
+        Per-employee totals of the most recent APPROVED payroll run (detail rows in ERROR excluded).
+      x-permission: REPORTS:VIEW and PAYROLL:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PayrollLatest' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     bearerAuth:
@@ -1534,6 +1690,8 @@ components:
           allOf: [{ $ref: '#/components/schemas/Module' }]
           nullable: true
         enabled: { type: boolean }
+        route: { type: string, nullable: true, description: Client navigation target (v1.4) }
+        apiPath: { type: string, nullable: true, description: API entry point of the screen (v1.4) }
     EmployeeView:
       type: object
       required: [empId, empNumber, firstName, lastName, employmentStatus, active, hireDate, deptId, deptName,
@@ -2051,3 +2209,89 @@ components:
         progressPct: { type: number, minimum: 0, maximum: 100 }
         status: { $ref: '#/components/schemas/GoalStatus' }
         comments: { type: string, maxLength: 32000 }
+    ReportDescriptor:
+      type: object
+      required: [id, title, path, sourceView, permission, available]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        path: { type: string }
+        sourceView: { type: string }
+        permission: { type: string }
+        available: { type: boolean }
+    PendingApproval:
+      type: object
+      description: VW_PENDING_APPROVALS row
+      required: [approvalType, itemId, requestorName, itemDescription, requestDate]
+      properties:
+        approvalType: { type: string, enum: [LEAVE, PERFORMANCE] }
+        itemId: { type: integer, format: int64 }
+        approverId: { type: integer, format: int64, nullable: true }
+        requestorName: { type: string }
+        itemDescription: { type: string }
+        requestDate: { type: string, format: date-time }
+        details: { type: string, nullable: true }
+    LeaveSummaryRow:
+      type: object
+      description: VW_LEAVE_SUMMARY row; available is net of pending, availableBeforePending is the legacy value (OQ-14 provisional)
+      required: [empId, empNumber, empName, deptName, leaveTypeName, calendarYear, openingBalance, accrued, used, adjustment, pending, available, availableBeforePending]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        leaveTypeName: { type: string }
+        calendarYear: { type: integer }
+        openingBalance: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        adjustment: { type: number }
+        pending: { type: number, description: Days held by PENDING requests }
+        available: { type: number, description: Net of pending (opening + accrued - used + adjustment - pending) }
+        availableBeforePending: { type: number, description: Legacy VW_LEAVE_SUMMARY.AVAILABLE, ignores pending }
+        utilizationPct: { type: number, nullable: true }
+    OrgNode:
+      type: object
+      description: VW_ORG_HIERARCHY row
+      required: [empId, empNumber, empName, deptId, orgLevel, orgPath, leaf]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        deptId: { type: integer, format: int64 }
+        orgLevel: { type: integer, minimum: 1 }
+        orgPath: { type: string }
+        leaf: { type: boolean, description: Has no direct reports (any status) }
+    EmployeeCompensation:
+      type: object
+      description: VW_EMPLOYEE_COMPENSATION row
+      required: [empId, empNumber, empName, deptName, jobTitle, gradeName, baseSalary, gradeMin, gradeMax, gradeMidpoint, salaryEffectiveDate]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        jobTitle: { type: string }
+        gradeName: { type: string }
+        baseSalary: { type: number }
+        gradeMin: { type: number }
+        gradeMax: { type: number }
+        gradeMidpoint: { type: number }
+        compaRatio: { type: number, nullable: true }
+        salaryEffectiveDate: { type: string, format: date }
+        lastChangeReason: { type: string, nullable: true }
+        lastChangePct: { type: number, nullable: true }
+    PayrollLatest:
+      type: object
+      description: VW_PAYROLL_LATEST row
+      required: [empId, empNumber, empName, periodName, grossPay, totalTaxes, totalDeductions, netPay]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        periodName: { type: string }
+        grossPay: { type: number }
+        totalTaxes: { type: number }
+        totalDeductions: { type: number }
+        netPay: { type: number }

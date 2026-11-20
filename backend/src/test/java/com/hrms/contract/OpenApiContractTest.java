@@ -13,6 +13,7 @@ import com.hrms.leave.LeaveModels;
 import com.hrms.payroll.PayrollModels;
 import com.hrms.employee.EmployeeModels;
 import com.hrms.performance.PerformanceModels;
+import com.hrms.reporting.ReportModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
 import com.hrms.employee.LookupController;
@@ -132,6 +133,12 @@ class OpenApiContractTest extends ApiTestSupport {
                 Map.entry("ManagerReview", PerformanceModels.ManagerReview.class),
                 Map.entry("Acknowledgement", PerformanceModels.Acknowledgement.class),
                 Map.entry("RatingBucket", PerformanceModels.RatingBucket.class),
+                Map.entry("ReportDescriptor", ReportModels.ReportDescriptor.class),
+                Map.entry("PendingApproval", ReportModels.PendingApproval.class),
+                Map.entry("EmployeeCompensation", ReportModels.EmployeeCompensation.class),
+                Map.entry("LeaveSummaryRow", ReportModels.LeaveSummaryRow.class),
+                Map.entry("OrgNode", ReportModels.OrgNode.class),
+                Map.entry("PayrollLatest", ReportModels.PayrollLatest.class),
                 Map.entry("PerformanceGoal", PerformanceModels.PerformanceGoal.class),
                 Map.entry("AddGoal", PerformanceModels.AddGoal.class),
                 Map.entry("GoalProgress", PerformanceModels.GoalProgress.class));
