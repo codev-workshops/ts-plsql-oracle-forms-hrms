@@ -10,6 +10,7 @@ import com.hrms.auth.MenuController;
 import com.hrms.auth.Module;
 import com.hrms.common.ErrorCode;
 import com.hrms.leave.LeaveModels;
+import com.hrms.employee.EmployeeModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
 import com.hrms.employee.LookupController;
@@ -57,9 +58,10 @@ class OpenApiContractTest extends ApiTestSupport {
     }
 
     @Test
-    void contractIsFrozenV1() {
+    void contractIsV1OrAnAdditiveAmendment() {
         assertThat((String) spec.get("openapi")).startsWith("3.");
-        assertThat(map(spec, "info").get("x-contract-version")).isEqualTo("v1");
+        // v1 frozen by P3; additive amendments are v1.N (P5: v1.1-P5, reconciled by the coordinator on merge)
+        assertThat((String) map(spec, "info").get("x-contract-version")).matches("v1(\\.\\d+(-P\\d)?)?");
     }
 
     @Test
@@ -101,7 +103,16 @@ class OpenApiContractTest extends ApiTestSupport {
                 Map.entry("EmployeeView", EmployeeView.class),
                 Map.entry("EmployeePage", EmployeePage.class),
                 Map.entry("Department", LookupController.Department.class),
-                Map.entry("JobTitle", LookupController.JobTitle.class));
+                Map.entry("JobTitle", LookupController.JobTitle.class),
+                Map.entry("Warning", EmployeeModels.Warning.class),
+                Map.entry("EmployeeMutation", EmployeeModels.EmployeeMutation.class),
+                Map.entry("CreateEmployeeRequest", EmployeeModels.CreateEmployeeRequest.class),
+                Map.entry("UpdateEmployeeRequest", EmployeeModels.UpdateEmployeeRequest.class),
+                Map.entry("TransferRequest", EmployeeModels.TransferRequest.class),
+                Map.entry("PromoteRequest", EmployeeModels.PromoteRequest.class),
+                Map.entry("TerminateRequest", EmployeeModels.TerminateRequest.class),
+                Map.entry("RehireRequest", EmployeeModels.RehireRequest.class),
+                Map.entry("EmployeeHistoryEntry", EmployeeModels.EmployeeHistoryEntry.class));
         records.forEach((schema, type) -> assertThat(properties(schema))
                 .as(schema).isEqualTo(Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName).collect(Collectors.toSet())));
@@ -115,6 +126,8 @@ class OpenApiContractTest extends ApiTestSupport {
         assertThat(enumOf("Module")).isEqualTo(names(Module.values()));
         assertThat(enumOf("Action")).isEqualTo(names(Action.values()));
         assertThat(enumOf("LeaveStatus")).isEqualTo(names(LeaveModels.LeaveStatus.values()));
+        assertThat(enumOf("EmploymentType")).isEqualTo(names(EmployeeModels.EmploymentType.values()));
+        assertThat(enumOf("WarningCode")).isEqualTo(names(EmployeeModels.WarningCode.values()));
         assertThat(enumOf("HalfDayPeriod")).isEqualTo(names(LeaveModels.HalfDayPeriod.values()));
     }
 
