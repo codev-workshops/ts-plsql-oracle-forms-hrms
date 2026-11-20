@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| `contract_version` | **`v0-draft`** |
+| `contract_version` | **`v1`** (frozen by P3) |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P2` |
+| `last_updated_by_phase` | `P3` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -149,7 +149,7 @@ validation. The `code` strings are part of the contract.
 | -20005 | terminate (already terminated) | `ALREADY_TERMINATED` | 409 |
 | -20010 | create_employee (names required) | `VALIDATION_FAILED` | 400 |
 | -20011 | create_employee (job) | `INVALID_JOB` | 422 |
-| -20012 | transfer (non-active) | `EMPLOYEE_NOT_ACTIVE` | 409 |
+| -20012 | transfer (non-active) | `EMPLOYEE_NOT_ACTIVE` | ~~409~~ 422 (A-P3-02) |
 | -20101 | create_salary_record (≤0) | `INVALID_SALARY` | 422 |
 | -20102 | close_pay_period / create_payroll_run | `PERIOD_CLOSED` | 409 |
 | -20103 | approve_payroll | `INVALID_RUN_STATUS` | 409 |
@@ -277,11 +277,11 @@ is reported in the PR and the final message.
 
 | Field | Value |
 |---|---|
-| `contract_version` | `v0-draft` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (created by P2 as the draft, `info.x-contract-version: v0-draft`; P3 freezes it) |
-| Frozen? | No. Until P3, phases may edit the draft freely and must note their changes in the ledger. |
+| `contract_version` | `v1` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.0.0`, `info.x-contract-version: v1`) |
+| Frozen? | **Yes — frozen at v1 by P3 on 2026-11-20 (A-P3-01).** P4–P8 add routes only through `v1.N` amendments in §7; `OpenApiContractTest` keeps the file and the controllers in sync. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft` |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02) |
 
 ---
 
@@ -294,8 +294,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 |---|---|---|---|---|---|---|---|
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
 | P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
-| P2 Auth + employee read model | submitted | `modernization/p2-auth` | _see PR_ | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. |
-| P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
+| P2 Auth + employee read model | accepted | `modernization/p2-auth` | #83 | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. PR head `c20410949c73`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` (53 green) (recorded by P3). |
+| P3 Leave pilot + contract freeze | submitted | `modernization/p3-leave` | _see PR_ | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
 | P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
 | P6 Payroll | pending | | | | | | Starts after P5. |
@@ -459,6 +459,38 @@ No SSN encryption (`encrypt_ssn`/`decrypt_ssn` move to P5 writes / P8 re-encrypt
 never reads SSN). No React frontend (optional in P2). No row-level scoping (OQ-09 scoping
 applies to the leave/performance/payroll routes of P3–P6).
 
+### 4.3 P3 notes (leave pilot + contract freeze)
+
+**Code.** `com.hrms.leave` (`LeaveService`, `LeaveAccrualService`, `BusinessDays`, `LeaveController`,
+`LeaveModels`), `com.hrms.notification` (`NotificationService` outbox writer, `NotificationDispatcher`,
+`NotificationSender` port with a log-only default), `com.hrms.common.ScheduledJobs` (accrual cron on the 1st
+and the queue every 5 minutes; off unless `hrms.jobs.enabled=true`).
+
+**Migration V10.** `leave_accrual_runs` (one row per month, `UNIQUE (accrual_period)`), FK + unique
+`(run_id, emp_id, leave_type_id)` on `leave_accrual_log`, index `leave_requests (emp_id, status, start_date)`.
+
+**Behaviour (parity unless marked fix).**
+- Submit: the PKG-L01 check order and codes; the caller can only submit for themself (no on-behalf path; FRM-050).
+  Concurrency: a per-employee advisory transaction lock serializes overlap/balance checks (legacy had none).
+- Approve/reject: the assigned approver or a `LEAVE:APPROVE` holder; never the requester (403, new). The approver
+  column is overwritten with the decider, as legacy did. Cancel: owner or `LEAVE:ADMIN` (managers cannot cancel).
+  Rows the caller cannot see are 404 (OQ-09), so ids are not probeable.
+- Notifications: same recipients and texts as PKG_LEAVE (submit → approver, approve/reject → employee, none on
+  cancel). The outbox row is written **in the business transaction** (fix: legacy autonomous transaction could
+  notify for a rolled-back request). Delivery is at-least-once; `retry_count` cap 3; SMTP adapter is P8 cutover
+  work (only the `NotificationSender` port exists).
+- Audit (D-08): `INSERT` on submit, `STATUS_CHANGE {status}` old→new on every transition, same transaction.
+- Accrual: legacy rules (ACTIVE employees, active MONTHLY types, tenure on the accrual date, MAX_BALANCE cap vs
+  `available`, balances initialized), but idempotent per month and one transaction (fix: legacy committed every
+  100 rows and accrued again on every re-run).
+- `cancelPendingRequestsOf(empId, reason, actor)` is the P5 terminate entry point for DEF-22.
+
+**Not done in P3 (by design).** Carryover/expiry (PKG-L05, DEF-03) — deferred to P8 per OQ-12; the
+`leave_accrual_runs` pattern is the template for its idempotency record. No React pilot UI (optional, OQ-16).
+No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) — unchanged.
+
+---
+
 ## 5. Re-homed logic registry
 
 ### 5.0 Conventions
@@ -497,7 +529,7 @@ applies to the leave/performance/payroll routes of P3–P6).
 | TRG-007 | TRG_EMP_BEFORE_UPDATE | Insert `EMPLOYEE_HISTORY` on change of status, `DEPT_ID` or `JOB_ID` | – | P5 service (explicit history writes, merged with PKG-E04). Note DEF-14 | open |
 | TRG-008 | TRG_EMP_INSTEAD_OF_DELETE (actually `BEFORE DELETE`) | Forbid physical delete | -20504 | P1 grants (no DELETE) + P5 (no DELETE endpoint → 405), D-03 | in-progress (P1: V8 grants no DELETE/TRUNCATE to `hrms_app`, test `appRoleCannotDeleteAnything`; P5 405 remains) |
 | TRG-009 | TRG_SALARY_AUDIT (trg_audit.sql) | JSON CDC on SALARY_RECORDS insert, update and delete → `PKG_AUDIT.log_action` | – | P6 service audit (D-08). Note DEF-20 (double audit) | open |
-| TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | open |
+| TRG-010 | TRG_LEAVE_REQUEST_AUDIT | JSON CDC `{status}` old→new on `UPDATE OF STATUS` | – | P3 service audit (D-08). Note DEF-15 | done (P3: `LeaveService` writes `STATUS_CHANGE` old→new in the same transaction; DEF-15 fixed) |
 | TRG-011 | TRG_DEPARTMENT_AUDIT | Audit insert, update and delete on DEPARTMENTS (action only, actor `USER`) | – | P5 service audit (D-08) | open |
 
 ### 5.2 Oracle Forms rules (`forms/xml-exports/*.xml`)
@@ -555,13 +587,13 @@ applies to the leave/performance/payroll routes of P3–P6).
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-050 | WNFI `DEFAULT_WHERE` = `EMP_ID = :GLOBAL.current_emp_id` (self-only list; built by string concatenation) | P3 api-authz (row scoping: own requests; managers see approvals assigned to them) | open |
-| FRM-051 | BTN cancel gate: only `PENDING`/`APPROVED`, then ALT_CONFIRM_CANCEL | P3 domain. **The server already enforces this** (`cancel_leave_request` raises -20204, PKG_LEAVE.pkb L331). It stays server-side | open |
-| FRM-052 | NEW_REQUEST requires leave type, start date and end date | P3 api validation (400) | open |
-| FRM-053 | LEAVE_REQUEST and LEAVE_BALANCE blocks are read-only (no I/U/D) | P3 (no generic CRUD; only submit, approve, reject and cancel commands) | open |
-| FRM-054 | POST-QUERY looks up the leave type name; RG_LEAVE_TYPES LOV | P3 read model and lookup | open |
-| FRM-055 | Submit passes `HALF_DAY_FLAG` but **never** `HALF_DAY_PERIOD` | P3 (accept `halfDayPeriod`; see DEF-01) | open |
-| FRM-056 | Tabs for pending approvals and team calendar (`get_pending_requests`, `get_team_calendar`) | P3 api | open |
+| FRM-050 | WNFI `DEFAULT_WHERE` = `EMP_ID = :GLOBAL.current_emp_id` (self-only list; built by string concatenation) | P3 api-authz (row scoping: own requests; managers see approvals assigned to them) | done (P3: lists are self-only; detail visible to owner, approver, `LEAVE:APPROVE`; else 404) |
+| FRM-051 | BTN cancel gate: only `PENDING`/`APPROVED`, then ALT_CONFIRM_CANCEL | P3 domain. **The server already enforces this** (`cancel_leave_request` raises -20204, PKG_LEAVE.pkb L331). It stays server-side | done (P3: `POST …/cancel` → 409 `INVALID_REQUEST_STATUS` unless PENDING/APPROVED) |
+| FRM-052 | NEW_REQUEST requires leave type, start date and end date | P3 api validation (400) | done (P3: bean validation → 400 `VALIDATION_FAILED`) |
+| FRM-053 | LEAVE_REQUEST and LEAVE_BALANCE blocks are read-only (no I/U/D) | P3 (no generic CRUD; only submit, approve, reject and cancel commands) | done (P3: command routes only; no PUT/PATCH/DELETE) |
+| FRM-054 | POST-QUERY looks up the leave type name; RG_LEAVE_TYPES LOV | P3 read model and lookup | done (P3: `GET /api/v1/leave/types`; names in `LeaveRequest`) |
+| FRM-055 | Submit passes `HALF_DAY_FLAG` but **never** `HALF_DAY_PERIOD` | P3 (accept `halfDayPeriod`; see DEF-01) | done (P3: `halfDayPeriod` accepted and required for half days) |
+| FRM-056 | Tabs for pending approvals and team calendar (`get_pending_requests`, `get_team_calendar`) | P3 api | done (P3: `GET /api/v1/leave/approvals`, `GET /api/v1/leave/team-calendar`) |
 
 **HRMS_PAYROLL**
 
@@ -634,11 +666,11 @@ re-homing boundary.
 | PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | re-homed (P2, `EmployeeReadService.search`, bind parameters only; `EmployeeReadApiTest.searchIsInjectionSafe` (DEF-09 fixed)) |
 | PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | open |
 | PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | re-homed (P2, request-scoped `HrmsPrincipal`; no package/global state) |
-| PKG-L01 | PKG_LEAVE.submit_leave_request | -20001, -20203 (type, tenure), -20210, -20211 (backdating > 5 days), business days (-20212), overlap (-20202), balance when ACCRUAL_FLAG='Y' (-20201), status PENDING/APPROVED by REQUIRES_APPROVAL, PENDING balance increment, manager notification, audit | P3 | open |
-| PKG-L02 | PKG_LEAVE.approve / reject / cancel | PENDING only for approve and reject; PENDING or APPROVED for cancel (-20204). Balance moves PENDING→USED, PENDING release, or USED restore. Notifications on approve and reject (none on cancel) | P3 | open |
-| PKG-L03 | PKG_LEAVE.calculate_business_days | Weekdays minus HOLIDAYS (active, `LOCATION_CODE IS NULL OR = emp location`) | P3 domain (DEF-02) | open |
-| PKG-L04 | PKG_LEAVE.run_monthly_accrual | DBMS_SCHEDULER on the 1st; MAX_BALANCE cap; tenure; commit every 100 | P3 or P8 `job` (Spring `@Scheduled` + idempotency); OQ-12 | open |
-| PKG-L05 | PKG_LEAVE.process_carryover / expire_carryover | Year-end carryover capped at CARRYOVER_MAX, with expiry months | P3 or P8 `job` (DEF-03) | open |
+| PKG-L01 | PKG_LEAVE.submit_leave_request | -20001, -20203 (type, tenure), -20210, -20211 (backdating > 5 days), business days (-20212), overlap (-20202), balance when ACCRUAL_FLAG='Y' (-20201), status PENDING/APPROVED by REQUIRES_APPROVAL, PENDING balance increment, manager notification, audit | P3 | done (P3: `LeaveService.submit`; DEF-01, DEF-12 fixed) |
+| PKG-L02 | PKG_LEAVE.approve / reject / cancel | PENDING only for approve and reject; PENDING or APPROVED for cancel (-20204). Balance moves PENDING→USED, PENDING release, or USED restore. Notifications on approve and reject (none on cancel) | P3 | done (P3: approve/reject/cancel; outbox notifications; status audit) |
+| PKG-L03 | PKG_LEAVE.calculate_business_days | Weekdays minus HOLIDAYS (active, `LOCATION_CODE IS NULL OR = emp location`) | P3 domain (DEF-02) | done (P3: `BusinessDays`; DEF-02 via data) |
+| PKG-L04 | PKG_LEAVE.run_monthly_accrual | DBMS_SCHEDULER on the 1st; MAX_BALANCE cap; tenure; commit every 100 | P3 or P8 `job` (Spring `@Scheduled` + idempotency); OQ-12 | done (P3: `LeaveAccrualService` + `POST /api/v1/leave/accrual-runs` + `ScheduledJobs`; idempotent per month) |
+| PKG-L05 | PKG_LEAVE.process_carryover / expire_carryover | Year-end carryover capped at CARRYOVER_MAX, with expiry months | P3 or P8 `job` (DEF-03) | open — deferred to P8 per OQ-12 (DEF-03) |
 | PKG-P01 | PKG_PAYROLL.create_salary_record | Salary > 0 (-20101). End-dates the prior active record at `effective-1`. Inserts ANNUAL. Audit | P6. Implements the P5 interface | open |
 | PKG-P02 | PKG_PAYROLL.create_pay_periods | MONTHLY: end = LAST_DAY, pay = end, Saturday → Friday (−1), Sunday → Friday (−2). BIWEEKLY: first Friday of the year −13 = start, 14-day periods, pay = end + 5, name `YYYY-BW-NN` | P6 domain | open |
 | PKG-P03 | PKG_PAYROLL.calculate_payroll / calculate_employee_pay | No status gate (FRM-062). Commits every 50 (DEF-16). Gross = annual / periods. Fed, state, FICA and Medicare. Deductions by element | P6 | open |
@@ -652,9 +684,9 @@ re-homing boundary.
 | PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | re-homed (P2, `AuthService`, `PermissionService`, `permission_rules` (V9); `AuthApiTest`, `PermissionMatrixTest` (DEF-10 fixed)) |
 | PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | re-homed (P2, `AuthService.changePassword` against `user_credentials`; `ChangePasswordTest`) |
 | PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | in-progress (P2: `hash_password`/MD5 dropped for `DelegatingPasswordEncoder` BCrypt. `encrypt_ssn`/`decrypt_ssn` re-targeted to P5 (SSN writes, key from config) and P8 (re-encrypt): the P2 read model never reads SSN) |
-| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; P2: `AuditWriter` (same transaction, failures propagate) for login, logout and change-password; each phase's service writes remain) |
+| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; P2: `AuditWriter` (same transaction, failures propagate) for login, logout and change-password; each phase's service writes remain; P3: leave INSERT + STATUS_CHANGE) |
 | PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
-| PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | open |
+| PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | done (P3: `NotificationService` transactional outbox + `NotificationDispatcher`; SMTP adapter at P8 cutover) |
 | PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | open |
 | PKG-R01 | PKG_REPORTING (7 reports + refresh_reporting_tables) | Headcount, compensation, turnover, new hires, leave utilization, payroll summary, EEO | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | PKG-I01 | PKG_INTEGRATION (GL journal, benefits feed, T&A import, org sync) | UTL_FILE; FTP credentials in SYSTEM_PARAMETERS. **Not one of the program's 5 modules** | OQ-13 | drop-proposed (OQ-13 closed: out of scope for P1–P8, follow-up; the tables it reads are migrated in P1) |
@@ -676,9 +708,9 @@ re-homing boundary.
 
 | ID | Defect | Evidence | Recommended default |
 |---|---|---|---|
-| DEF-01 | The half-day overlap check ignores `HALF_DAY_FLAG` and `HALF_DAY_PERIOD`, so AM and PM requests on the same day block each other. A half day is always 0.5, even when the range spans days, weekends or holidays | PKG_LEAVE.pkb L45-62, L129-131 | Fix: period-aware overlap; a half day requires `start = end` |
-| DEF-02 | Observed holidays are not excluded: the check matches the exact date only | PKG_LEAVE.pkb L9-10 | Fix through **data**: HOLIDAYS carries an observed-date row. No algorithm change |
-| DEF-03 | Carryover "double-expire". `expire_carryover` itself is idempotent, because it zeroes `CARRYOVER_FROM_PREV`. The real double path: re-running `process_carryover` resets `CARRYOVER_FROM_PREV`, then expiry subtracts into ADJUSTMENT again. Expiry also subtracts the full carryover even after it has been used | PKG_LEAVE.pkb L558-623 | Fix: an idempotency record per (year, employee, type), and expire only the unused remainder |
+| DEF-01 | The half-day overlap check ignores `HALF_DAY_FLAG` and `HALF_DAY_PERIOD`, so AM and PM requests on the same day block each other. A half day is always 0.5, even when the range spans days, weekends or holidays | PKG_LEAVE.pkb L45-62, L129-131 | Fix: period-aware overlap; a half day requires `start = end` — **fixed in P3** (`LeaveApiTest.overlapIsHalfDayPeriodAware`) |
+| DEF-02 | Observed holidays are not excluded: the check matches the exact date only | PKG_LEAVE.pkb L9-10 | Fix through **data**: HOLIDAYS carries an observed-date row. No algorithm change — **P3: no code needed** — holidays are matched by date + location; observed dates are P8 data-migration rows (test: HQ-only holiday not excluded for CHI) |
+| DEF-03 | Carryover "double-expire". `expire_carryover` itself is idempotent, because it zeroes `CARRYOVER_FROM_PREV`. The real double path: re-running `process_carryover` resets `CARRYOVER_FROM_PREV`, then expiry subtracts into ADJUSTMENT again. Expiry also subtracts the full carryover even after it has been used | PKG_LEAVE.pkb L558-623 | Fix: an idempotency record per (year, employee, type), and expire only the unused remainder — **deferred to P8** with PKG-L05 (OQ-12) |
 | DEF-04 | Email validation drift. The PLL accepts subdomains, despite its comment, and has no TLD check. The server regex `^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` is used by the form | PLL L14-38; PKG_COMMON.pkb L265-268 | Fix: one server validator using the PKG_COMMON regex |
 | DEF-05 | Hard-coded 2024 federal brackets, standard deductions (14600/29200), allowance 4300, SS wage base 168600, flat state rates | PKG_PAYROLL.pkb L7-14, L643-718 | Fix: read TAX_BRACKETS and a parameter table, seeded with the 2024 values for parity |
 | DEF-06 | YTD issues. YTD keys on the `PERIOD_START_DATE` year (biweekly periods spanning a year boundary go to the wrong year) and on `STATUS='CALCULATED'` only. The payslip has YTD placeholders of 0 | PKG_PAYROLL.pkb L802-819, L784-785 | Fix (key on PAY_DATE year; include approved and paid runs) |
@@ -692,17 +724,17 @@ re-homing boundary.
 | DEF-09 | SQL injection in `search_employees` | PKG_EMPLOYEE.pkb L445-499 | Fix (parameterized) |
 | DEF-10 | `authenticate` never verifies a password; MD5 `hash_password` is unused | PKG_SECURITY.pkb | Fix (D-06; already locked) |
 | DEF-11 | Hard-coded AES key | PKG_SECURITY.pkb `c_encryption_key` | Fix (D-06; already locked) |
-| DEF-12 | **The leave auto-approve path always fails.** When `REQUIRES_APPROVAL='N'`, the row is inserted as `APPROVED`, then `approve_leave_request` is called, which raises -20204 because the status is not PENDING. PENDING was also incremented for a row that is already approved | PKG_LEAVE.pkb L170, L176-182, L199-202, L225 | Fix: insert APPROVED and move the days straight to USED |
+| DEF-12 | **The leave auto-approve path always fails.** When `REQUIRES_APPROVAL='N'`, the row is inserted as `APPROVED`, then `approve_leave_request` is called, which raises -20204 because the status is not PENDING. PENDING was also incremented for a row that is already approved | PKG_LEAVE.pkb L170, L176-182, L199-202, L225 | Fix: insert APPROVED and move the days straight to USED — **fixed in P3** (`noApprovalTypesAreApprovedOnSubmitAndUsedDirectly`) |
 | DEF-13 | **`rehire_employee` is blocked by its own trigger.** It updates TERMINATED→ACTIVE, which TRG-006 rejects with -20503. It also has no check that the employee is TERMINATED, and no manager or location handling | PKG_EMPLOYEE.pkb L750-793; trg_employees.sql L68-73 | Fix: rehire is the one allowed transition and requires TERMINATED |
 | DEF-14 | **TRG_EMP_BEFORE_UPDATE history inserts cannot work.** They use the columns `HISTORY_ID`, `CHANGE_DATE`, `OLD_VALUE`, `NEW_VALUE`, `CHANGED_BY` and `CHANGE_REASON`, none of which exist in EMPLOYEE_HISTORY (the DDL has `HIST_ID`, `EFFECTIVE_DATE` and typed `OLD_*`/`NEW_*` columns). The values `DEPARTMENT_CHANGE` and `JOB_CHANGE` also violate `CHK_CHANGE_TYPE` | trg_employees.sql L77-110; 01_core_tables.sql L152-177 | Re-home as service writes in the `log_history` shape (P5) |
-| DEF-15 | **Leave status audit is silently lost.** TRG_LEAVE_REQUEST_AUDIT writes `ACTION_TYPE='STATUS_CHANGE'`, but `CHK_AUDIT_ACTION` allows only INSERT, UPDATE and DELETE, and PKG_AUDIT's `WHEN OTHERS` swallows the violation | trg_audit.sql L56-68; 04_performance_tables.sql L104; PKG_AUDIT.pkb | Fix (D-08 adds STATUS_CHANGE; already locked) |
+| DEF-15 | **Leave status audit is silently lost.** TRG_LEAVE_REQUEST_AUDIT writes `ACTION_TYPE='STATUS_CHANGE'`, but `CHK_AUDIT_ACTION` allows only INSERT, UPDATE and DELETE, and PKG_AUDIT's `WHEN OTHERS` swallows the violation | trg_audit.sql L56-68; 04_performance_tables.sql L104; PKG_AUDIT.pkb | Fix (D-08 adds STATUS_CHANGE; already locked) — **fixed in P3** (`approveMovesPendingToUsedAndAuditsTheStatus`) |
 | DEF-16 | `calculate_payroll` commits every 50 employees, and the CALCULATING status is committed before the work, so a failure leaves a half-calculated run | PKG_PAYROLL.pkb L286-327 | Fix: one transaction, or idempotent per-employee resumable work |
 | DEF-17 | `USER_SESSIONS.USERNAME` and every `CREATED_BY`/`MODIFIED_BY`/`CHANGED_BY` are `VARCHAR2(30)`, but the actor written is the email, up to 100 characters | 04_performance_tables.sql L156; PKG_SECURITY.pkb | Fix (D-04 widens; already locked) |
 | DEF-18 | The Forms session check passes `GET_APPLICATION_PROPERTY(USERNAME)`, the DB user and not the session ID, to `is_session_valid` | HRMS_EMPLOYEE.xml L34; HRMS_LEAVE.xml, HRMS_PERFORMANCE.xml WNFI | Dropped with Forms (FRM-020 re-homed) |
 | DEF-19 | The hire-date limit differs: Forms allows +90 days, the trigger +180 | HRMS_EMPLOYEE.xml L383; trg_employees.sql L35 | OQ-10 |
 | DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) |
 | DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) |
-| DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) |
+| DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) — P3 provides `LeaveService.cancelPendingRequestsOf`; P5 wires terminate to it |
 
 ---
 
@@ -738,7 +770,8 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
-| OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists. P2 tests provision their own rows; no passwords are in source or the dev seed | P8 data migration creates a credential per ACTIVE employee with a random, unusable hash and a one-time reset/invite link (delivery through the P3 notification outbox). Dev environments create rows with a local script. No admin endpoint in P2 (ADMIN is out of scope, OQ-03) | open — provisional, awaiting user confirmation |
+| OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists | Coordinator-applied default: **production** — the P8 data migration creates a credential per ACTIVE employee with an unusable hash and a one-time reset link (sent through the P3 outbox). **Dev/test only** — `db/seed/R__dev_seed_p3.sql` gives every seeded ACTIVE employee the password `Hrms#2026` (bcrypt); it is in `db/seed`, which Flyway loads only with the `dev` profile or in tests, never on the production path (`ProductionMigrationTest`). Documented in `backend/README.md` | open — provisional, awaiting user confirmation (dev half implemented in P3; production half is P8) |
+| OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented) |
 
 ---
 
@@ -750,3 +783,5 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P1-01 | 2026-11-20 | P1 | Added D-10 (backend Maven layout, Flyway conventions, dev seed, app-role grants, embedded-PG16 tests) | D-00 asked P1 to record the build layout. Additive; no locked decision changed |
 | A-P1-02 | 2026-11-20 | P1 | **User decision:** the recommended defaults of OQ-01…OQ-04 and OQ-06…OQ-13 are accepted and closed; they are no longer provisional. Registry rows blocked on OQ-03, OQ-09, OQ-10, OQ-11 are unblocked; PKG-I01 is drop-proposed (OQ-13) | Relayed by the coordinator. Schema effects applied in P1: OQ-06 partial unique index (V6); OQ-13 tables migrated. OQ-07/OQ-08 need no P1 columns (P2 adds them with `user_credentials`) |
 | A-P2-01 | 2026-11-20 | P2 | D-05: added the code `INVALID_CURRENT_PASSWORD` (422) for a wrong current password on change-password | Legacy `change_password` was a stub with no such check. 422 follows D-05's split (well-formed input that fails a rule); 401 would wrongly signal an invalid session. Additive; no existing code or status changed |
+| A-P3-01 | 2026-11-20 | P3 | **Contract frozen at `v1`** (`openapi-v1.yaml` 1.0.0): P2 routes unchanged; added 11 leave operations (`/api/v1/leave/types`, `/balances`, `/requests` GET+POST, `/requests/{requestId}` + `/approve` `/reject` `/cancel`, `/approvals`, `/team-calendar`, `/accrual-runs`), leave schemas, and the complete `ErrorCode` enum for every phase (D-05 codes for P4–P7 included so they need no amendment) | P3 exit criterion. Later changes need `v1.N` (additive) or `v2` (breaking) |
+| A-P3-02 | 2026-11-20 | P3 | D-05: `EMPLOYEE_NOT_ACTIVE` is always **422** (the -20012 transfer row said 409); `PARAM_NOT_EDITABLE` is always 409 and an unknown parameter is `NOT_FOUND` 404. Each `ErrorCode` now has exactly one HTTP status | One status per code keeps the frozen catalogue machine-checkable. Neither route exists yet (P5, P7), so no client is affected |
