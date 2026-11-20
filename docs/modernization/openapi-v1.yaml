@@ -1,0 +1,387 @@
+openapi: 3.0.3
+info:
+  title: HRMS API
+  version: 0.2.0
+  x-contract-version: v0-draft
+  description: |
+    Draft contract (checkpoint §3, `contract_version: v0-draft`). Authored in P2 (auth, sessions,
+    permission matrix, menu backend, change-password, employee read model). P3 adds the leave pilot
+    and freezes this file as `v1`; after the freeze every change is a versioned amendment.
+
+    Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
+    SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
+    failed logins lock the credential for 15 minutes (OQ-07). Every other route needs
+    `Authorization: Bearer <token>`.
+
+    Errors are RFC 9457 `application/problem+json` with `code`, `legacyCode` and `traceId` (D-05).
+    `x-permission` names the module:action authority a route needs (D-06 matrix).
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: menu
+  - name: employees
+  - name: lookups
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Authenticate by work email (replaces PKG_SECURITY.authenticate, HRMS_LOGIN)
+      description: |
+        Identity is the ACTIVE employee whose email matches case-insensitively; duplicates resolve
+        to the lowest emp_id (OQ-06). Unknown user, wrong password, inactive employee, missing
+        credential and locked credential all return the same 401 `INVALID_CREDENTIALS`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Session opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401':
+          description: INVALID_CREDENTIALS (legacy -20301)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current session (replaces PKG_SECURITY.logout)
+      responses:
+        '204': { description: 'Session closed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: currentUser
+      summary: Current principal and its permissions (replaces the HRMS_LOGIN globals)
+      responses:
+        '200':
+          description: The signed-in employee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/v1/auth/change-password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change own password (PKG_SECURITY.change_password, implemented for real)
+      description: |
+        Policy, checked in legacy order: at least 8 characters (-20310), an uppercase letter
+        (-20311), a digit (-20312); at most 72 UTF-8 bytes. On success the caller's other sessions
+        are closed; the current session stays valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: 'Password changed' }
+        '400':
+          description: PASSWORD_POLICY (legacy -20310/-20311/-20312) or VALIDATION_FAILED
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422':
+          description: INVALID_CURRENT_PASSWORD
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/menu:
+    get:
+      tags: [menu]
+      operationId: menu
+      summary: HRMS_MENU entries with their permission gates
+      description: |
+        Employee, Leave and Performance are enabled for every authenticated user (FRM-014 parity);
+        Payroll needs PAYROLL:VIEW and Reports needs REPORTS:VIEW. System Admin is not returned
+        (OQ-03). Navigation targets are defined in P7.
+      responses:
+        '200':
+          description: Menu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Menu' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/v1/employees:
+    get:
+      tags: [employees]
+      operationId: searchEmployees
+      summary: Search employees (parameterized replacement for PKG_EMPLOYEE.search_employees)
+      description: |
+        Active-only by default (`employment_status = 'ACTIVE' AND active_flag`). Name filters are
+        case-insensitive prefix matches; wildcard characters are literal. Ordered by last name,
+        first name, emp_id.
+      x-permission: EMPLOYEE:VIEW
+      parameters:
+        - { name: lastName, in: query, schema: { type: string } }
+        - { name: firstName, in: query, schema: { type: string } }
+        - { name: deptId, in: query, schema: { type: integer, format: int64 } }
+        - { name: managerEmpId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/EmploymentStatus' } }
+        - { name: locationCode, in: query, schema: { type: string } }
+        - { name: hireDateFrom, in: query, schema: { type: string, format: date } }
+        - { name: hireDateTo, in: query, schema: { type: string, format: date } }
+        - { name: includeInactive, in: query, schema: { type: boolean, default: false } }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: One page of employees
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeePage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/employees/{empId}:
+    get:
+      tags: [employees]
+      operationId: getEmployee
+      summary: One employee (active-only unless includeInactive=true)
+      x-permission: EMPLOYEE:VIEW
+      parameters:
+        - { name: empId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: includeInactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Employee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeView' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: EMPLOYEE_NOT_FOUND (legacy -20001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /api/v1/lookups/departments:
+    get:
+      tags: [lookups]
+      operationId: listDepartments
+      summary: Active departments (RG_DEPARTMENTS)
+      x-permission: EMPLOYEE:VIEW
+      responses:
+        '200':
+          description: Departments
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Department' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/lookups/job-titles:
+    get:
+      tags: [lookups]
+      operationId: listJobTitles
+      summary: Active job titles (RG_JOB_TITLES)
+      x-permission: EMPLOYEE:VIEW
+      responses:
+        '200':
+          description: Job titles
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/JobTitle' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/lookups/locations:
+    get:
+      tags: [lookups]
+      operationId: listLocations
+      summary: Active locations (RG_LOCATIONS)
+      x-permission: EMPLOYEE:VIEW
+      responses:
+        '200':
+          description: Locations
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Location' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque session token from /api/v1/auth/login
+  responses:
+    Unauthenticated:
+      description: UNAUTHENTICATED (missing, invalid, expired or revoked token)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: FORBIDDEN (permission matrix denies the route)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationFailed:
+      description: VALIDATION_FAILED
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem detail with HRMS extensions (D-05)
+      required: [type, title, status, code, traceId]
+      properties:
+        type: { type: string, example: 'urn:hrms:problem:INVALID_CREDENTIALS' }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        legacyCode: { type: integer, nullable: true, description: 'Oracle -20xxx number, when one exists' }
+        traceId: { type: string }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/FieldError' }
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field: { type: string }
+        message: { type: string }
+    ErrorCode:
+      type: string
+      enum: [EMPLOYEE_NOT_FOUND, INVALID_CREDENTIALS, INVALID_CURRENT_PASSWORD, PASSWORD_POLICY,
+             UNAUTHENTICATED, FORBIDDEN, VALIDATION_FAILED, NOT_FOUND, METHOD_NOT_ALLOWED,
+             CONCURRENT_MODIFICATION, INTERNAL_ERROR]
+    Module:
+      type: string
+      enum: [EMPLOYEE, PAYROLL, LEAVE, PERFORMANCE, REPORTS, ADMIN]
+    Action:
+      type: string
+      enum: [VIEW, CREATE, EDIT, APPROVE, ADMIN]
+    EmploymentStatus:
+      type: string
+      enum: [ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED]
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 100, description: 'Work email, case-insensitive' }
+        password: { type: string, maxLength: 200, format: password }
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresAt, user]
+      properties:
+        accessToken: { type: string, description: 'Opaque; send as `Authorization: Bearer <token>`' }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/CurrentUser' }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, maxLength: 200, format: password }
+        newPassword: { type: string, maxLength: 200, format: password }
+    CurrentUser:
+      type: object
+      required: [empId, empNumber, username, firstName, lastName, loginTime, expiresAt, permissions]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string, example: EMP-000037 }
+        username: { type: string, description: 'Lower-cased login email' }
+        firstName: { type: string }
+        lastName: { type: string }
+        loginTime: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        permissions:
+          type: object
+          description: Granted actions per module; modules without any action are omitted
+          additionalProperties:
+            type: array
+            items: { $ref: '#/components/schemas/Action' }
+          example: { EMPLOYEE: [VIEW], LEAVE: [VIEW, CREATE] }
+    Menu:
+      type: object
+      required: [modules, account]
+      properties:
+        modules:
+          type: array
+          items: { $ref: '#/components/schemas/MenuEntry' }
+        account:
+          type: array
+          items: { $ref: '#/components/schemas/MenuEntry' }
+    MenuEntry:
+      type: object
+      required: [id, label, enabled]
+      properties:
+        id: { type: string, enum: [EMPLOYEES, PAYROLL, LEAVE, PERFORMANCE, REPORTS, CHANGE_PASSWORD, LOGOUT] }
+        label: { type: string }
+        module:
+          allOf: [{ $ref: '#/components/schemas/Module' }]
+          nullable: true
+        enabled: { type: boolean }
+    EmployeeView:
+      type: object
+      required: [empId, empNumber, firstName, lastName, employmentStatus, active, hireDate, deptId, deptName,
+                 jobId, jobTitle]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, nullable: true }
+        employmentStatus: { $ref: '#/components/schemas/EmploymentStatus' }
+        employmentType: { type: string, nullable: true }
+        active: { type: boolean, description: 'Soft-delete flag (ACTIVE_FLAG)' }
+        hireDate: { type: string, format: date }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        managerName: { type: string, nullable: true }
+        locationCode: { type: string, nullable: true }
+        locationName: { type: string, nullable: true }
+        deptId: { type: integer, format: int64 }
+        deptName: { type: string }
+        jobId: { type: integer, format: int64 }
+        jobTitle: { type: string }
+    EmployeePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EmployeeView' }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    Department:
+      type: object
+      required: [deptId, deptCode, deptName]
+      properties:
+        deptId: { type: integer, format: int64 }
+        deptCode: { type: string }
+        deptName: { type: string }
+        parentDeptId: { type: integer, format: int64, nullable: true }
+        locationCode: { type: string, nullable: true }
+    JobTitle:
+      type: object
+      required: [jobId, jobCode, jobTitle, gradeId]
+      properties:
+        jobId: { type: integer, format: int64 }
+        jobCode: { type: string }
+        jobTitle: { type: string }
+        gradeId: { type: integer, format: int64 }
+    Location:
+      type: object
+      required: [locationCode, locationName]
+      properties:
+        locationCode: { type: string }
+        locationName: { type: string }
+        city: { type: string, nullable: true }
+        timezone: { type: string, nullable: true }

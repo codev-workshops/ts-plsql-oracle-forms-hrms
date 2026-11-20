@@ -29,7 +29,8 @@ class SchemaMigrationTest {
             "payroll_details", "tax_brackets", "employee_tax_info", "employee_bank_accounts",
             "leave_types", "leave_balances", "leave_requests", "leave_accrual_log", "holidays",
             "review_cycles", "performance_reviews", "performance_goals", "audit_log",
-            "system_parameters", "notification_queue", "user_sessions", "lookup_values");
+            "system_parameters", "notification_queue", "user_sessions", "lookup_values",
+            "user_credentials", "permission_rules");
 
     private static final List<String> VIEWS = List.of(
             "vw_active_employees", "vw_org_hierarchy", "vw_employee_compensation",
@@ -86,7 +87,7 @@ class SchemaMigrationTest {
                      ('overtime_eligible', 'benefits_enrolled', 'employer_paid', 'prenote_sent',
                       'requires_approval', 'requires_document'))
                 """);
-        assertThat(flags).hasSize(30);
+        assertThat(flags).hasSize(32);
         assertThat(flags).allSatisfy(c -> {
             assertThat(c.get("data_type")).as(c.toString()).isEqualTo("boolean");
             assertThat(c.get("is_nullable")).as(c.toString()).isEqualTo("NO");
