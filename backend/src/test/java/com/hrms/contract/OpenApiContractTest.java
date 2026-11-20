@@ -12,6 +12,8 @@ import com.hrms.common.ErrorCode;
 import com.hrms.leave.LeaveModels;
 import com.hrms.payroll.PayrollModels;
 import com.hrms.employee.EmployeeModels;
+import com.hrms.performance.PerformanceModels;
+import com.hrms.reporting.ReportModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
 import com.hrms.employee.LookupController;
@@ -59,10 +61,10 @@ class OpenApiContractTest extends ApiTestSupport {
     }
 
     @Test
-    void contractIsV1OrAnAdditiveAmendment() {
+    void contractIsV1WithAdditiveAmendments() {
         assertThat((String) spec.get("openapi")).startsWith("3.");
-        // v1 frozen by P3; additive amendments are v1.N (v1.1-P5, v1.2-P6; reconciled by the coordinator on merge)
-        assertThat((String) map(spec, "info").get("x-contract-version")).matches("v1(\\.\\d+(-P\\d)?)?");
+        // v1 frozen by P3; additive amendments are v1.N (linear numbering reconciled in P7, A-P7-00)
+        assertThat((String) map(spec, "info").get("x-contract-version")).matches("v1(\\.\\d+)?");
     }
 
     @Test
@@ -122,7 +124,24 @@ class OpenApiContractTest extends ApiTestSupport {
                 Map.entry("PayrollRun", PayrollModels.PayrollRun.class),
                 Map.entry("PayrollRunError", PayrollModels.PayrollRunError.class),
                 Map.entry("Payslip", PayrollModels.Payslip.class),
-                Map.entry("SalaryRecord", PayrollModels.SalaryRecord.class));
+                Map.entry("SalaryRecord", PayrollModels.SalaryRecord.class),
+                Map.entry("ReviewCycle", PerformanceModels.ReviewCycle.class),
+                Map.entry("CreateReviewCycle", PerformanceModels.CreateReviewCycle.class),
+                Map.entry("PerformanceReview", PerformanceModels.PerformanceReview.class),
+                Map.entry("GenerateReviewsResult", PerformanceModels.GenerateReviewsResult.class),
+                Map.entry("SelfAssessment", PerformanceModels.SelfAssessment.class),
+                Map.entry("ManagerReview", PerformanceModels.ManagerReview.class),
+                Map.entry("Acknowledgement", PerformanceModels.Acknowledgement.class),
+                Map.entry("RatingBucket", PerformanceModels.RatingBucket.class),
+                Map.entry("ReportDescriptor", ReportModels.ReportDescriptor.class),
+                Map.entry("PendingApproval", ReportModels.PendingApproval.class),
+                Map.entry("EmployeeCompensation", ReportModels.EmployeeCompensation.class),
+                Map.entry("LeaveSummaryRow", ReportModels.LeaveSummaryRow.class),
+                Map.entry("OrgNode", ReportModels.OrgNode.class),
+                Map.entry("PayrollLatest", ReportModels.PayrollLatest.class),
+                Map.entry("PerformanceGoal", PerformanceModels.PerformanceGoal.class),
+                Map.entry("AddGoal", PerformanceModels.AddGoal.class),
+                Map.entry("GoalProgress", PerformanceModels.GoalProgress.class));
         records.forEach((schema, type) -> assertThat(properties(schema))
                 .as(schema).isEqualTo(Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName).collect(Collectors.toSet())));
@@ -143,11 +162,16 @@ class OpenApiContractTest extends ApiTestSupport {
         assertThat(enumOf("PayPeriodStatus")).isEqualTo(names(PayrollModels.PayPeriodStatus.values()));
         assertThat(enumOf("PayrollRunStatus")).isEqualTo(names(PayrollModels.PayrollRunStatus.values()));
         assertThat(enumOf("PayrollRunType")).isEqualTo(names(PayrollModels.PayrollRunType.values()));
+        assertThat(enumOf("CycleStatus")).isEqualTo(names(PerformanceModels.CycleStatus.values()));
+        assertThat(enumOf("ReviewStatus")).isEqualTo(names(PerformanceModels.ReviewStatus.values()));
+        assertThat(enumOf("GoalStatus")).isEqualTo(names(PerformanceModels.GoalStatus.values()));
+        assertThat(enumOf("GoalCategory")).isEqualTo(names(PerformanceModels.GoalCategory.values()));
+        assertThat(enumOf("ReviewRole")).isEqualTo(names(PerformanceModels.ReviewRole.values()));
     }
 
     @Test
     void everyReferenceResolves() {
-        Matcher m = Pattern.compile("\\$ref: '#/components/(schemas|responses)/([A-Za-z]+)'").matcher(raw);
+        Matcher m = Pattern.compile("\\$ref: '#/components/(schemas|responses|parameters)/([A-Za-z]+)'").matcher(raw);
         Set<String> missing = new HashSet<>();
         while (m.find()) {
             if (!map(map(spec, "components"), m.group(1)).containsKey(m.group(2))) {

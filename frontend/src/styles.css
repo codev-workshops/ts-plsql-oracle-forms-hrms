@@ -1,0 +1,23 @@
+body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: #1f2933; }
+.shell { display: flex; min-height: 100vh; }
+nav { width: 220px; background: #243b53; color: #fff; padding: 16px; }
+nav ul { list-style: none; padding: 0; }
+nav li { margin: 6px 0; }
+nav a { color: #d9e2ec; text-decoration: none; }
+nav a.active { color: #fff; font-weight: 600; }
+nav .disabled { color: #829ab1; cursor: not-allowed; }
+nav button { background: none; border: none; color: #d9e2ec; padding: 0; cursor: pointer; font: inherit; }
+main { flex: 1; padding: 16px 24px; overflow-x: auto; }
+table { border-collapse: collapse; margin: 8px 0 16px; }
+th, td { border: 1px solid #d9e2ec; padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: #f0f4f8; }
+.form { display: flex; flex-direction: column; gap: 6px; max-width: 420px; margin: 8px 0 16px; padding: 12px; border: 1px solid #d9e2ec; }
+.field { display: flex; flex-direction: column; }
+.hint { color: #b44d12; font-size: 12px; }
+.error { color: #ab091e; background: #ffe3e3; padding: 6px; }
+.ok { color: #0e7c4b; }
+.muted { color: #627d98; }
+.login { margin: 80px auto; }
+.tabs button { margin-right: 6px; }
+.tabs button[aria-pressed='true'] { font-weight: 600; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }

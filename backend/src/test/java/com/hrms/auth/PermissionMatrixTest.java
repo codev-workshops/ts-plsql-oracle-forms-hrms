@@ -78,7 +78,12 @@ class PermissionMatrixTest extends ApiTestSupport {
         String manager = tokenFor(31);
         mvc.perform(get("/api/v1/menu").header(HttpHeaders.AUTHORIZATION, bearer(manager)))
                 .andExpect(jsonPath("$.modules[?(@.id=='PAYROLL')].enabled").value(true))
-                .andExpect(jsonPath("$.modules[?(@.id=='REPORTS')].enabled").value(true));
+                .andExpect(jsonPath("$.modules[?(@.id=='REPORTS')].enabled").value(true))
+                .andExpect(jsonPath("$.modules[?(@.id=='REPORTS')].apiPath").value("/api/v1/reports"))
+                .andExpect(jsonPath("$.modules[?(@.id=='EMPLOYEES')].route").value("/employees"))
+                .andExpect(jsonPath("$.account[?(@.id=='CHANGE_PASSWORD')].apiPath")
+                        .value("/api/v1/auth/change-password"))
+                .andExpect(jsonPath("$.account[?(@.id=='LOGOUT')].apiPath").value("/api/v1/auth/logout"));
     }
 
     @Test

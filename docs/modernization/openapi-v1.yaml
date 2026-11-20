@@ -1,26 +1,46 @@
 openapi: 3.0.3
 info:
   title: HRMS API
-  version: 1.2.0
-  x-contract-version: v1.2-P6
+  version: 1.4.0
+  x-contract-version: v1.4
   description: |
     **Frozen contract v1** (checkpoint §3 and §7, frozen by P3 on 2026-11-20). P2 authored auth,
     sessions, permission matrix, menu backend, change-password and the employee read model; P3 added
     the leave pilot and froze the file. Any change to a route, schema, error code or status from
     here on is a versioned amendment (`v1.N` additive, `v2` breaking) recorded in checkpoint §7.
 
-    **Amendment v1.1-P5 (additive, P5 employee core):** `POST /api/v1/employees`,
+    **Amendment v1.1** (labelled `v1.1-P4` on the P4 branch; additive, checkpoint §7 A-P4-01, P4 2026-11-20): the `performance` tag —
+    review cycles, reviews, goals and the rating distribution (PKG_PERFORMANCE, HRMS_PERFORMANCE).
+    No v1 route, schema, error code or status changed. HRMS_PERFORMANCE had no permission check, so
+    these routes need only authentication unless `x-permission` says otherwise; review and goal rows
+    are scoped to the reviewed employee and the assigned reviewer (OQ-09), PERFORMANCE:VIEW holders
+    may read every review. The coordinator renumbers this amendment when P4 and P5 are merged.
+
+    **Amendment v1.2 (labelled `v1.1-P5` on the P5 branch; additive, P5 employee core):** `POST /api/v1/employees`,
     `PATCH`/`DELETE /api/v1/employees/{empId}` (DELETE always 405 `DELETE_FORBIDDEN`),
     `POST /api/v1/employees/{empId}/{transfer,promote,terminate,rehire}`,
     `GET /api/v1/employees/{empId}/history`; schemas for those bodies and `EmployeeMutation` with
     `warnings[]` (OQ-11); error code `EMPLOYEE_NOT_TERMINATED` (409). Nothing in v1 changed. P4
     numbers its parallel amendment `v1.1-P4`; the coordinator reconciles the numbering on merge.
 
-    **Amendment v1.2-P6 (additive, P6 payroll):** 13 operations under `/api/v1/payroll` (pay periods:
+    **Amendment v1.3 (labelled `v1.2-P6` on the P6 branch; additive, P6 payroll):** 13 operations under `/api/v1/payroll` (pay periods:
     list, get, generate, close; runs: list, create, get, calculate, approve, reverse, payslips,
     errors; employee salary records) and their schemas. No new error code: the payroll codes
     (`INVALID_SALARY`, `PERIOD_CLOSED`, `INVALID_RUN_STATUS`, `NO_ACTIVE_SALARY`) were catalogued
     in v1. Nothing in v1 or v1.1-P5 changed.
+
+    **Renumbering (checkpoint §7 A-P7-00, P7 2026-11-20):** P4 and P5 amended v1 in parallel, so the
+    branch labels `v1.1-P4`, `v1.1-P5` and `v1.2-P6` became the linear versions `v1.1` (P4), `v1.2`
+    (P5) and `v1.3` (P6) when P7 merged P4 into the P6 line. Only the labels changed; each
+    amendment's content is as written above.
+
+    **Amendment v1.4 (additive, checkpoint §7 A-P7-01, P7 navigation + reporting):** the `reports`
+    tag — `GET /api/v1/reports` (catalogue) and `GET /api/v1/reports/{pending-approvals,
+    leave-summary,org-hierarchy,employee-compensation,payroll-latest}` over VW_PENDING_APPROVALS,
+    VW_LEAVE_SUMMARY, VW_ORG_HIERARCHY, VW_EMPLOYEE_COMPENSATION and VW_PAYROLL_LATEST, all behind
+    REPORTS:VIEW (OQ-03); compensation and payroll figures also need PAYROLL:VIEW. `MenuEntry` gains
+    the optional navigation targets `route` and `apiPath`. No new error code; nothing in v1–v1.3
+    changed. The other PKG_REPORTING reports and the pay register stay deferred (OQ-03).
 
     Authentication: `POST /api/v1/auth/login` returns an opaque bearer token (256-bit, only its
     SHA-256 is stored). Sessions expire 30 minutes after login (absolute, OQ-08). Five consecutive
@@ -44,6 +64,8 @@ tags:
   - name: lookups
   - name: leave
   - name: payroll
+  - name: performance
+  - name: reports
 paths:
   /api/v1/auth/login:
     post:
@@ -127,7 +149,9 @@ paths:
       description: |
         Employee, Leave and Performance are enabled for every authenticated user (FRM-014 parity);
         Payroll needs PAYROLL:VIEW and Reports needs REPORTS:VIEW. System Admin is not returned
-        (OQ-03). Navigation targets are defined in P7.
+        (OQ-03); its only kept function is Change Password under `account`. Since v1.4 each entry
+        carries its navigation target: `route` (client route, null for the Logout action) and
+        `apiPath` (the API entry point the screen uses).
       responses:
         '200':
           description: Menu
@@ -997,6 +1021,496 @@ paths:
               schema: { type: array, items: { $ref: '#/components/schemas/SalaryRecord' } }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/performance/cycles:
+    get:
+      tags: [performance]
+      operationId: listReviewCycles
+      summary: Review cycles, OPEN and DRAFT only unless includeClosed, newest cycleYear first (FRM-070)
+      parameters:
+        - { name: includeClosed, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Cycles
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ReviewCycle' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [performance]
+      operationId: createReviewCycle
+      summary: Create a cycle in DRAFT (create_review_cycle); endDate must not precede startDate
+      x-permission: PERFORMANCE:ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReviewCycle' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewCycle' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/performance/cycles/{cycleId}:
+    get:
+      tags: [performance]
+      operationId: getReviewCycle
+      summary: One cycle
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+      responses:
+        '200':
+          description: Cycle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewCycle' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [performance]
+      operationId: deleteReviewCycle
+      summary: Always 405 DELETE_FORBIDDEN, cycles are never deleted (FRM-071)
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '405': { $ref: '#/components/responses/DeleteForbidden' }
+  /api/v1/performance/cycles/{cycleId}/open:
+    post:
+      tags: [performance]
+      operationId: openReviewCycle
+      summary: DRAFT → OPEN, else 409 INVALID_CYCLE_STATUS (-20401)
+      x-permission: PERFORMANCE:ADMIN
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+      responses:
+        '200':
+          description: Opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewCycle' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PerformanceConflict' }
+  /api/v1/performance/cycles/{cycleId}/close:
+    post:
+      tags: [performance]
+      operationId: closeReviewCycle
+      summary: OPEN (or legacy IN_PROGRESS/CALIBRATION) → CLOSED, else 409 INVALID_CYCLE_STATUS (-20401, DEF-21)
+      x-permission: PERFORMANCE:ADMIN
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+      responses:
+        '200':
+          description: Closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewCycle' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PerformanceConflict' }
+  /api/v1/performance/cycles/{cycleId}/reviews/generate:
+    post:
+      tags: [performance]
+      operationId: generateReviews
+      summary: One ANNUAL NOT_STARTED review per ACTIVE employee with a manager, reviewed by that manager; existing reviews are skipped (generate_reviews_for_cycle)
+      x-permission: PERFORMANCE:ADMIN
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+      responses:
+        '200':
+          description: Generation summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenerateReviewsResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/performance/cycles/{cycleId}/reviews:
+    get:
+      tags: [performance]
+      operationId: listCycleReviews
+      summary: Every review of the cycle by employee last name (HR view)
+      x-permission: PERFORMANCE:VIEW
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/ReviewStatus' } }
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PerformanceReview' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/performance/cycles/{cycleId}/rating-distribution:
+    get:
+      tags: [performance]
+      operationId: ratingDistribution
+      summary: Rated reviews of the cycle per label, best first, optionally for one department (get_rating_distribution)
+      x-permission: PERFORMANCE:VIEW
+      parameters:
+        - $ref: '#/components/parameters/CycleId'
+        - { name: deptId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Distribution
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RatingBucket' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/performance/reviews:
+    get:
+      tags: [performance]
+      operationId: myReviews
+      summary: The caller's own reviews (role EMPLOYEE), or the reviews assigned to the caller (role REVIEWER, get_team_reviews)
+      parameters:
+        - { name: role, in: query, required: false, schema: { allOf: [{ $ref: '#/components/schemas/ReviewRole' }], default: EMPLOYEE } }
+        - { name: cycleId, in: query, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PerformanceReview' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /api/v1/performance/reviews/{reviewId}:
+    get:
+      tags: [performance]
+      operationId: getPerformanceReview
+      summary: One review, visible to its employee, its reviewer and PERFORMANCE:VIEW holders (else 404)
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '200':
+          description: Review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceReview' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [performance]
+      operationId: deletePerformanceReview
+      summary: Always 405 DELETE_FORBIDDEN, reviews are never deleted (FRM-072)
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '405': { $ref: '#/components/responses/DeleteForbidden' }
+  /api/v1/performance/reviews/{reviewId}/self-assessment:
+    post:
+      tags: [performance]
+      operationId: submitSelfAssessment
+      summary: The reviewed employee only; NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW, else 409 INVALID_REVIEW_STATUS (-20402); reviewer notified
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelfAssessment' }
+      responses:
+        '200':
+          description: Submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceReview' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PerformanceConflict' }
+  /api/v1/performance/reviews/{reviewId}/manager-review:
+    post:
+      tags: [performance]
+      operationId: submitManagerReview
+      summary: The assigned reviewer only; MANAGER_REVIEW/MEETING_SCHEDULED → COMPLETED, else 409 INVALID_REVIEW_STATUS (-20402, DEF-21); employee notified
+      description: |
+        overallRating must be 1.0–5.0 with at most one decimal, else 400 INVALID_RATING (-20403).
+        ratingLabel: ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations,
+        ≥1.5 Needs Improvement, else Unsatisfactory.
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManagerReview' }
+      responses:
+        '200':
+          description: Completed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceReview' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PerformanceConflict' }
+  /api/v1/performance/reviews/{reviewId}/acknowledge:
+    post:
+      tags: [performance]
+      operationId: acknowledgeReview
+      summary: The reviewed employee only; COMPLETED → ACKNOWLEDGED, else 409 INVALID_REVIEW_STATUS (-20402; legacy was a silent no-op, DEF-21)
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Acknowledgement' }
+      responses:
+        '200':
+          description: Acknowledged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceReview' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PerformanceConflict' }
+  /api/v1/performance/reviews/{reviewId}/goals:
+    get:
+      tags: [performance]
+      operationId: listGoals
+      summary: Goals of a review (same visibility as the review)
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '200':
+          description: Goals
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PerformanceGoal' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [performance]
+      operationId: addGoal
+      summary: The reviewed employee or the reviewer adds a NOT_STARTED goal at 0% for the review's employee (add_goal, FRM-075)
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddGoal' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceGoal' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/performance/goals/{goalId}:
+    get:
+      tags: [performance]
+      operationId: getGoal
+      summary: One goal (same visibility as its review)
+      parameters:
+        - $ref: '#/components/parameters/GoalId'
+      responses:
+        '200':
+          description: Goal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceGoal' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [performance]
+      operationId: deleteGoal
+      summary: Always 405 DELETE_FORBIDDEN, goals are never deleted (FRM-074)
+      parameters:
+        - $ref: '#/components/parameters/GoalId'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '405': { $ref: '#/components/responses/DeleteForbidden' }
+  /api/v1/performance/goals/{goalId}/progress:
+    post:
+      tags: [performance]
+      operationId: updateGoalProgress
+      summary: The reviewed employee or the reviewer sets progress 0–100, else 400 (DEF-21) (update_goal_progress)
+      description: |
+        status is the given one, else progressPct ≥ 100 → COMPLETED, > 0 → IN_PROGRESS, 0 → unchanged.
+        comments are kept when omitted.
+      parameters:
+        - $ref: '#/components/parameters/GoalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoalProgress' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PerformanceGoal' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/reports:
+    get:
+      tags: [reports]
+      operationId: listReports
+      summary: Reports available to the caller (replaces the dead HRMS_REPORTS target)
+      description: |
+        Catalogue of the P7 reports; `available` is false where the caller lacks the extra PAYROLL:VIEW.
+      x-permission: REPORTS:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ReportDescriptor' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/pending-approvals:
+    get:
+      tags: [reports]
+      operationId: reportPendingApprovals
+      summary: VW_PENDING_APPROVALS
+      description: |
+        Pending leave requests and performance reviews awaiting manager review, oldest first.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: approverId
+          in: query
+          required: false
+          description: Only items awaiting this approver
+          schema: { type: integer, format: int64 }
+        - name: approvalType
+          in: query
+          required: false
+          description: LEAVE or PERFORMANCE
+          schema: { type: string, enum: [LEAVE, PERFORMANCE] }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PendingApproval' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/leave-summary:
+    get:
+      tags: [reports]
+      operationId: reportLeaveSummary
+      summary: VW_LEAVE_SUMMARY
+      description: |
+        Leave balances of ACTIVE employees for one calendar year (default: the server clock's year).
+        `pending` is the days held by PENDING requests. `available` is net of pending
+        (= leave_balances.available, what a new request may use); `availableBeforePending` is the
+        legacy view's AVAILABLE, which ignores pending (DEF-23). OQ-14 provisional.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: Calendar year (default current year)
+          schema: { type: integer }
+        - name: empId
+          in: query
+          required: false
+          description: Only this employee
+          schema: { type: integer, format: int64 }
+        - name: deptId
+          in: query
+          required: false
+          description: Only this department
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LeaveSummaryRow' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/org-hierarchy:
+    get:
+      tags: [reports]
+      operationId: reportOrgHierarchy
+      summary: VW_ORG_HIERARCHY / PKG_EMPLOYEE.get_org_chart
+      description: |
+        Without `rootEmpId`: the whole active reporting tree (VW_ORG_HIERARCHY, roots are active
+        employees without a manager, org_level from 1). With `rootEmpId`: get_org_chart semantics —
+        the subtree under that employee to `maxDepth` levels (default 10), walking through inactive
+        employees but returning only ACTIVE ones, siblings ordered by last and first name.
+        `maxDepth` without `rootEmpId` is a 400.
+      x-permission: REPORTS:VIEW
+      parameters:
+        - name: rootEmpId
+          in: query
+          required: false
+          description: Root employee of the subtree
+          schema: { type: integer, format: int64 }
+        - name: maxDepth
+          in: query
+          required: false
+          description: Levels to return, at least 1 (default 10)
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/OrgNode' } }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/employee-compensation:
+    get:
+      tags: [reports]
+      operationId: reportEmployeeCompensation
+      summary: VW_EMPLOYEE_COMPENSATION
+      description: |
+        Active employees with their active salary record, grade range and compa-ratio.
+      x-permission: REPORTS:VIEW and PAYROLL:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EmployeeCompensation' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/reports/payroll-latest:
+    get:
+      tags: [reports]
+      operationId: reportPayrollLatest
+      summary: VW_PAYROLL_LATEST
+      description: |
+        Per-employee totals of the most recent APPROVED payroll run (detail rows in ERROR excluded).
+      x-permission: REPORTS:VIEW and PAYROLL:VIEW
+      responses:
+        '200':
+          description: Report rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PayrollLatest' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     bearerAuth:
@@ -1007,6 +1521,9 @@ components:
     RequestId: { name: requestId, in: path, required: true, schema: { type: integer, format: int64 } }
     PeriodId: { name: periodId, in: path, required: true, schema: { type: integer, format: int64 } }
     RunId: { name: runId, in: path, required: true, schema: { type: integer, format: int64 } }
+    CycleId: { name: cycleId, in: path, required: true, schema: { type: integer, format: int64 } }
+    ReviewId: { name: reviewId, in: path, required: true, schema: { type: integer, format: int64 } }
+    GoalId: { name: goalId, in: path, required: true, schema: { type: integer, format: int64 } }
   responses:
     NotFound:
       description: NOT_FOUND (unknown, or not visible to the caller)
@@ -1028,6 +1545,16 @@ components:
         422 business rule: EMPLOYEE_NOT_ACTIVE (-20001), INVALID_LEAVE_TYPE / MIN_TENURE_NOT_MET
         (-20203), BACKDATE_LIMIT_EXCEEDED (-20211), NO_BUSINESS_DAYS (-20212),
         INSUFFICIENT_LEAVE_BALANCE (-20201). INVALID_DATE_RANGE (-20210) is 400.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PerformanceConflict:
+      description: INVALID_CYCLE_STATUS (-20401) or INVALID_REVIEW_STATUS (-20402)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    DeleteForbidden:
+      description: DELETE_FORBIDDEN (-20504), the resource is never deleted
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1163,6 +1690,8 @@ components:
           allOf: [{ $ref: '#/components/schemas/Module' }]
           nullable: true
         enabled: { type: boolean }
+        route: { type: string, nullable: true, description: Client navigation target (v1.4) }
+        apiPath: { type: string, nullable: true, description: API entry point of the screen (v1.4) }
     EmployeeView:
       type: object
       required: [empId, empNumber, firstName, lastName, employmentStatus, active, hireDate, deptId, deptName,
@@ -1547,3 +2076,222 @@ components:
         changeReason: { type: string, nullable: true }
         changePct: { type: number, nullable: true }
         active: { type: boolean }
+    CycleStatus:
+      type: string
+      description: P4 drives DRAFT → OPEN → CLOSED; IN_PROGRESS and CALIBRATION exist only in legacy data
+      enum: [DRAFT, OPEN, IN_PROGRESS, CALIBRATION, CLOSED]
+    ReviewStatus:
+      type: string
+      description: P4 drives NOT_STARTED → MANAGER_REVIEW → COMPLETED → ACKNOWLEDGED; SELF_REVIEW and MEETING_SCHEDULED exist only in legacy data
+      enum: [NOT_STARTED, SELF_REVIEW, MANAGER_REVIEW, MEETING_SCHEDULED, COMPLETED, ACKNOWLEDGED]
+    GoalStatus:
+      type: string
+      enum: [NOT_STARTED, IN_PROGRESS, COMPLETED, DEFERRED, CANCELLED]
+    GoalCategory:
+      type: string
+      enum: [BUSINESS, DEVELOPMENT, LEADERSHIP, INNOVATION, COMPLIANCE]
+    ReviewRole:
+      type: string
+      enum: [EMPLOYEE, REVIEWER]
+    ReviewCycle:
+      type: object
+      properties:
+        cycleId: { type: integer, format: int64 }
+        cycleName: { type: string }
+        cycleYear: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        selfReviewDue: { type: string, format: date, nullable: true }
+        managerReviewDue: { type: string, format: date, nullable: true }
+        calibrationDue: { type: string, format: date, nullable: true }
+        status: { $ref: '#/components/schemas/CycleStatus' }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: string, nullable: true }
+        modifiedDate: { type: string, format: date-time, nullable: true }
+    CreateReviewCycle:
+      type: object
+      required: [cycleName, cycleYear, startDate, endDate]
+      properties:
+        cycleName: { type: string, maxLength: 100 }
+        cycleYear: { type: integer, minimum: 1900, maximum: 9999 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        selfReviewDue: { type: string, format: date }
+        managerReviewDue: { type: string, format: date }
+        calibrationDue: { type: string, format: date }
+    PerformanceReview:
+      type: object
+      properties:
+        reviewId: { type: integer, format: int64 }
+        cycleId: { type: integer, format: int64 }
+        cycleName: { type: string }
+        empId: { type: integer, format: int64 }
+        employeeName: { type: string, description: FRM-077 POST-QUERY name lookup }
+        jobTitle: { type: string, nullable: true }
+        deptName: { type: string, nullable: true }
+        reviewerEmpId: { type: integer, format: int64 }
+        reviewerName: { type: string }
+        reviewType: { type: string, example: ANNUAL }
+        status: { $ref: '#/components/schemas/ReviewStatus' }
+        overallRating: { type: number, nullable: true, minimum: 1.0, maximum: 5.0 }
+        ratingLabel: { type: string, nullable: true }
+        selfAssessment: { type: string, nullable: true }
+        managerAssessment: { type: string, nullable: true }
+        strengths: { type: string, nullable: true }
+        areasForImprovement: { type: string, nullable: true }
+        developmentPlan: { type: string, nullable: true }
+        employeeComments: { type: string, nullable: true }
+        employeeAckDate: { type: string, format: date-time, nullable: true }
+        createdDate: { type: string, format: date-time }
+        modifiedDate: { type: string, format: date-time, nullable: true }
+    GenerateReviewsResult:
+      type: object
+      properties:
+        cycleId: { type: integer, format: int64 }
+        reviewsCreated: { type: integer }
+        employeesSkipped: { type: integer, description: Eligible employees that already had the review }
+    SelfAssessment:
+      type: object
+      required: [selfAssessment]
+      properties:
+        selfAssessment: { type: string, minLength: 1, maxLength: 32000 }
+    ManagerReview:
+      type: object
+      required: [overallRating]
+      properties:
+        overallRating: { type: number, minimum: 1.0, maximum: 5.0, multipleOf: 0.1 }
+        managerAssessment: { type: string, maxLength: 32000 }
+        strengths: { type: string, maxLength: 32000 }
+        areasForImprovement: { type: string, maxLength: 32000 }
+        developmentPlan: { type: string, maxLength: 32000 }
+    Acknowledgement:
+      type: object
+      properties:
+        comments: { type: string, maxLength: 32000 }
+    RatingBucket:
+      type: object
+      properties:
+        ratingLabel: { type: string }
+        reviewCount: { type: integer }
+        percentage: { type: number, description: Share of the rated reviews, one decimal }
+    PerformanceGoal:
+      type: object
+      properties:
+        goalId: { type: integer, format: int64 }
+        reviewId: { type: integer, format: int64 }
+        empId: { type: integer, format: int64 }
+        goalTitle: { type: string }
+        goalDescription: { type: string, nullable: true }
+        goalCategory: { allOf: [{ $ref: '#/components/schemas/GoalCategory' }], nullable: true }
+        weightPct: { type: number }
+        targetDate: { type: string, format: date, nullable: true }
+        status: { $ref: '#/components/schemas/GoalStatus' }
+        progressPct: { type: number }
+        comments: { type: string, nullable: true }
+        createdBy: { type: string }
+        createdDate: { type: string, format: date-time }
+        modifiedBy: { type: string, nullable: true }
+        modifiedDate: { type: string, format: date-time, nullable: true }
+    AddGoal:
+      type: object
+      required: [goalTitle]
+      properties:
+        goalTitle: { type: string, minLength: 1, maxLength: 200 }
+        goalDescription: { type: string, maxLength: 32000 }
+        goalCategory: { allOf: [{ $ref: '#/components/schemas/GoalCategory' }], default: BUSINESS }
+        weightPct: { type: number, minimum: 0, maximum: 100, default: 0 }
+        targetDate: { type: string, format: date }
+    GoalProgress:
+      type: object
+      required: [progressPct]
+      properties:
+        progressPct: { type: number, minimum: 0, maximum: 100 }
+        status: { $ref: '#/components/schemas/GoalStatus' }
+        comments: { type: string, maxLength: 32000 }
+    ReportDescriptor:
+      type: object
+      required: [id, title, path, sourceView, permission, available]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        path: { type: string }
+        sourceView: { type: string }
+        permission: { type: string }
+        available: { type: boolean }
+    PendingApproval:
+      type: object
+      description: VW_PENDING_APPROVALS row
+      required: [approvalType, itemId, requestorName, itemDescription, requestDate]
+      properties:
+        approvalType: { type: string, enum: [LEAVE, PERFORMANCE] }
+        itemId: { type: integer, format: int64 }
+        approverId: { type: integer, format: int64, nullable: true }
+        requestorName: { type: string }
+        itemDescription: { type: string }
+        requestDate: { type: string, format: date-time }
+        details: { type: string, nullable: true }
+    LeaveSummaryRow:
+      type: object
+      description: VW_LEAVE_SUMMARY row; available is net of pending, availableBeforePending is the legacy value (OQ-14 provisional)
+      required: [empId, empNumber, empName, deptName, leaveTypeName, calendarYear, openingBalance, accrued, used, adjustment, pending, available, availableBeforePending]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        leaveTypeName: { type: string }
+        calendarYear: { type: integer }
+        openingBalance: { type: number }
+        accrued: { type: number }
+        used: { type: number }
+        adjustment: { type: number }
+        pending: { type: number, description: Days held by PENDING requests }
+        available: { type: number, description: Net of pending (opening + accrued - used + adjustment - pending) }
+        availableBeforePending: { type: number, description: Legacy VW_LEAVE_SUMMARY.AVAILABLE, ignores pending }
+        utilizationPct: { type: number, nullable: true }
+    OrgNode:
+      type: object
+      description: VW_ORG_HIERARCHY row
+      required: [empId, empNumber, empName, deptId, orgLevel, orgPath, leaf]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        managerEmpId: { type: integer, format: int64, nullable: true }
+        deptId: { type: integer, format: int64 }
+        orgLevel: { type: integer, minimum: 1 }
+        orgPath: { type: string }
+        leaf: { type: boolean, description: Has no direct reports (any status) }
+    EmployeeCompensation:
+      type: object
+      description: VW_EMPLOYEE_COMPENSATION row
+      required: [empId, empNumber, empName, deptName, jobTitle, gradeName, baseSalary, gradeMin, gradeMax, gradeMidpoint, salaryEffectiveDate]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        deptName: { type: string }
+        jobTitle: { type: string }
+        gradeName: { type: string }
+        baseSalary: { type: number }
+        gradeMin: { type: number }
+        gradeMax: { type: number }
+        gradeMidpoint: { type: number }
+        compaRatio: { type: number, nullable: true }
+        salaryEffectiveDate: { type: string, format: date }
+        lastChangeReason: { type: string, nullable: true }
+        lastChangePct: { type: number, nullable: true }
+    PayrollLatest:
+      type: object
+      description: VW_PAYROLL_LATEST row
+      required: [empId, empNumber, empName, periodName, grossPay, totalTaxes, totalDeductions, netPay]
+      properties:
+        empId: { type: integer, format: int64 }
+        empNumber: { type: string }
+        empName: { type: string }
+        periodName: { type: string }
+        grossPay: { type: number }
+        totalTaxes: { type: number }
+        totalDeductions: { type: number }
+        netPay: { type: number }
