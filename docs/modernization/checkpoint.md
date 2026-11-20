@@ -8,7 +8,7 @@
 |---|---|
 | `contract_version` | **`v0-draft`** |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P1` |
+| `last_updated_by_phase` | `P2` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -176,6 +176,7 @@ validation. The `code` strings are part of the contract.
 | (new) | missing, invalid or expired token (replaces Forms session checks) | `UNAUTHENTICATED` | 401 |
 | (new) | permission matrix denies (replaces Forms `has_permission` gates) | `FORBIDDEN` | 403 |
 | (new) | generic bean validation | `VALIDATION_FAILED` | 400 |
+| (new, A-P2-01) | change_password: the current password does not match | `INVALID_CURRENT_PASSWORD` | 422 |
 | (new) | optimistic-lock / `FOR UPDATE NOWAIT` conflict | `CONCURRENT_MODIFICATION` | 409 |
 
 Rules: `4xx` means the client can act on it, `5xx` means it cannot. Messages never include SQL,
@@ -277,10 +278,10 @@ is reported in the PR and the final message.
 | Field | Value |
 |---|---|
 | `contract_version` | `v0-draft` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (does not exist yet; P2 creates it, P3 freezes it) |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (created by P2 as the draft, `info.x-contract-version: v0-draft`; P3 freezes it) |
 | Frozen? | No. Until P3, phases may edit the draft freely and must note their changes in the ledger. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial) |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft` |
 
 ---
 
@@ -292,8 +293,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | Phase | Status | Branch | PR | Content commit SHAs | Contract version at exit | Date | Notes |
 |---|---|---|---|---|---|---|---|
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
-| P1 Postgres schema | submitted | `modernization/p1-schema` | _see PR_ | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. |
-| P2 Auth + employee read model | pending | | | | | | |
+| P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
+| P2 Auth + employee read model | submitted | `modernization/p2-auth` | _see PR_ | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. |
 | P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
 | P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
@@ -392,6 +393,72 @@ carryover idempotency record (DEF-03; P3 or P8 per OQ-12); any DELETE grant (D-0
 
 ---
 
+### 4.2 P2 notes (auth service + employee read model)
+
+**Files.** Migration `V9__auth.sql`. Code: `com.hrms.common` (`ErrorCode`, `ApiException`,
+`Problems`, `ProblemHandler`, `AuditWriter`, `ClockConfig`), `com.hrms.auth` (`AuthService`,
+`BearerTokenFilter`, `SecurityConfig`, `PermissionService`, `PasswordPolicy`, `Tokens`,
+`AuthController`, `MenuController`), `com.hrms.employee` (`EmployeeReadService`,
+`EmployeeController`, `LookupController`). Contract: `docs/modernization/openapi-v1.yaml`.
+Tests: `AuthApiTest`, `PermissionMatrixTest`, `ChangePasswordTest`, `EmployeeReadApiTest`,
+`OpenApiContractTest` (the contract's paths, schema properties and enums must equal the code).
+
+**Routes (draft).** `POST /api/v1/auth/login` (public), `POST /api/v1/auth/logout`,
+`GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET /api/v1/menu`,
+`GET /api/v1/employees`, `GET /api/v1/employees/{empId}`,
+`GET /api/v1/lookups/{departments,job-titles,locations}`. Everything except login needs
+`Authorization: Bearer <token>` (401 `UNAUTHENTICATED`). Spring Security is stateless; the
+server-side session is the `user_sessions` row.
+
+**Schema (V9).**
+- `user_credentials`: one row per employee (`emp_id` unique), `password_hash` in
+  `DelegatingPasswordEncoder` format (`{bcrypt}…`), `failed_attempts`, `locked_until`,
+  `password_changed_date`, `active_flag`. No MD5 column; `hash_password` is not ported.
+- `user_sessions` gains `token_hash` (unique, SHA-256 hex of the token) and `expires_at`, and a
+  status check `ACTIVE | CLOSED | EXPIRED`. The token itself is never stored.
+- `permission_rules`: the D-06 matrix as data. `NULL` module or action is a wildcard; a rule
+  applies when the employee's `job_titles.grade_id ≥ min_grade_id`. Rows 1–5 reproduce
+  `has_permission` exactly (grade ≥ 8 all; grade ≥ 5 VIEW; everyone LEAVE CREATE/VIEW and
+  EMPLOYEE VIEW). Authorities are `MODULE:ACTION`, checked with `@PreAuthorize`.
+
+**Behaviour decisions implemented.**
+- Login: `lower(trim(username))` vs `lower(email)`, `employment_status = 'ACTIVE'`,
+  `MIN(emp_id)` (OQ-06; note this also matches a soft-deleted row that is still ACTIVE, which
+  is legacy parity). Unknown user, wrong password, missing credential, locked credential and
+  inactive employee give the same 401 `INVALID_CREDENTIALS` (-20301); a BCrypt comparison runs
+  against a dummy hash when there is no credential, so timing is uniform.
+- Lockout (OQ-07): the 5th consecutive failure sets `locked_until = now + 15 min`; while locked
+  even the right password fails; the counter resets on success and when a lock has expired.
+  Rows are locked `FOR UPDATE`, so concurrent failures are counted.
+- Sessions (OQ-08): `expires_at = login_time + 30 min`, absolute. The first request at or after
+  `expires_at` marks the row `EXPIRED`. Logout marks it `CLOSED` and sets `logout_time`. A
+  session also stops working when its employee is no longer ACTIVE. Settings:
+  `hrms.auth.session-timeout`, `max-failed-attempts`, `lock-duration`.
+- Change password (PKG-S02): legacy policy order and codes (-20310 length ≥ 8, -20311 uppercase,
+  -20312 digit; all `PASSWORD_POLICY` 400) plus a 72-byte cap (BCrypt limit). A wrong current
+  password is 422 `INVALID_CURRENT_PASSWORD` (A-P2-01). Success re-hashes, resets lockout and
+  closes the caller's **other** sessions.
+- Audit (D-08): login (`USER_SESSIONS` INSERT), logout (`USER_SESSIONS` UPDATE) and change
+  password (`USER_CREDENTIALS` UPDATE, no hash or password in the payload) write `audit_log` in
+  the same transaction. Failed logins are not audited row-by-row; the counter is the record.
+- Menu (HRMS_MENU backend): Employee, Leave, Performance always enabled (FRM-014 parity),
+  Payroll needs `PAYROLL:VIEW`, Reports needs `REPORTS:VIEW`; System Admin is not returned
+  (OQ-03); account entries Change Password and Logout. Navigation targets stay with P7.
+- Employee read model: id, number, names, email, status, type, `active`, hire date, manager id
+  and name, location code and name, department, job title. No SSN, birth date, address or pay.
+  Default filter `employment_status = 'ACTIVE' AND active_flag`; `includeInactive=true` lifts it.
+  Search is fully parameterized: case-insensitive name **prefix** (`starts_with`, so `%`/`_` are
+  literal), exact dept/manager/status/location, hire-date range, paging (max 200), ordered by
+  last name, first name, emp_id. `EmployeeReadService.isActive` is the in-process read API that
+  replaces `PKG_EMPLOYEE.is_active` for other modules (OQ-01).
+- Times: the service clock is an injected `java.time.Clock` (UTC), truncated to microseconds to
+  match PostgreSQL precision.
+
+**Not done in P2 (by design).** No credential provisioning endpoint or dev-seed passwords (OQ-15).
+No SSN encryption (`encrypt_ssn`/`decrypt_ssn` move to P5 writes / P8 re-encrypt; the read model
+never reads SSN). No React frontend (optional in P2). No row-level scoping (OQ-09 scoping
+applies to the leave/performance/payroll routes of P3–P6).
+
 ## 5. Re-homed logic registry
 
 ### 5.0 Conventions
@@ -439,35 +506,35 @@ carryover idempotency record (DEF-03; P3 or P8 per OQ-12); any DELETE grant (D-0
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-001 | BTN_LOGIN requires USERNAME and PASSWORD, then calls `PKG_SECURITY.authenticate(user, pwd, CLIENT_HOST)` | P2 api (login, 400/401) | open |
-| FRM-002 | After login: `:GLOBAL.session_id`, `current_user` and `current_emp_id` are set (a second lookup by email, `ROWNUM=1`), then HRMS_MENU opens | P2 token claims and a "current principal" endpoint | open |
-| FRM-003 | `WHEN OTHERS` turns every failure into "Invalid username or password" | P2. Uniform 401 for credential failures only. Other errors are not masked | open |
+| FRM-001 | BTN_LOGIN requires USERNAME and PASSWORD, then calls `PKG_SECURITY.authenticate(user, pwd, CLIENT_HOST)` | P2 api (login, 400/401) | re-homed (P2, `POST /api/v1/auth/login`; `AuthApiTest.loginValidatesRequiredFields`, `loginIssuesOpaqueTokenAndStoresOnlyItsHash`) |
+| FRM-002 | After login: `:GLOBAL.session_id`, `current_user` and `current_emp_id` are set (a second lookup by email, `ROWNUM=1`), then HRMS_MENU opens | P2 token claims and a "current principal" endpoint | re-homed (P2, login response `user` + `GET /api/v1/auth/me`; `PermissionMatrixTest.meReportsPermissionsGroupedByModule`) |
+| FRM-003 | `WHEN OTHERS` turns every failure into "Invalid username or password" | P2. Uniform 401 for credential failures only. Other errors are not masked | re-homed (P2, uniform 401 `INVALID_CREDENTIALS`; `AuthApiTest.unknownUserBadPasswordAndInactiveEmployeeAreIndistinguishable`) |
 | FRM-004 | WNFI and KEY-NEXT-ITEM focus and navigation | P2 ui-only | drop-proposed (React UX) |
 
 **HRMS_MENU** (form; `HRMS_MENU.mmb.sql` is tracked as MNU-)
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | open |
+| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | in-progress (P2: matrix + `GET /api/v1/menu` PAYROLL gate, `PermissionMatrixTest.menuFollowsTheLegacyGates`; P7 navigation remains) |
 | FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
-| FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | open |
-| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | open |
-| FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | open |
+| FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | re-homed (P2, `POST /api/v1/auth/logout`; `AuthApiTest.logoutRevokesTheSession`) |
+| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | in-progress (P2: menu entries enabled for every authenticated user, `menuFollowsTheLegacyGates`; P7 navigation remains) |
+| FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | re-homed (P2, `POST /api/v1/auth/change-password`; `ChangePasswordTest`) |
 | FRM-016 | MI_ABOUT shows a version message | P7 ui-only | drop-proposed |
 
 **Session check repeated in every form** (HRMS_EMPLOYEE, HRMS_LEAVE, HRMS_PAYROLL, HRMS_PERFORMANCE: WNFI)
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-020 | `IF NOT PKG_SECURITY.is_session_valid(...) THEN RAISE FORM_TRIGGER_FAILURE`. Note DEF-18: the forms pass `GET_APPLICATION_PROPERTY(USERNAME)`, not `:GLOBAL.session_id` | P2 token-validation filter on all `/api/**` (401) | open |
+| FRM-020 | `IF NOT PKG_SECURITY.is_session_valid(...) THEN RAISE FORM_TRIGGER_FAILURE`. Note DEF-18: the forms pass `GET_APPLICATION_PROPERTY(USERNAME)`, not `:GLOBAL.session_id` | P2 token-validation filter on all `/api/**` (401) | re-homed (P2, `BearerTokenFilter` + `SecurityConfig` on all `/api/**`; `AuthApiTest.protectedRoutesRequireValidBearerToken`) |
 
 **HRMS_EMPLOYEE**
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
 | FRM-030 | WNFI: without `has_permission(EMPLOYEE,EDIT)`, the EMPLOYEE block gets `INSERT_ALLOWED`, `UPDATE_ALLOWED` and `DELETE_ALLOWED` = false | P5 api-authz (`EMPLOYEE:EDIT` on create, update, terminate, rehire, transfer, promote). EDIT maps to the D-06 actions | open |
-| FRM-031 | WNFI: `DEFAULT_WHERE` = `EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` | P2 read model default filter (D-03) | open |
+| FRM-031 | WNFI: `DEFAULT_WHERE` = `EMPLOYMENT_STATUS='ACTIVE' AND ACTIVE_FLAG='Y'` | P2 read model default filter (D-03) | re-homed (P2, `EmployeeReadService` default filter; `EmployeeReadApiTest.defaultReadsAreActiveOnly`) |
 | FRM-032 | PRE-INSERT sets `EMP_ID := SEQ_EMPLOYEE.NEXTVAL`, `EMP_NUMBER := generate_emp_number`, `ACTIVE_FLAG`, status `ACTIVE`, `CREATED_BY := :GLOBAL.current_user` | P5 service (D-02, D-04) | open |
 | FRM-033 | PRE-UPDATE sets `MODIFIED_BY` and `MODIFIED_DATE` | P5 service (D-04) | open |
 | FRM-034 | WVI EMAIL: `PKG_VALIDATION.validate_email_format` (the server regex, **not** the PLL) | P5 domain validation. Note DEF-04 | open |
@@ -476,13 +543,13 @@ carryover idempotency record (DEF-03; P3 or P8 per OQ-12); any DELETE grant (D-0
 | FRM-037 | WVI JOB_ID must be an active job | P5 domain (-20011) | open |
 | FRM-038 | Items EMP_ID and EMP_NUMBER are not insertable or updatable; CREATED_BY and CREATED_DATE are not updatable | P5 api (read-only fields; ignored or rejected on write) | open |
 | FRM-039 | SALARY block is read-only (no I/U/D) | P6 (salary changes only through salary-record operations) | open |
-| FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | open |
+| FRM-040 | LOV_MANAGERS lists ACTIVE employees only | P5 domain (validate_manager -20004) + P2 lookup endpoint | in-progress (P2: active-only `GET /api/v1/employees` serves the manager LOV; P5 validate_manager remains) |
 | FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | open |
 | FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | drop-proposed |
-| FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | open |
+| FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | re-homed (P2, joined `managerName`/`deptName`/`jobTitle`/`locationName`; `EmployeeReadApiTest.getReturnsTheReadModel`) |
 | FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
 | FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | open (unblocked: OQ-11 closed, user accepted soft warning) |
-| FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | open |
+| FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | re-homed (P2, `GET /api/v1/lookups/{departments,job-titles,locations}` active-only; `EmployeeReadApiTest.lookupsAreActiveOnly`) |
 
 **HRMS_LEAVE**
 
@@ -528,9 +595,9 @@ carryover idempotency record (DEF-03; P3 or P8 per OQ-12); any DELETE grant (D-0
 | MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
 | MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | open (unblocked: OQ-03 closed, user accepted the default) |
-| MNU-005 | Admin → Change Password | P2 (= FRM-015) | open |
+| MNU-005 | Admin → Change Password | P2 (= FRM-015) | re-homed (P2, = FRM-015; menu `CHANGE_PASSWORD` entry) |
 | MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | drop-proposed |
-| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | open |
+| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | in-progress (P2: `GET /api/v1/menu` filtered by the matrix; P7 navigation remains) |
 
 ### 5.4 PLL libraries (`forms/libraries/`)
 
@@ -548,8 +615,8 @@ so that they are not lost.
 | PLL-010 | `handle_error` (HRMS_COMMON_LIB) | Logs through `PKG_COMMON.log_error`, shows MESSAGE twice, raises FORM_TRIGGER_FAILURE | Dropped. Replaced by server-side error logging and D-05 | drop-proposed |
 | PLL-011 | `toolbar_save/clear/query/first/prev/next/last/insert/delete/exit` (10) | Forms built-ins | ui-only | drop-proposed |
 | PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | drop-proposed |
-| PLL-013 | `get_current_user` (`NVL(:GLOBAL.current_user, USER)`) | Principal lookup | P2 (authenticated principal) | open |
-| PLL-014 | `get_session_id`, `check_session` (`is_session_valid`) | Session gate | P2 (= FRM-020) | open |
+| PLL-013 | `get_current_user` (`NVL(:GLOBAL.current_user, USER)`) | Principal lookup | P2 (authenticated principal) | re-homed (P2, `HrmsPrincipal` via `@AuthenticationPrincipal`; actor = login email) |
+| PLL-014 | `get_session_id`, `check_session` (`is_session_valid`) | Session gate | P2 (= FRM-020) | re-homed (P2, = FRM-020) |
 | PLL-015 | `refresh_lov` | Repopulates the record group | ui-only (lookup endpoints) | drop-proposed |
 
 ### 5.5 Package rules and batch jobs that must be re-homed
@@ -564,9 +631,9 @@ re-homing boundary.
 | PKG-E03 | PKG_EMPLOYEE.create_employee | Names required (-20010), dept, manager, job active (-20011). Salary vs grade is only a debug warning. Location defaults from dept. Names UPPER/TRIM, email lower/TRIM. Calls **PKG_PAYROLL.create_salary_record** (NEW_HIRE). HIRE history, audit, welcome and manager notifications | P5 service. Salary goes through the interface (OQ-01) | open |
 | PKG-E04 | PKG_EMPLOYEE.log_history | `AUTONOMOUS_TRANSACTION` + COMMIT; swallows errors | P5 (same transaction; errors propagate) | open |
 | PKG-E05 | PKG_EMPLOYEE.update_employee / transfer / promote / terminate / rehire | See inventory §I-3.1. Terminate auto-cancels PENDING leave and end-dates salary and pay elements. Promote calls create_salary_record (PROMOTION). Rehire calls create_salary_record (REHIRE) | P5 (salary through the interface) | open |
-| PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | open |
+| PKG-E06 | PKG_EMPLOYEE.search_employees | Dynamic SQL with concatenation (SQL injection) | P2 read model (parameterized), DEF-09 | re-homed (P2, `EmployeeReadService.search`, bind parameters only; `EmployeeReadApiTest.searchIsInjectionSafe` (DEF-09 fixed)) |
 | PKG-E07 | PKG_EMPLOYEE.get_org_chart / VW_ORG_HIERARCHY | CONNECT BY, active only, depth ≤ 10 | P7 (recursive CTE) | open |
-| PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | open |
+| PKG-E08 | PKG_EMPLOYEE.set_session_context (called by PKG_SECURITY) | Package globals for user, emp and dept | P2. Replaced by the request-scoped principal | re-homed (P2, request-scoped `HrmsPrincipal`; no package/global state) |
 | PKG-L01 | PKG_LEAVE.submit_leave_request | -20001, -20203 (type, tenure), -20210, -20211 (backdating > 5 days), business days (-20212), overlap (-20202), balance when ACCRUAL_FLAG='Y' (-20201), status PENDING/APPROVED by REQUIRES_APPROVAL, PENDING balance increment, manager notification, audit | P3 | open |
 | PKG-L02 | PKG_LEAVE.approve / reject / cancel | PENDING only for approve and reject; PENDING or APPROVED for cancel (-20204). Balance moves PENDING→USED, PENDING release, or USED restore. Notifications on approve and reject (none on cancel) | P3 | open |
 | PKG-L03 | PKG_LEAVE.calculate_business_days | Weekdays minus HOLIDAYS (active, `LOCATION_CODE IS NULL OR = emp location`) | P3 domain (DEF-02) | open |
@@ -582,10 +649,10 @@ re-homing boundary.
 | PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | open |
 | PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | open |
 | PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | open |
-| PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | open |
-| PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | open |
-| PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | open |
-| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; each phase's service writes remain) |
+| PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | re-homed (P2, `AuthService`, `PermissionService`, `permission_rules` (V9); `AuthApiTest`, `PermissionMatrixTest` (DEF-10 fixed)) |
+| PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | re-homed (P2, `AuthService.changePassword` against `user_credentials`; `ChangePasswordTest`) |
+| PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | in-progress (P2: `hash_password`/MD5 dropped for `DelegatingPasswordEncoder` BCrypt. `encrypt_ssn`/`decrypt_ssn` re-targeted to P5 (SSN writes, key from config) and P8 (re-encrypt): the P2 read model never reads SSN) |
+| PKG-A01 | PKG_AUDIT.log_action | Autonomous transaction; swallows errors | P1 table + each phase's service (D-08) | in-progress (P1: `audit_log` with JSONB payloads and `STATUS_CHANGE` in V5; P2: `AuditWriter` (same transaction, failures propagate) for login, logout and change-password; each phase's service writes remain) |
 | PKG-A02 | PKG_AUDIT.purge_old_records (365 days) | Retention | P8 `job` (needs a D-03 exception amendment) | open |
 | PKG-N01 | PKG_NOTIFICATION.send_notification / process_queue (DBMS_SCHEDULER every 5 minutes) / retry_failed / cancel | Queue table + UTL_MAIL | P3 (outbox, used first by leave) + `job` | open |
 | PKG-C01 | PKG_COMMON / PKG_VALIDATION helpers | Params, business days, fiscal year (Oct 1), formatting, validators | Each consuming phase; validators in P5 | open |
@@ -596,7 +663,7 @@ re-homing boundary.
 
 | ID | View | Dest | Status |
 |---|---|---|---|
-| VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | in-progress (P1: `hrms.vw_active_employees` in V7, test `reportingViewsAreQueryable`; P2 read model remains) |
+| VW-001 | VW_ACTIVE_EMPLOYEES | P1 DB view + P2 read model | re-homed (P1: `hrms.vw_active_employees` in V7; P2: the read model applies the same filter in `EmployeeReadService`, `defaultReadsAreActiveOnly`) |
 | VW-002 | VW_ORG_HIERARCHY (CONNECT BY) | P1 (recursive CTE) + P7 endpoint | in-progress (P1: recursive CTE `hrms.vw_org_hierarchy` in V7, test `orgHierarchyKeepsConnectBySemantics`; P7 endpoint remains) |
 | VW-003 | VW_EMPLOYEE_COMPENSATION | P1 + P7 endpoint (`PAYROLL:VIEW`) | in-progress (P1: `hrms.vw_employee_compensation` in V7; P7 endpoint remains) |
 | VW-004 | VW_LEAVE_SUMMARY | P1 + P7 endpoint | in-progress (P1: `hrms.vw_leave_summary` in V7, parity incl. DEF-23; P7 endpoint remains) |
@@ -671,6 +738,7 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-12 | Which phase owns the leave batch jobs (accrual, carryover, expiry)? | Not named in the program text | P3 implements accrual. Carryover and expiry go to P8, or P3 if time allows | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
+| OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists. P2 tests provision their own rows; no passwords are in source or the dev seed | P8 data migration creates a credential per ACTIVE employee with a random, unusable hash and a one-time reset/invite link (delivery through the P3 notification outbox). Dev environments create rows with a local script. No admin endpoint in P2 (ADMIN is out of scope, OQ-03) | open — provisional, awaiting user confirmation |
 
 ---
 
@@ -681,3 +749,4 @@ marks it **"provisional — awaiting user confirmation"**.
 | — | 2026-11-20 | P0 | Initial locked decisions D-00…D-09; contract `v0-draft` | Phase 0 deliverable. D-00 is a user decision relayed by the coordinator |
 | A-P1-01 | 2026-11-20 | P1 | Added D-10 (backend Maven layout, Flyway conventions, dev seed, app-role grants, embedded-PG16 tests) | D-00 asked P1 to record the build layout. Additive; no locked decision changed |
 | A-P1-02 | 2026-11-20 | P1 | **User decision:** the recommended defaults of OQ-01…OQ-04 and OQ-06…OQ-13 are accepted and closed; they are no longer provisional. Registry rows blocked on OQ-03, OQ-09, OQ-10, OQ-11 are unblocked; PKG-I01 is drop-proposed (OQ-13) | Relayed by the coordinator. Schema effects applied in P1: OQ-06 partial unique index (V6); OQ-13 tables migrated. OQ-07/OQ-08 need no P1 columns (P2 adds them with `user_credentials`) |
+| A-P2-01 | 2026-11-20 | P2 | D-05: added the code `INVALID_CURRENT_PASSWORD` (422) for a wrong current password on change-password | Legacy `change_password` was a stub with no such check. 422 follows D-05's split (well-formed input that fails a rule); 401 would wrongly signal an invalid session. Additive; no existing code or status changed |

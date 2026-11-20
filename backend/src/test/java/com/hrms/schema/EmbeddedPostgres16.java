@@ -9,7 +9,7 @@ import java.sql.Statement;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** One embedded PostgreSQL 16 server per test JVM (no Docker); each caller gets a fresh database. */
-final class EmbeddedPostgres16 {
+public final class EmbeddedPostgres16 {
 
     private static final AtomicInteger DATABASES = new AtomicInteger();
     private static EmbeddedPostgres server;
@@ -28,7 +28,7 @@ final class EmbeddedPostgres16 {
         return server;
     }
 
-    static String newDatabaseUrl() {
+    public static String newDatabaseUrl() {
         String name = "hrms_" + DATABASES.incrementAndGet();
         try (Connection c = server().getPostgresDatabase().getConnection();
              Statement s = c.createStatement()) {
