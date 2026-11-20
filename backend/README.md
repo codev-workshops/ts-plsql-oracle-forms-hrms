@@ -28,7 +28,22 @@ mvn -f backend/pom.xml test     # applies every migration + dev seed to an embed
 `0 0 1 1 * *`, 01:00 UTC on the 1st), the notification dispatcher
 (`hrms.jobs.notification-delay`, default `PT5M`) and the payroll batch that calculates every PENDING
 run (`hrms.jobs.payroll-batch-cron`, default `0 0 2 * * *`, 02:00 UTC daily; actor
-`system:payroll-batch`). Off by default; run them on one instance only.
+`system:payroll-batch`), the year-end leave carryover (`hrms.jobs.leave-carryover-cron`, `0 30 0 1 1 *`) and
+daily carryover expiry (`hrms.jobs.leave-carryover-expiry-cron`, `0 45 0 * * *`). The audit purge
+(`hrms.audit.retention`, default `P365D`) also needs `hrms.jobs.audit-purge-enabled=true`. Off by default; run
+them on one instance only.
+
+## Notifications and password links (P8)
+
+- `hrms.notifications.sender`: `log` (default, logs the id only) or `smtp` (needs `spring.mail.host` and
+  `hrms.notifications.from`; the app refuses to start without them).
+- Reset links: `hrms.auth.password-reset.link-base` (React `/reset-password#token=`), `token-ttl` (default `P7D`).
+  Start once with `hrms.cutover.issue-password-resets=true` after the data load (runbook §4).
+
+## Data migration (P8)
+
+`backend/migration/01_stage.sql` + `02_functions.sql`: staging schema, precheck, load, reconcile and export helpers;
+rehearsed by `DataMigrationRehearsalTest`. Procedure: `docs/modernization/cutover-runbook.md`.
 
 ## Payroll tax configuration
 
