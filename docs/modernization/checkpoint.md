@@ -292,7 +292,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | Phase | Status | Branch | PR | Content commit SHAs | Contract version at exit | Date | Notes |
 |---|---|---|---|---|---|---|---|
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
-| P1 Postgres schema | submitted | `modernization/p1-schema` | _see PR_ | `@@P1_SHA@@` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. |
+| P1 Postgres schema | submitted | `modernization/p1-schema` | _see PR_ | `086b16f6f8a4` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. |
 | P2 Auth + employee read model | pending | | | | | | |
 | P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
