@@ -271,6 +271,27 @@ is reported in the PR and the final message.
 - **Runtime config:** `HRMS_DB_URL`, `HRMS_DB_USER`, `HRMS_DB_PASSWORD` (see
   `backend/src/main/resources/application.yml`).
 
+### D-11 Frontend layout and tooling (P7, OQ-16 user decision, amendment A-P7-02)
+
+- **Layout:** one npm package in `frontend/` (React 18 + TypeScript 5 strict + Vite 5, React Router 6).
+  `src/api/` (client), `src/auth/` (session context), `src/components/` (layout, shared UI),
+  `src/pages/` (one file per module), `src/validation.ts` (client hints), `src/test/` (Vitest harness).
+- **API client:** `src/api/schema.d.ts` is **generated** from `docs/modernization/openapi-v1.yaml` by
+  `npm run generate:api` (openapi-typescript); calls go through `openapi-fetch`, so a contract change that
+  breaks the UI fails `npm run typecheck`. Regenerate it whenever the contract gets an amendment.
+- **Auth:** bearer token from `POST /api/v1/auth/login`, kept in `sessionStorage`; a 401 on any call clears it
+  and returns to the login screen (session expiry). Errors are shown from the D-05 problem body (`code`,
+  `legacyCode`, field `errors`).
+- **Navigation:** rendered only from `GET /api/v1/menu` (`route`, `enabled`); disabled entries are shown but not
+  linked; Admin never appears (OQ-03).
+- **Authority:** the server is the only authority. The UI hides or disables actions by permission and status
+  only for usability, mirroring existing server gates; it adds no client-only business rule. The PLL
+  email/phone rules are client hints identical to `EmployeeValidators`.
+- **Tooling:** ESLint 9 (typescript-eslint, react-hooks), Vitest 2 + React Testing Library (jsdom, mocked
+  `fetch`). Node 20 LTS. Dev server `npm run dev` on port 5173 proxies `/api` to `HRMS_API_URL`
+  (default `http://localhost:8080`). Verification (in `frontend/`):
+  `npm ci && npm run lint && npm run typecheck && npm test && npm run build`.
+
 ---
 
 ## 3. Contract version
@@ -299,7 +320,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P4 Performance | accepted | `modernization/p4-performance` | #85 | `2d4d2094c777` | v1.1-P4 (renumbered `v1.1`, A-P7-00) | 2026-11-20 | Flyway V200 (reserved range V200–V299), `com.hrms.performance` service + API, contract amendment v1.1-P4. Details: §4.4. PR head `71f773356d30`. Accepted by the coordinator (76 tests green) (recorded by P6). **Merged into the P6 line by P7** (merge commit on `modernization/p7-nav-reporting`). |
 | P5 Employee core | accepted | `modernization/p5-employee` | #86 | `f9d91aed89db` | **v1.1-P5** (renumbered `v1.2`, A-P7-00) | 2026-11-20 | Employee commands (create/update/transfer/promote/terminate/rehire/history, DELETE=405), `SalaryRecordPort` + recording stub (OQ-01), contract amendment v1.1-P5. No Flyway migration needed (reserved V300–V399 unused). `mvn -f backend/pom.xml test`: 80 tests green. No frontend. Details: §4.5. PR head `7cb802b364a9`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P6). |
 | P6 Payroll | accepted | `modernization/p6-payroll` | #87 | `2bf5a5c6326c` | **v1.2-P6** (renumbered `v1.3`, A-P7-00) | 2026-11-20 | Flyway V400 (tax parameters + 2024 brackets, nullable error-row element, unique period start). `SalaryRecordPort` implemented by payroll (stub deleted), pay-period generation, runs (create/calculate/approve/reverse, payslips, errors), table-driven taxes, payroll batch job, contract v1.2-P6. `mvn -f backend/pom.xml test`: 90 tests green. No frontend. Details: §4.6. PR head `3ab86ffa73a8`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P7). |
-| P7 Navigation + reporting | submitted | `modernization/p7-nav-reporting` | (see PR) | `3fb4e77c9b1a` (code + contract), P4 merge `7ff50b996f4c` | **v1.4** | 2026-11-20 | Merged P4 (PR #85) into the P6 line and renumbered the amendments linearly (A-P7-00). Menu navigation targets (`route`, `apiPath`), `com.hrms.reporting` (6 read-only endpoints behind `REPORTS:VIEW`; compensation and payroll also `PAYROLL:VIEW`), contract v1.4 (A-P7-01). No Flyway migration. `mvn -f backend/pom.xml test`: 107 tests green. No React UI (OQ-16 undecided). Details: §4.7. |
+| P7 Navigation + reporting | submitted | `modernization/p7-nav-reporting` | (see PR) | `3fb4e77c9b1a` (code + contract), P4 merge `7ff50b996f4c`; React UI `c6d06ad12ce3`, `b141f3ee8d6d` | **v1.4** | 2026-11-20 | Merged P4 (PR #85) into the P6 line and renumbered the amendments linearly (A-P7-00). Menu navigation targets (`route`, `apiPath`), `com.hrms.reporting` (6 read-only endpoints behind `REPORTS:VIEW`; compensation and payroll also `PAYROLL:VIEW`), contract v1.4 (A-P7-01). No Flyway migration. `mvn -f backend/pom.xml test`: 107 tests green. React UI in `frontend/` (OQ-16 closed by the user, D-11): `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` (12 Vitest tests), `npm run build` green; manual smoke test against the dev-seeded backend. No backend or contract change for the UI. Details: §4.7, §4.8. |
 | P8 Parity + cutover | pending | | | | | | Last phase. Marks the checkpoint `complete`. Cutover runbook must note that P4's `V200` sorts below P6's `V400` (see §4.7). |
 
 ### 4.1 P1 notes (Postgres schema)
@@ -675,7 +696,37 @@ Tests: `ReportApiTest` (7), `PermissionMatrixTest.menuFollowsTheLegacyGates`, `O
 
 **Not done in P7 (by design).** The other PKG_REPORTING reports (PKG-R01) and the pay register CSV
 (PKG-P06) are deferred (OQ-03). System Admin (parameters, user management) is out of scope (OQ-03).
-No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
+React UI: added after the user closed OQ-16; see §4.8.
+
+### 4.8 P7 notes (React UI, OQ-16)
+
+The user closed OQ-16 ("Fold it into Phase 7 (navigation + all module screens)"). Commits `c6d06ad12ce3`, `b141f3ee8d6d`;
+layout and tooling are D-11. **No backend or contract change** (contract stays v1.4).
+
+- **Login / account:** email + password (dev seed `Hrms#2026`), logout, change password; contract error codes
+  shown (`INVALID_CREDENTIALS` with legacy -20301; `UNAUTHENTICATED` returns to login with an expiry notice).
+- **Navigation:** the HRMS_MENU equivalent, rendered from `GET /api/v1/menu`.
+- **Employee:** list/search (active only unless "Include inactive"), detail, create, update, transfer, promote,
+  terminate, rehire (offered only for TERMINATED), history (`EMPLOYEE:EDIT`), salary records (`PAYROLL:VIEW`).
+  Server warnings (`EmployeeMutation.warnings`) are shown.
+- **Leave:** balances, submit (half day + period), my requests with Cancel only for PENDING/APPROVED,
+  approval queue with approve/reject.
+- **Performance:** cycles list; create/open/generate reviews/close for `PERFORMANCE:ADMIN`; my reviews,
+  reviews I conduct and all reviews in a cycle; self assessment, manager review and acknowledge forms shown
+  only in the statuses the server accepts; goals add and progress. No delete action anywhere.
+- **Payroll:** pay periods (generate, close), runs (create; Calculate only for PENDING, Approve only for
+  CALCULATED with `PAYROLL:APPROVE`; reverse with a reason), payslips, run errors.
+- **Reports:** the catalogue from `GET /api/v1/reports` (unavailable reports disabled) and the five report
+  tables; the leave summary labels `Pending`, `Available (net of pending)` and
+  `Available before pending (legacy)` (OQ-14, still provisional).
+
+Tests: `frontend/src/App.test.tsx` (login, bad credentials, session expiry, logout, permission-filtered
+menu, change password) and `frontend/src/pages/modules.test.tsx` (one happy path per module, plus
+payroll actions hidden without EDIT/APPROVE). Manual smoke test: backend jar with the `dev` profile on a
+local PostgreSQL 16.4, `npm run dev`, signed in as `james.richardson@company.com`, and went through every
+module: generated 2026 monthly periods; created, calculated and approved a run (23 payslips); created and
+opened a cycle and generated reviews (22); submitted a leave request; transferred an employee (history row
+written); opened every report.
 
 ---
 
@@ -726,21 +777,21 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-001 | BTN_LOGIN requires USERNAME and PASSWORD, then calls `PKG_SECURITY.authenticate(user, pwd, CLIENT_HOST)` | P2 api (login, 400/401) | re-homed (P2, `POST /api/v1/auth/login`; `AuthApiTest.loginValidatesRequiredFields`, `loginIssuesOpaqueTokenAndStoresOnlyItsHash`) |
+| FRM-001 | BTN_LOGIN requires USERNAME and PASSWORD, then calls `PKG_SECURITY.authenticate(user, pwd, CLIENT_HOST)` | P2 api (login, 400/401) | re-homed (P2, `POST /api/v1/auth/login`; `AuthApiTest.loginValidatesRequiredFields`, `loginIssuesOpaqueTokenAndStoresOnlyItsHash`; UI: React UI `c6d06ad12ce3`) |
 | FRM-002 | After login: `:GLOBAL.session_id`, `current_user` and `current_emp_id` are set (a second lookup by email, `ROWNUM=1`), then HRMS_MENU opens | P2 token claims and a "current principal" endpoint | re-homed (P2, login response `user` + `GET /api/v1/auth/me`; `PermissionMatrixTest.meReportsPermissionsGroupedByModule`) |
 | FRM-003 | `WHEN OTHERS` turns every failure into "Invalid username or password" | P2. Uniform 401 for credential failures only. Other errors are not masked | re-homed (P2, uniform 401 `INVALID_CREDENTIALS`; `AuthApiTest.unknownUserBadPasswordAndInactiveEmployeeAreIndistinguishable`) |
-| FRM-004 | WNFI and KEY-NEXT-ITEM focus and navigation | P2 ui-only | drop-proposed (React UX) |
+| FRM-004 | WNFI and KEY-NEXT-ITEM focus and navigation | P2 ui-only | dropped (P7 React UI `c6d06ad12ce3`: browser focus and tab order replace WNFI/KEY-NEXT-ITEM) |
 
 **HRMS_MENU** (form; `HRMS_MENU.mmb.sql` is tracked as MNU-)
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | re-homed (P7, `3fb4e77c9b1a`: P2 matrix gate + menu `PAYROLL` entry with `route`/`apiPath`; `menuFollowsTheLegacyGates`) |
+| FRM-010 | WNFI disables MI_PAYROLL unless `has_permission(PAYROLL,VIEW)`, and BTN_PAYROLL denies the same | P2 matrix + P7 navigation (`api-authz`) | re-homed (P7, `3fb4e77c9b1a`: P2 matrix gate + menu `PAYROLL` entry with `route`/`apiPath`; `menuFollowsTheLegacyGates`; UI: React UI `c6d06ad12ce3`) |
 | FRM-011 | WNFI disables MI_ADMIN unless `has_permission(ADMIN,VIEW)`; target form HRMS_ADMIN does not exist | P7 (OQ-03) | dropped (P7, OQ-03: Admin is out of scope; the entry is not returned by `GET /api/v1/menu`; only change-password is kept, FRM-015) |
-| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: menu `REPORTS` entry gated by `REPORTS:VIEW` → `/api/v1/reports`; `ReportApiTest`.everyReportNeedsReportsView) |
-| FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | re-homed (P2, `POST /api/v1/auth/logout`; `AuthApiTest.logoutRevokesTheSession`) |
-| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | re-homed (P7, `3fb4e77c9b1a`: Employee/Leave/Performance entries enabled for every authenticated user, with navigation targets; `menuFollowsTheLegacyGates`) |
-| FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | re-homed (P2, `POST /api/v1/auth/change-password`; `ChangePasswordTest`) |
+| FRM-012 | WNFI disables MI_REPORTS and BTN_REPORTS unless `has_permission(REPORTS,VIEW)`; target form HRMS_REPORTS does not exist | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: menu `REPORTS` entry gated by `REPORTS:VIEW` → `/api/v1/reports`; `ReportApiTest`.everyReportNeedsReportsView; UI: React UI `c6d06ad12ce3`) |
+| FRM-013 | BTN_LOGOUT and MI_LOGOUT call `PKG_SECURITY.logout(:GLOBAL.session_id)` | P2 api (revoke token) | re-homed (P2, `POST /api/v1/auth/logout`; `AuthApiTest.logoutRevokesTheSession`; UI: React UI `c6d06ad12ce3`) |
+| FRM-014 | BTN_EMPLOYEES, BTN_LEAVE and BTN_PERFORMANCE open forms with **no** permission check | P7 navigation (entries shown to all authenticated users, which is parity) | re-homed (P7, `3fb4e77c9b1a`: Employee/Leave/Performance entries enabled for every authenticated user, with navigation targets; `menuFollowsTheLegacyGates`; UI: React UI `c6d06ad12ce3`) |
+| FRM-015 | MI_CHANGE_PWD opens the change-password window | P2 (change-password endpoint, D-06) | re-homed (P2, `POST /api/v1/auth/change-password`; `ChangePasswordTest`; UI: React UI `c6d06ad12ce3`) |
 | FRM-016 | MI_ABOUT shows a version message | P7 ui-only | drop-proposed |
 
 **Session check repeated in every form** (HRMS_EMPLOYEE, HRMS_LEAVE, HRMS_PAYROLL, HRMS_PERFORMANCE: WNFI)
@@ -767,7 +818,7 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 | FRM-041 | The EMPLOYEE block does **direct table DML** on EMPLOYEES, bypassing `PKG_EMPLOYEE.create_employee`, so it writes no salary, history or notification | P5. All writes go through the service. The direct-DML path is dropped | re-homed (P5, `f9d91aed89db`: every employee write goes through `EmployeeCommandService`; no direct-DML path) |
 | FRM-042 | Block `DeleteAllowed="Yes"` contradicts TRG-008; ALT_CONFIRM_DELETE alert | P5. Dropped by D-03 (no delete) | dropped (P5, D-03: no delete; DELETE is 405) |
 | FRM-043 | POST-QUERY looks up dept name, job title and manager name | P2 read model (joined fields) | re-homed (P2, joined `managerName`/`deptName`/`jobTitle`/`locationName`; `EmployeeReadApiTest.getReturnsTheReadModel`) |
-| FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | drop-proposed |
+| FRM-044 | ON-ERROR (FRM-40401/FRM-40501 messages) and KEY-EXIT confirm-on-unsaved | ui-only. The D-05 error envelope replaces it | re-homed (P7 React UI `c6d06ad12ce3`: the error banner shows the D-05 problem `code`/`legacyCode`; the unsaved-changes confirm is dropped) |
 | FRM-045 | Salary outside the grade range is a **soft warning with a manager override** (described in a PKG_EMPLOYEE.pkb comment; no such trigger exists in the export) | P6 (OQ-11) | re-homed (P5 soft warning `SALARY_OUTSIDE_GRADE` on create/promote/rehire, `f9d91aed89db`; P6 `2bf5a5c6326c`: these are the only salary-record operations, so no further warning point exists) |
 | FRM-046 | WNFI POPULATE_GROUP for RG_DEPARTMENTS, RG_JOB_TITLES and RG_LOCATIONS | P2/P5 lookup endpoints (active-only) | re-homed (P2, `GET /api/v1/lookups/{departments,job-titles,locations}` active-only; `EmployeeReadApiTest.lookupsAreActiveOnly`) |
 
@@ -776,12 +827,12 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 | ID | Rule | Dest | Status |
 |---|---|---|---|
 | FRM-050 | WNFI `DEFAULT_WHERE` = `EMP_ID = :GLOBAL.current_emp_id` (self-only list; built by string concatenation) | P3 api-authz (row scoping: own requests; managers see approvals assigned to them) | done (P3: lists are self-only; detail visible to owner, approver, `LEAVE:APPROVE`; else 404) |
-| FRM-051 | BTN cancel gate: only `PENDING`/`APPROVED`, then ALT_CONFIRM_CANCEL | P3 domain. **The server already enforces this** (`cancel_leave_request` raises -20204, PKG_LEAVE.pkb L331). It stays server-side | done (P3: `POST …/cancel` → 409 `INVALID_REQUEST_STATUS` unless PENDING/APPROVED) |
+| FRM-051 | BTN cancel gate: only `PENDING`/`APPROVED`, then ALT_CONFIRM_CANCEL | P3 domain. **The server already enforces this** (`cancel_leave_request` raises -20204, PKG_LEAVE.pkb L331). It stays server-side | done (P3: `POST …/cancel` → 409 `INVALID_REQUEST_STATUS` unless PENDING/APPROVED; UI: React UI `c6d06ad12ce3`) |
 | FRM-052 | NEW_REQUEST requires leave type, start date and end date | P3 api validation (400) | done (P3: bean validation → 400 `VALIDATION_FAILED`) |
 | FRM-053 | LEAVE_REQUEST and LEAVE_BALANCE blocks are read-only (no I/U/D) | P3 (no generic CRUD; only submit, approve, reject and cancel commands) | done (P3: command routes only; no PUT/PATCH/DELETE) |
 | FRM-054 | POST-QUERY looks up the leave type name; RG_LEAVE_TYPES LOV | P3 read model and lookup | done (P3: `GET /api/v1/leave/types`; names in `LeaveRequest`) |
 | FRM-055 | Submit passes `HALF_DAY_FLAG` but **never** `HALF_DAY_PERIOD` | P3 (accept `halfDayPeriod`; see DEF-01) | done (P3: `halfDayPeriod` accepted and required for half days) |
-| FRM-056 | Tabs for pending approvals and team calendar (`get_pending_requests`, `get_team_calendar`) | P3 api | done (P3: `GET /api/v1/leave/approvals`, `GET /api/v1/leave/team-calendar`) |
+| FRM-056 | Tabs for pending approvals and team calendar (`get_pending_requests`, `get_team_calendar`) | P3 api | done (P3: `GET /api/v1/leave/approvals`, `GET /api/v1/leave/team-calendar`; UI: React UI `c6d06ad12ce3`) |
 
 **HRMS_PAYROLL**
 
@@ -789,8 +840,8 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 |---|---|---|---|
 | FRM-060 | WNFI: without `has_permission(PAYROLL,VIEW)` the form exits | P6 api-authz (`PAYROLL:VIEW` on all payroll reads) | re-homed (P6, `2bf5a5c6326c`: `PAYROLL:VIEW` on every `/api/v1/payroll` route; `PayrollApiTest`, 403 for grade 2) |
 | FRM-061 | WNFI `DEFAULT_WHERE` on PAY_PERIOD = `STATUS='OPEN'` | P6 list default filter | re-homed (P6, `2bf5a5c6326c`: `GET /api/v1/payroll/pay-periods` defaults to OPEN, newest start first; `PayrollApiTest.generatesMonthlyAndBiweeklyPeriodsIdempotently`) |
-| FRM-062 | **BTN_CALCULATE gate: `PAYROLL_RUN.STATUS = 'PENDING'` only.** This is Forms-only. Verified: `PKG_PAYROLL.calculate_payroll` has **no** status check (L271-347) | P6 domain (409 `INVALID_RUN_STATUS`) | re-homed (P6, `2bf5a5c6326c`: `PayrollRunService.calculate` 409 `INVALID_RUN_STATUS` unless PENDING; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`) |
-| FRM-063 | BTN_APPROVE gate: `has_permission(PAYROLL,APPROVE)`. This is Forms-only: `approve_payroll` checks status (CALCULATED, -20103) but not permission | P6 api-authz (`PAYROLL:APPROVE`) | re-homed (P6, `2bf5a5c6326c`: approve needs `PAYROLL:APPROVE`; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`) |
+| FRM-062 | **BTN_CALCULATE gate: `PAYROLL_RUN.STATUS = 'PENDING'` only.** This is Forms-only. Verified: `PKG_PAYROLL.calculate_payroll` has **no** status check (L271-347) | P6 domain (409 `INVALID_RUN_STATUS`) | re-homed (P6, `2bf5a5c6326c`: `PayrollRunService.calculate` 409 `INVALID_RUN_STATUS` unless PENDING; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`; UI: React UI `c6d06ad12ce3`) |
+| FRM-063 | BTN_APPROVE gate: `has_permission(PAYROLL,APPROVE)`. This is Forms-only: `approve_payroll` checks status (CALCULATED, -20103) but not permission | P6 api-authz (`PAYROLL:APPROVE`) | re-homed (P6, `2bf5a5c6326c`: approve needs `PAYROLL:APPROVE`; `PayrollApiTest.runLifecycleEnforcesTheGatesServerSide`; UI: React UI `c6d06ad12ce3`) |
 | FRM-064 | BTN_CREATE_RUN calls `create_payroll_run` with **no** permission check beyond the form-entry VIEW check | P6 api-authz (recommended: `PAYROLL:CREATE`; see OQ-09) | re-homed (P6, `2bf5a5c6326c`: create and calculate need `PAYROLL:EDIT` per closed OQ-09 (grade ≥ 8); 403 for a grade-6 `PAYROLL:VIEW` holder; `PayrollApiTest`) |
 | FRM-065 | All PAY_PERIOD and PAYROLL_RUN blocks are read-only | P6 (no generic CRUD) | re-homed (P6, `2bf5a5c6326c`: commands only; no generic CRUD route on periods or runs) |
 
@@ -802,7 +853,7 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 | FRM-071 | REVIEW_CYCLE block is read-only (no I/U/D); cycles are not editable from the form | P4 api-authz (only the lifecycle commands create, open and close, behind `PERFORMANCE:ADMIN`) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: cycles change only via create/open/close behind `PERFORMANCE:ADMIN`; others 403; `DELETE` 405 `DELETE_FORBIDDEN`) |
 | FRM-072 | PERFORMANCE_REVIEW block: `InsertAllowed=No`, `DeleteAllowed=No`, `UpdateAllowed=Yes` | P4 (reviews are created only by `generate_reviews_for_cycle`/`create_review`; no delete) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: no review insert/update route; reviews come from `…/reviews/generate` and change only via workflow commands; `DELETE` 405) |
 | FRM-073 | PERFORMANCE_REVIEW.STATUS item `UpdateAllowed=No` | P4 domain (status changes only through workflow commands) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: status changes only via self-assessment / manager-review / acknowledge commands) |
-| FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `DELETE /performance/goals/{goalId}` → 405 `DELETE_FORBIDDEN` (-20504)) |
+| FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `DELETE /performance/goals/{goalId}` → 405 `DELETE_FORBIDDEN` (-20504); UI: React UI `c6d06ad12ce3`) |
 | FRM-075 | PERFORMANCE_GOAL insert and update are allowed | P4 api (add goal, update progress) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `POST …/reviews/{id}/goals` and `POST …/goals/{id}/progress`) |
 | FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: OQ-09 row scope: employee/reviewer write, + `PERFORMANCE:VIEW` read; strangers 404, wrong party 403) |
 | FRM-077 | POST-QUERY looks up the employee name | P4 read model | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `employeeName`, `reviewerName`, `jobTitle`, `deptName` on `PerformanceReview`) |
@@ -811,13 +862,13 @@ No React UI (OQ-16 is undecided; the coordinator has not added UI scope).
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | re-homed (P7, `3fb4e77c9b1a`: `MenuEntry.route`/`apiPath` per module; React routes follow if OQ-16 adds UI scope) |
-| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: Reports target is `/api/v1/reports`, 4 named views + VW_PAYROLL_LATEST; OQ-03) |
+| MNU-001 | Modules → Employee, Payroll, Leave and Performance open their forms | P7 navigation endpoint and React routes | re-homed (P7, `3fb4e77c9b1a`: `MenuEntry.route`/`apiPath` per module; React UI `c6d06ad12ce3`: routes `/employees`, `/payroll`, `/leave`, `/performance` render the module screens) |
+| MNU-002 | Modules → Reports & Analytics (`HRMS_REPORTS`) is a **dead target** | P7 (OQ-03) | re-homed (P7, `3fb4e77c9b1a`: Reports target is `/api/v1/reports`, 4 named views + VW_PAYROLL_LATEST; OQ-03; UI: React UI `c6d06ad12ce3`) |
 | MNU-003 | Modules → System Admin (`HRMS_ADMIN`) is a **dead target** | P7 (OQ-03) | dropped (P7, OQ-03: Admin out of scope; menu entry hidden) |
 | MNU-004 | Admin → System Parameters and User Management "requires ADMIN permission" | P7 (OQ-03) | dropped (P7, OQ-03: System Parameters / User Management out of scope; change-password kept, MNU-005) |
-| MNU-005 | Admin → Change Password | P2 (= FRM-015) | re-homed (P2, = FRM-015; menu `CHANGE_PASSWORD` entry) |
-| MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | drop-proposed |
-| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | re-homed (P7, `3fb4e77c9b1a`: menu filtered by the D-06 matrix; disabled entries returned with `enabled: false`) |
+| MNU-005 | Admin → Change Password | P2 (= FRM-015) | re-homed (P2, = FRM-015; menu `CHANGE_PASSWORD` entry; UI: React UI `c6d06ad12ce3`) |
+| MNU-006 | File, Edit, Query, Navigate and Help items (COMMIT_FORM, record navigation, Print via RUN_PRODUCT) | ui-only | dropped (P7 React UI `c6d06ad12ce3`: browser navigation and per-screen forms replace the File/Edit/Query/Navigate/Help menus; printing stays out of scope with PKG-R01) |
+| MNU-007 | "Menu items are enabled/disabled at runtime based on `has_permission`" | P7 navigation response filtered by the matrix (D-06) | re-homed (P7, `3fb4e77c9b1a`: menu filtered by the D-06 matrix; disabled entries returned with `enabled: false`; UI: React UI `c6d06ad12ce3`) |
 
 ### 5.4 PLL libraries (`forms/libraries/`)
 
@@ -827,17 +878,17 @@ so that they are not lost.
 
 | ID | Routine (library) | Behaviour | Dest | Status |
 |---|---|---|---|---|
-| PLL-001 | `validate_email` (HRMS_VALIDATION_LIB) | NULL is valid. Requires `@` not first or last, and a `.` after `@` that is not adjacent to it or last. The comment says it "rejects subdomains" but the **code accepts them**. It has no TLD or whitespace check. | P5 domain: a single server-side email validator (DEF-04) | re-homed (P5, `f9d91aed89db`: one server validator, the PKG_COMMON regex; DEF-04; `EmployeeValidatorsTest.emailUsesTheServerRegexForEveryCaller`) |
-| PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | re-homed (P5, `f9d91aed89db`: `phoneWork`/`phoneMobile` on create/update; `EmployeeValidatorsTest.phoneNeedsTenOrElevenDigits`) |
+| PLL-001 | `validate_email` (HRMS_VALIDATION_LIB) | NULL is valid. Requires `@` not first or last, and a `.` after `@` that is not adjacent to it or last. The comment says it "rejects subdomains" but the **code accepts them**. It has no TLD or whitespace check. | P5 domain: a single server-side email validator (DEF-04) | re-homed (P5, `f9d91aed89db`: one server validator, the PKG_COMMON regex; DEF-04; `EmployeeValidatorsTest.emailUsesTheServerRegexForEveryCaller`; client hint in React UI `c6d06ad12ce3` `validation.ts` = the server regex) |
+| PLL-002 | `validate_phone` | NULL is valid. Strips `()-. +x`, then requires 10 or 11 digits | P5 domain (aligned with `PKG_COMMON.is_valid_phone`) | re-homed (P5, `f9d91aed89db`: `phoneWork`/`phoneMobile` on create/update; `EmployeeValidatorsTest.phoneNeedsTenOrElevenDigits`; client hint in React UI `c6d06ad12ce3` `validation.ts`, same 10/11-digit rule) |
 | PLL-003 | `validate_ssn` | NULL is valid. 9 digits; no `000`, `00` or `0000` group. **Stricter than** server `PKG_COMMON.is_valid_ssn`, which checks 9 digits only | P5 domain (recommended: adopt the stricter rule; OQ-04) | in-progress (P5: stricter validator `EmployeeValidators.isValidSsn`, `f9d91aed89db`, `EmployeeValidatorsTest.ssnUsesTheStricterPllRule`. No SSN write route yet: OQ-P5-2) |
 | PLL-004 | `validate_date_not_future` | NULL is valid. `TRUNC(date) ≤ TRUNC(SYSDATE)` | P5 domain (DATE_OF_BIRTH; injected Clock) | re-homed (P5, `f9d91aed89db`: `dateOfBirth` on create; `EmployeeValidatorsTest.dateNotFutureIsInclusiveOfToday`) |
 | PLL-005 | `validate_salary_range` | Checks salary against `JOB_GRADES.MIN/MAX` and returns a message (not an error). "Cached" in the comment, but it is a direct query | P6 domain (soft warning; see FRM-045 and OQ-11) | re-homed (same as FRM-045: P5 `f9d91aed89db` warning; P6 `2bf5a5c6326c` adds no other salary write path) |
 | PLL-010 | `handle_error` (HRMS_COMMON_LIB) | Logs through `PKG_COMMON.log_error`, shows MESSAGE twice, raises FORM_TRIGGER_FAILURE | Dropped. Replaced by server-side error logging and D-05 | drop-proposed |
 | PLL-011 | `toolbar_save/clear/query/first/prev/next/last/insert/delete/exit` (10) | Forms built-ins | ui-only | drop-proposed |
-| PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | drop-proposed |
+| PLL-012 | `format_date` (`MM/DD/YYYY`), `format_datetime` | Display formatting | ui-only. The API uses ISO-8601; React formats | dropped (P7 React UI `c6d06ad12ce3`: ISO-8601 dates from the API, browser date inputs) |
 | PLL-013 | `get_current_user` (`NVL(:GLOBAL.current_user, USER)`) | Principal lookup | P2 (authenticated principal) | re-homed (P2, `HrmsPrincipal` via `@AuthenticationPrincipal`; actor = login email) |
 | PLL-014 | `get_session_id`, `check_session` (`is_session_valid`) | Session gate | P2 (= FRM-020) | re-homed (P2, = FRM-020) |
-| PLL-015 | `refresh_lov` | Repopulates the record group | ui-only (lookup endpoints) | drop-proposed |
+| PLL-015 | `refresh_lov` | Repopulates the record group | ui-only (lookup endpoints) | dropped (P7 React UI `c6d06ad12ce3`: lookups are fetched from the lookup endpoints on each screen) |
 
 ### 5.5 Package rules and batch jobs that must be re-homed
 
@@ -976,7 +1027,7 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-13 | Is PKG_INTEGRATION (GL, benefits, T&A, org sync) in scope? | Not one of the 5 modules; flat files and FTP | Out of scope for P1–P8. Record it as a follow-up. Its tables are still migrated in P1 | closed — user accepted recommended default (2026-11-20, relayed by coordinator) |
 | OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open — **provisional default implemented in P7** (`LeaveSummaryRow.pending`, `available` = net of pending, `availableBeforePending` = legacy view value), awaiting user confirmation |
 | OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists | Coordinator-applied default: **production** — the P8 data migration creates a credential per ACTIVE employee with an unusable hash and a one-time reset link (sent through the P3 outbox). **Dev/test only** — `db/seed/R__dev_seed_p3.sql` gives every seeded ACTIVE employee the password `Hrms#2026` (bcrypt); it is in `db/seed`, which Flyway loads only with the `dev` profile or in tests, never on the production path (`ProductionMigrationTest`). Documented in `backend/README.md` | open — provisional, awaiting user confirmation (dev half implemented in P3; production half is P8) |
-| OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented; P7 delivered the backend only, and the menu's `route` values are ready for a UI) |
+| OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | **closed — user decision (2026-11-20): "Fold it into Phase 7 (navigation + all module screens)".** Implemented in P7 (`frontend/`, D-11, §4.8) |
 | OQ-P4-1 | Should review and goal writes (self-assessment, manager review, acknowledge, goals) and review generation be refused when the cycle is not OPEN (e.g. DRAFT or CLOSED)? Legacy never checked the cycle status | Raised in P4. Closing a cycle currently does not freeze its reviews | Refuse with 409 `INVALID_CYCLE_STATUS` (-20401) unless the cycle is OPEN (generation allowed in DRAFT and OPEN) | open — provisional, awaiting user confirmation (**not implemented**: P4 keeps parity because it is not blocked) |
 | OQ-P4-2 | Should `PERFORMANCE:VIEW` (grade ≥ 5 under the D-06 matrix) read every review and its goals? The legacy form showed every review to every user | Raised in P4. Implemented as the minimal HR read scope of OQ-09 | Keep: employee + reviewer + `PERFORMANCE:VIEW`; alternatively restrict to `PERFORMANCE:ADMIN` or the management chain | open — provisional, awaiting user confirmation (implemented) |
 | OQ-P4-3 | Should HR (`PERFORMANCE:ADMIN`) be able to act on a review on behalf of the employee or reviewer, or reassign the reviewer (e.g. after a manager change)? | Raised in P4. Legacy had no reassignment; OQ-09 says the reviewer or the employee | No override and no reassignment in P4; add a `PERFORMANCE:ADMIN` reassign command later if the user wants it | open — provisional, awaiting user confirmation (no override implemented) |
@@ -1004,3 +1055,4 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P6-01 (`v1.2-P6` → `v1.3`) | 2026-11-20 | P6 | **Additive contract amendment** (`openapi-v1.yaml` 1.2.0, `x-contract-version: v1.2-P6`): `GET /api/v1/payroll/pay-periods`, `GET /api/v1/payroll/pay-periods/{periodId}`, `POST /api/v1/payroll/pay-periods/generate`, `POST /api/v1/payroll/pay-periods/{periodId}/close`, `GET`+`POST /api/v1/payroll/runs`, `GET /api/v1/payroll/runs/{runId}`, `POST /api/v1/payroll/runs/{runId}/calculate`, `/approve`, `/reverse`, `GET /api/v1/payroll/runs/{runId}/payslips`, `/errors`, `GET /api/v1/payroll/employees/{empId}/salary-records`; schemas `PayFrequency`, `PayPeriodStatus`, `PayrollRunStatus`, `PayrollRunType`, `PayPeriod`, `GeneratePayPeriodsRequest`, `PayPeriodGeneration`, `CreatePayrollRunRequest`, `ReversePayrollRequest`, `PayrollRun`, `PayrollRunError`, `Payslip`, `SalaryRecord`; response `PayrollConflict`; parameters `PeriodId`, `RunId`. **No new error code** (the payroll codes were catalogued in v1); the FRM-062 calculate gate and the DEF-21 reverse gate use `INVALID_RUN_STATUS` with `legacyCode` null (D-05 "(new) calculate gate"). | P6 routes did not exist in v1 or v1.1-P5. Nothing existing changed. Numbered after v1.1-P5 on this branch; P4's parallel `v1.1-P4` is reconciled by the coordinator in P7 |
 | A-P7-00 (`v1.3`) | 2026-11-20 | P7 | **Amendment renumbering only.** P7 merged P4 (PR #85, `71f773356d30`) into the P6 line. The parallel labels become one linear history: `v1.1-P4` (A-P4-01) → **`v1.1`**, `v1.1-P5` (A-P5-01) → **`v1.2`**, `v1.2-P6` (A-P6-01) → **`v1.3`**. At the merge commit `openapi-v1.yaml` is `info.version: 1.3.0`, `x-contract-version: v1.3` (P7's own additions then made it 1.4.0, A-P7-01), with all three amendments' routes and schemas. `OpenApiContractTest` now accepts `v1` or `v1.N` only (no `-Pn` suffix). Flyway: P4's `V200` sorts below P6's `V400`; both apply in order on a fresh install (`ProductionMigrationTest` expects 12 migrations). | Coordinator instruction. Each amendment's content (routes, schemas, codes, rationale) is unchanged; the old labels are kept in parentheses so earlier references still resolve. No route, schema, code or status changed |
 | A-P7-01 (`v1.4`) | 2026-11-20 | P7 | **Additive contract amendment** (`openapi-v1.yaml` 1.4.0, `x-contract-version: v1.4`): tag `reports`; `GET /api/v1/reports`, `/reports/pending-approvals`, `/reports/leave-summary`, `/reports/org-hierarchy`, `/reports/employee-compensation`, `/reports/payroll-latest`; schemas `ReportDescriptor`, `PendingApproval`, `LeaveSummaryRow`, `OrgNode`, `EmployeeCompensation`, `PayrollLatest`; `MenuEntry` gains optional nullable `route` and `apiPath`. No new error code (uses `FORBIDDEN`, `VALIDATION_FAILED`, `EMPLOYEE_NOT_FOUND`). Nothing in v1–v1.3 changed. | OQ-03 (closed): the 4 named views behind `REPORTS:VIEW`; VW_PAYROLL_LATEST added because VW-005's Dest is P7. Compensation and payroll figures also need `PAYROLL:VIEW` (VW-003 Dest). The new `MenuEntry` fields are additive; existing clients ignore them. OQ-14 provisional: `available` (net of pending) and `availableBeforePending` (legacy) are both returned |
+| A-P7-02 | 2026-11-20 | P7 | **Locked decision D-11 added** (frontend layout and tooling) after the user closed OQ-16. No contract change: the UI uses v1.4 routes only | User decision OQ-16 (React UI in P7); D-00 already locked React |
