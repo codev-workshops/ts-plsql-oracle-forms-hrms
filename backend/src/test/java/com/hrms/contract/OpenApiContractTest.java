@@ -10,6 +10,7 @@ import com.hrms.auth.MenuController;
 import com.hrms.auth.Module;
 import com.hrms.common.ErrorCode;
 import com.hrms.leave.LeaveModels;
+import com.hrms.performance.PerformanceModels;
 import com.hrms.employee.EmployeePage;
 import com.hrms.employee.EmployeeView;
 import com.hrms.employee.LookupController;
@@ -57,9 +58,9 @@ class OpenApiContractTest extends ApiTestSupport {
     }
 
     @Test
-    void contractIsFrozenV1() {
+    void contractIsV1WithAdditiveAmendments() {
         assertThat((String) spec.get("openapi")).startsWith("3.");
-        assertThat(map(spec, "info").get("x-contract-version")).isEqualTo("v1");
+        assertThat((String) map(spec, "info").get("x-contract-version")).matches("v1(\\.\\d+(-P\\d+)?)?");
     }
 
     @Test
@@ -101,7 +102,18 @@ class OpenApiContractTest extends ApiTestSupport {
                 Map.entry("EmployeeView", EmployeeView.class),
                 Map.entry("EmployeePage", EmployeePage.class),
                 Map.entry("Department", LookupController.Department.class),
-                Map.entry("JobTitle", LookupController.JobTitle.class));
+                Map.entry("JobTitle", LookupController.JobTitle.class),
+                Map.entry("ReviewCycle", PerformanceModels.ReviewCycle.class),
+                Map.entry("CreateReviewCycle", PerformanceModels.CreateReviewCycle.class),
+                Map.entry("PerformanceReview", PerformanceModels.PerformanceReview.class),
+                Map.entry("GenerateReviewsResult", PerformanceModels.GenerateReviewsResult.class),
+                Map.entry("SelfAssessment", PerformanceModels.SelfAssessment.class),
+                Map.entry("ManagerReview", PerformanceModels.ManagerReview.class),
+                Map.entry("Acknowledgement", PerformanceModels.Acknowledgement.class),
+                Map.entry("RatingBucket", PerformanceModels.RatingBucket.class),
+                Map.entry("PerformanceGoal", PerformanceModels.PerformanceGoal.class),
+                Map.entry("AddGoal", PerformanceModels.AddGoal.class),
+                Map.entry("GoalProgress", PerformanceModels.GoalProgress.class));
         records.forEach((schema, type) -> assertThat(properties(schema))
                 .as(schema).isEqualTo(Arrays.stream(type.getRecordComponents())
                         .map(RecordComponent::getName).collect(Collectors.toSet())));
@@ -116,11 +128,16 @@ class OpenApiContractTest extends ApiTestSupport {
         assertThat(enumOf("Action")).isEqualTo(names(Action.values()));
         assertThat(enumOf("LeaveStatus")).isEqualTo(names(LeaveModels.LeaveStatus.values()));
         assertThat(enumOf("HalfDayPeriod")).isEqualTo(names(LeaveModels.HalfDayPeriod.values()));
+        assertThat(enumOf("CycleStatus")).isEqualTo(names(PerformanceModels.CycleStatus.values()));
+        assertThat(enumOf("ReviewStatus")).isEqualTo(names(PerformanceModels.ReviewStatus.values()));
+        assertThat(enumOf("GoalStatus")).isEqualTo(names(PerformanceModels.GoalStatus.values()));
+        assertThat(enumOf("GoalCategory")).isEqualTo(names(PerformanceModels.GoalCategory.values()));
+        assertThat(enumOf("ReviewRole")).isEqualTo(names(PerformanceModels.ReviewRole.values()));
     }
 
     @Test
     void everyReferenceResolves() {
-        Matcher m = Pattern.compile("\\$ref: '#/components/(schemas|responses)/([A-Za-z]+)'").matcher(raw);
+        Matcher m = Pattern.compile("\\$ref: '#/components/(schemas|responses|parameters)/([A-Za-z]+)'").matcher(raw);
         Set<String> missing = new HashSet<>();
         while (m.find()) {
             if (!map(map(spec, "components"), m.group(1)).containsKey(m.group(2))) {

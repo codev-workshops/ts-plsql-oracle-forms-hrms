@@ -6,9 +6,9 @@
 
 | Field | Value |
 |---|---|
-| `contract_version` | **`v1`** (frozen by P3) |
+| `contract_version` | **`v1.1-P4`** (v1 frozen by P3; additive amendment A-P4-01 by P4, renumbered by the coordinator when P4 and P5 merge) |
 | `checkpoint_status` | `in-progress` |
-| `last_updated_by_phase` | `P3` |
+| `last_updated_by_phase` | `P4` |
 | Source of truth | The files under `schema/`, `plsql/`, `forms/`, `data/` at `main` (`de01258`). The README overstates what the repo contains: it claims 42 tables, 15 views and 200+ triggers, but the files have 30 tables, 6 views and 6 triggers. Treat the README as non-authoritative. |
 
 ---
@@ -277,11 +277,11 @@ is reported in the PR and the final message.
 
 | Field | Value |
 |---|---|
-| `contract_version` | `v1` |
-| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.0.0`, `info.x-contract-version: v1`) |
+| `contract_version` | `v1.1-P4` |
+| Contract artifact | `docs/modernization/openapi-v1.yaml` (`info.version: 1.1.0`, `info.x-contract-version: v1.1-P4`) |
 | Frozen? | **Yes — frozen at v1 by P3 on 2026-11-20 (A-P3-01).** P4–P8 add routes only through `v1.N` amendments in §7; `OpenApiContractTest` keeps the file and the controllers in sync. |
 | Freeze rule | P3 sets `contract_version: v1` and records the freeze in §7. After that, any change to paths, schemas, `code` values or status codes requires an amendment entry `v1.N` (additive) or `v2` (breaking) with rationale, and an update to the version field. |
-| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02) |
+| Version history | `v0-draft` (P0, initial). P2: first draft of the file (auth, menu, employee read, lookups; 10 operations). Still `v0-draft`. **P3: `v1` frozen** — P2 routes unchanged, plus 11 leave operations under `/api/v1/leave` and the complete `ErrorCode` catalogue for every phase (A-P3-01, A-P3-02). **P4: `v1.1-P4`** — additive: 20 performance operations under `/api/v1/performance`, no v1 route/schema/code/status changed (A-P4-01) |
 
 ---
 
@@ -295,8 +295,8 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
 | P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
 | P2 Auth + employee read model | accepted | `modernization/p2-auth` | #83 | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. PR head `c20410949c73`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` (53 green) (recorded by P3). |
-| P3 Leave pilot + contract freeze | submitted | `modernization/p3-leave` | _see PR_ | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. |
-| P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
+| P3 Leave pilot + contract freeze | accepted | `modernization/p3-leave` | #84 | `3de4b27a40f3` (code), `da879517d1fc` (contract) | **v1** | 2026-11-20 | Flyway V10 (`leave_accrual_runs`), dev seed `R__dev_seed_p3.sql` (dev credentials + balances, OQ-15), leave service + API, notification outbox + dispatcher, monthly accrual, **OpenAPI frozen at v1**. `mvn -f backend/pom.xml test`: 66 tests green. No frontend (optional). Details: §4.3. PR head `c23ba1c04a58`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P4). |
+| P4 Performance | submitted | `modernization/p4-performance` | _see PR_ | `2d4d2094c777` | **v1.1-P4** | 2026-11-20 | Flyway V200 (reserved range V200–V299), `com.hrms.performance` service + API (cycle lifecycle, review workflow, goals, rating distribution), DEF-21 performance fixes, Forms DML policy re-homed into API authz, contract amendment v1.1-P4. `mvn -f backend/pom.xml test`: 76 tests green. No frontend. Details: §4.4. Ran in parallel with P5. |
 | P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
 | P6 Payroll | pending | | | | | | Starts after P5. |
 | P7 Navigation + reporting | pending | | | | | | Starts after P4 and P6. |
@@ -489,6 +489,43 @@ and the queue every 5 minutes; off unless `hrms.jobs.enabled=true`).
 `leave_accrual_runs` pattern is the template for its idempotency record. No React pilot UI (optional, OQ-16).
 No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) — unchanged.
 
+### 4.4 P4 notes (performance)
+
+**Code.** `com.hrms.performance` (`PerformanceService`, `PerformanceController`, `PerformanceModels`). Replaces
+every PKG_PERFORMANCE routine except the public `create_review`, which is internal to review generation
+(the form never called it; reviews are created only by `POST …/cycles/{cycleId}/reviews/generate`).
+
+**Migration V200** (coordinator-reserved range V200–V299, A-P4-02). `UNIQUE (cycle_id, emp_id, review_type)`
+on `performance_reviews` (legacy `generate_reviews_for_cycle` caught `DUP_VAL_ON_INDEX`, but no unique key existed,
+so re-runs duplicated reviews; the P8 data rehearsal must dedupe before loading). `NOT VALID` checks
+`progress_pct` and `weight_pct` 0–100 and `end_date >= start_date` (new rows checked, legacy rows still load).
+
+**Authorization (re-homed Forms DML policy).** HRMS_PERFORMANCE checked only the session (FRM-076), so
+every route needs only authentication except: cycle create/open/close and review generation
+→ `PERFORMANCE:ADMIN` (FRM-071); the HR views `GET …/cycles/{id}/reviews` and `…/rating-distribution` →
+`PERFORMANCE:VIEW`. Row scope (OQ-09): a review and its goals are read by the reviewed employee, the assigned
+reviewer and `PERFORMANCE:VIEW` holders (anyone else 404); self-assessment and acknowledge only by the
+employee, the manager review only by the reviewer, goal add/progress by either (another party 403). No
+generic update route exists, so `STATUS` changes only through commands (FRM-073). `DELETE` on cycles,
+reviews and goals is mapped and always returns 405 `DELETE_FORBIDDEN` (-20504) (FRM-071/072/074, D-03).
+
+**State machines (DEF-21 fixed per OQ-04).** Cycle: DRAFT → OPEN (else -20401); close needs OPEN (legacy
+`IN_PROGRESS`/`CALIBRATION`, which no code sets, also close), else -20401. Review: self-assessment needs
+NOT_STARTED/SELF_REVIEW (-20402, unchanged); manager review needs MANAGER_REVIEW/MEETING_SCHEDULED (-20402,
+**new**); acknowledge needs COMPLETED and now returns 409 -20402 instead of a silent no-op. Rating must be
+1.0–5.0 (-20403) and have at most one decimal (also -20403; `NUMERIC(2,1)` would silently round). Goal progress
+0–100 (400 `VALIDATION_FAILED`, **new**); status derivation and comment retention are ported as-is (explicit
+status wins; ≥100 COMPLETED; >0 IN_PROGRESS; 0 keeps the status).
+
+**Parity kept on purpose.** No cycle-status gate on review/goal writes or review generation (OQ-P4-1);
+reviewer = the employee's manager at generation time, `employment_status = 'ACTIVE'` only (as legacy); the
+three legacy notification subjects/bodies are unchanged and go through the P3 outbox. Audit: `REVIEW_CYCLES`
+INSERT/STATUS_CHANGE, `PERFORMANCE_REVIEWS` INSERT/STATUS_CHANGE (with rating and label), `PERFORMANCE_GOALS`
+INSERT/UPDATE — the legacy package audited only cycle creation.
+
+**Not done in P4.** No React UI. Calibration (`calibrated_rating`, `calibration_notes`) and goal
+`self_rating`/`manager_rating` have no legacy code path — not exposed. Reviewer reassignment — none in legacy.
+
 ---
 
 ## 5. Re-homed logic registry
@@ -610,14 +647,14 @@ No SMTP adapter. `TAKEN` status transition (legacy had no code path setting it) 
 
 | ID | Rule | Dest | Status |
 |---|---|---|---|
-| FRM-070 | WNFI `DEFAULT_WHERE` on REVIEW_CYCLE = `STATUS IN ('OPEN','DRAFT')` | P4 list default filter | open |
-| FRM-071 | REVIEW_CYCLE block is read-only (no I/U/D); cycles are not editable from the form | P4 api-authz (only the lifecycle commands create, open and close, behind `PERFORMANCE:ADMIN`) | open |
-| FRM-072 | PERFORMANCE_REVIEW block: `InsertAllowed=No`, `DeleteAllowed=No`, `UpdateAllowed=Yes` | P4 (reviews are created only by `generate_reviews_for_cycle`/`create_review`; no delete) | open |
-| FRM-073 | PERFORMANCE_REVIEW.STATUS item `UpdateAllowed=No` | P4 domain (status changes only through workflow commands) | open |
-| FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | open |
-| FRM-075 | PERFORMANCE_GOAL insert and update are allowed | P4 api (add goal, update progress) | open |
-| FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | open (unblocked: OQ-09 closed, user accepted the default) |
-| FRM-077 | POST-QUERY looks up the employee name | P4 read model | open |
+| FRM-070 | WNFI `DEFAULT_WHERE` on REVIEW_CYCLE = `STATUS IN ('OPEN','DRAFT')` | P4 list default filter | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `GET /performance/cycles` defaults to OPEN+DRAFT ordered by year desc; `includeClosed=true` lists all) |
+| FRM-071 | REVIEW_CYCLE block is read-only (no I/U/D); cycles are not editable from the form | P4 api-authz (only the lifecycle commands create, open and close, behind `PERFORMANCE:ADMIN`) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: cycles change only via create/open/close behind `PERFORMANCE:ADMIN`; others 403; `DELETE` 405 `DELETE_FORBIDDEN`) |
+| FRM-072 | PERFORMANCE_REVIEW block: `InsertAllowed=No`, `DeleteAllowed=No`, `UpdateAllowed=Yes` | P4 (reviews are created only by `generate_reviews_for_cycle`/`create_review`; no delete) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: no review insert/update route; reviews come from `…/reviews/generate` and change only via workflow commands; `DELETE` 405) |
+| FRM-073 | PERFORMANCE_REVIEW.STATUS item `UpdateAllowed=No` | P4 domain (status changes only through workflow commands) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: status changes only via self-assessment / manager-review / acknowledge commands) |
+| FRM-074 | PERFORMANCE_GOAL block: `DeleteAllowed=No` (no goal deletes) | P4 (no DELETE; 405) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `DELETE /performance/goals/{goalId}` → 405 `DELETE_FORBIDDEN` (-20504)) |
+| FRM-075 | PERFORMANCE_GOAL insert and update are allowed | P4 api (add goal, update progress) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `POST …/reviews/{id}/goals` and `POST …/goals/{id}/progress`) |
+| FRM-076 | The form has **no** permission check (session check only), so any authenticated user can update reviews and goals | P4 api-authz (OQ-09: row scoping of reviewer, employee and HR) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: OQ-09 row scope: employee/reviewer write, + `PERFORMANCE:VIEW` read; strangers 404, wrong party 403) |
+| FRM-077 | POST-QUERY looks up the employee name | P4 read model | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: `employeeName`, `reviewerName`, `jobTitle`, `deptName` on `PerformanceReview`) |
 
 ### 5.3 Menu module (`forms/menus/HRMS_MENU.mmb.sql`)
 
@@ -678,9 +715,9 @@ re-homing boundary.
 | PKG-P05 | PKG_PAYROLL.calculate_federal_tax / state / fica / medicare | Hard-coded 2024 brackets and constants; flat state rates | P6 (DEF-05) | open |
 | PKG-P06 | PKG_PAYROLL.generate_pay_register | UTL_FILE CSV | P7 report endpoint (CSV) or drop; OQ-03 | open |
 | PKG-P07 | Payroll batch "DBMS_SCHEDULER" (header comment; no job DDL in the repo) | Batch calculate | P6 `job` (Spring scheduler; no DBMS_SCHEDULER) | open |
-| PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | open |
-| PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | open |
-| PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | open |
+| PKG-F01 | PKG_PERFORMANCE cycle lifecycle | create → DRAFT; open needs DRAFT (-20401); **close has no status check** | P4 (DRAFT→OPEN→CLOSED enforced; DEF-21) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: DRAFT→OPEN→CLOSED, -20401 on any other transition; DEF-21 close fixed) |
+| PKG-F02 | PKG_PERFORMANCE review workflow | NOT_STARTED/SELF_REVIEW → MANAGER_REVIEW (-20402). Manager review: rating 1.0–5.0 (-20403), label ≥4.5 Exceptional, ≥3.5 Exceeds Expectations, ≥2.5 Meets Expectations, ≥1.5 Needs Improvement, else Unsatisfactory → COMPLETED (**no status check**). Acknowledge requires COMPLETED (silent no-op otherwise) | P4 (DEF-21) | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: -20402 status gates incl. manager review and acknowledge (DEF-21), -20403 rating 1.0–5.0 one decimal, legacy label bands) |
+| PKG-F03 | PKG_PERFORMANCE goals / generate_reviews_for_cycle | add_goal, update_goal_progress (≥100 → COMPLETED, >0 → IN_PROGRESS) with no validation; one review per ACTIVE employee that has a manager | P4 | re-homed (P4, `2d4d2094c777`, `PerformanceApiTest`: add goal / progress 0–100 (DEF-21) / generation idempotent via V200 unique key; `get_team_reviews` = `GET /performance/reviews?role=REVIEWER`, `get_rating_distribution` = `…/rating-distribution`) |
 | PKG-S01 | PKG_SECURITY.authenticate / logout / is_session_valid / has_permission | See D-06 | P2 | re-homed (P2, `AuthService`, `PermissionService`, `permission_rules` (V9); `AuthApiTest`, `PermissionMatrixTest` (DEF-10 fixed)) |
 | PKG-S02 | PKG_SECURITY.change_password | Policy: ≥8 characters (-20310), an uppercase letter (-20311), a digit (-20312). The body is a stub | P2 (implemented for real against user_credentials) | re-homed (P2, `AuthService.changePassword` against `user_credentials`; `ChangePasswordTest`) |
 | PKG-S03 | PKG_SECURITY.encrypt_ssn / decrypt_ssn / hash_password | Hard-coded AES-256 key; MD5 | P2 (key from config) / P8 (re-encrypt), D-06 | in-progress (P2: `hash_password`/MD5 dropped for `DelegatingPasswordEncoder` BCrypt. `encrypt_ssn`/`decrypt_ssn` re-targeted to P5 (SSN writes, key from config) and P8 (re-encrypt): the P2 read model never reads SSN) |
@@ -733,7 +770,7 @@ re-homing boundary.
 | DEF-18 | The Forms session check passes `GET_APPLICATION_PROPERTY(USERNAME)`, the DB user and not the session ID, to `is_session_valid` | HRMS_EMPLOYEE.xml L34; HRMS_LEAVE.xml, HRMS_PERFORMANCE.xml WNFI | Dropped with Forms (FRM-020 re-homed) |
 | DEF-19 | The hire-date limit differs: Forms allows +90 days, the trigger +180 | HRMS_EMPLOYEE.xml L383; trg_employees.sql L35 | OQ-10 |
 | DEF-20 | A SALARY_RECORDS insert is audited twice: by `create_salary_record` and by TRG_SALARY_AUDIT | PKG_PAYROLL.pkb L57; trg_audit.sql | Fix: one audit row with JSON (D-08) |
-| DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) |
+| DEF-21 | State checks are missing in `close_review_cycle` (any status → CLOSED), `submit_manager_review` (any status → COMPLETED), `reverse_payroll` (any status → REVERSED) and `acknowledge_review` (silent no-op). `update_goal_progress` does not validate the 0–100 range | PKG_PERFORMANCE.pkb, PKG_PAYROLL.pkb L583-600 | Fix: enforce state machines (P4 cycle DRAFT→OPEN→CLOSED is in the program text) — **P4 part fixed** (`close_review_cycle`, `submit_manager_review`, `acknowledge_review`, `update_goal_progress`; `2d4d2094c777`); `reverse_payroll` remains for P6 |
 | DEF-22 | `LEAVE_REQUESTS` cancel never notifies; terminate's auto-cancel of PENDING leave does **not** release the PENDING balance | PKG_EMPLOYEE.pkb L667-683 | Fix: route through the leave cancel logic (P5 → P3 service) — P3 provides `LeaveService.cancelPendingRequestsOf`; P5 wires terminate to it |
 
 ---
@@ -772,6 +809,9 @@ marks it **"provisional — awaiting user confirmation"**.
 | OQ-14 | DEF-23: should the leave-summary report's `available` keep excluding PENDING (legacy view) or match `leave_balances.available`? | Raised in P1 after the user's 2026-11-20 acceptance of OQ-01..OQ-13, so not covered by it | Keep parity in the DB view (done in P1). The P7 endpoint returns `pending` and the generated `available` (net of pending) and labels them explicitly | open (P7 decides only if unanswered; mark provisional) |
 | OQ-15 | How do employees get their first password? Legacy never verified passwords, so there are no credentials to migrate | Raised in P2. `user_credentials` starts empty; nobody can log in until a row exists | Coordinator-applied default: **production** — the P8 data migration creates a credential per ACTIVE employee with an unusable hash and a one-time reset link (sent through the P3 outbox). **Dev/test only** — `db/seed/R__dev_seed_p3.sql` gives every seeded ACTIVE employee the password `Hrms#2026` (bcrypt); it is in `db/seed`, which Flyway loads only with the `dev` profile or in tests, never on the production path (`ProductionMigrationTest`). Documented in `backend/README.md` | open — provisional, awaiting user confirmation (dev half implemented in P3; production half is P8) |
 | OQ-16 | Should the program build the optional React leave pilot UI (login, submit, my requests, approvals) before P4/P5? | P3 prioritized backend + v1 freeze; the API is complete for such a UI | Build it as a small follow-up on top of contract v1 (no contract change needed), or fold it into P7 navigation | open — provisional, awaiting user confirmation (not implemented) |
+| OQ-P4-1 | Should review and goal writes (self-assessment, manager review, acknowledge, goals) and review generation be refused when the cycle is not OPEN (e.g. DRAFT or CLOSED)? Legacy never checked the cycle status | Raised in P4. Closing a cycle currently does not freeze its reviews | Refuse with 409 `INVALID_CYCLE_STATUS` (-20401) unless the cycle is OPEN (generation allowed in DRAFT and OPEN) | open — provisional, awaiting user confirmation (**not implemented**: P4 keeps parity because it is not blocked) |
+| OQ-P4-2 | Should `PERFORMANCE:VIEW` (grade ≥ 5 under the D-06 matrix) read every review and its goals? The legacy form showed every review to every user | Raised in P4. Implemented as the minimal HR read scope of OQ-09 | Keep: employee + reviewer + `PERFORMANCE:VIEW`; alternatively restrict to `PERFORMANCE:ADMIN` or the management chain | open — provisional, awaiting user confirmation (implemented) |
+| OQ-P4-3 | Should HR (`PERFORMANCE:ADMIN`) be able to act on a review on behalf of the employee or reviewer, or reassign the reviewer (e.g. after a manager change)? | Raised in P4. Legacy had no reassignment; OQ-09 says the reviewer or the employee | No override and no reassignment in P4; add a `PERFORMANCE:ADMIN` reassign command later if the user wants it | open — provisional, awaiting user confirmation (no override implemented) |
 
 ---
 
@@ -785,3 +825,5 @@ marks it **"provisional — awaiting user confirmation"**.
 | A-P2-01 | 2026-11-20 | P2 | D-05: added the code `INVALID_CURRENT_PASSWORD` (422) for a wrong current password on change-password | Legacy `change_password` was a stub with no such check. 422 follows D-05's split (well-formed input that fails a rule); 401 would wrongly signal an invalid session. Additive; no existing code or status changed |
 | A-P3-01 | 2026-11-20 | P3 | **Contract frozen at `v1`** (`openapi-v1.yaml` 1.0.0): P2 routes unchanged; added 11 leave operations (`/api/v1/leave/types`, `/balances`, `/requests` GET+POST, `/requests/{requestId}` + `/approve` `/reject` `/cancel`, `/approvals`, `/team-calendar`, `/accrual-runs`), leave schemas, and the complete `ErrorCode` enum for every phase (D-05 codes for P4–P7 included so they need no amendment) | P3 exit criterion. Later changes need `v1.N` (additive) or `v2` (breaking) |
 | A-P3-02 | 2026-11-20 | P3 | D-05: `EMPLOYEE_NOT_ACTIVE` is always **422** (the -20012 transfer row said 409); `PARAM_NOT_EDITABLE` is always 409 and an unknown parameter is `NOT_FOUND` 404. Each `ErrorCode` now has exactly one HTTP status | One status per code keeps the frozen catalogue machine-checkable. Neither route exists yet (P5, P7), so no client is affected |
+| A-P4-01 | 2026-11-20 | P4 | **Contract amendment `v1.1-P4`** (additive; `openapi-v1.yaml` 1.1.0): tag `performance`, 20 operations under `/api/v1/performance` (cycles list/create/get/delete-405/open/close, review generation, cycle reviews, rating distribution, my/team reviews, review get/delete-405, self-assessment, manager review, acknowledge, goals list/add, goal get/delete-405, goal progress); schemas `ReviewCycle`, `CreateReviewCycle`, `PerformanceReview`, `GenerateReviewsResult`, `SelfAssessment`, `ManagerReview`, `Acknowledgement`, `RatingBucket`, `PerformanceGoal`, `AddGoal`, `GoalProgress` and enums `CycleStatus`, `ReviewStatus`, `GoalStatus`, `GoalCategory`, `ReviewRole`; responses `PerformanceConflict`, `DeleteForbidden`; path parameters `CycleId`, `ReviewId`, `GoalId`. `OpenApiContractTest` accepts `v1(.N(-Pn))?` | P4 scope. No v1 route, schema, error code or status changed (the P4 codes were already in the v1 catalogue). Numbered `v1.1-P4` per the parallel-phase rule; the coordinator renumbers it when P4 and P5 merge |
+| A-P4-02 | 2026-11-20 | P4 | D-10: P4 migrations use the coordinator-reserved range `V200–V299` (`V200__performance_workflow.sql`) instead of the next global number | Parallel-phase rule: P4 and P5 branch from the same P3 head; disjoint ranges avoid Flyway version clashes. Flyway orders V200 after V10; `ProductionMigrationTest` now expects 11 migrations |
