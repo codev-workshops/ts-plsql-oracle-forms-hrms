@@ -294,7 +294,7 @@ Status vocabulary: `pending` → `in-progress` → `submitted` (by the phase) �
 |---|---|---|---|---|---|---|---|
 | P0 Inventory & checkpoint | accepted | `modernization/p0-inventory` | #81 | `6367f7847ee5` | v0-draft | 2026-11-20 | Docs only. No code or schema changes. PR head `1f84ad21df5e`. Accepted by the coordinator (recorded by P1). |
 | P1 Postgres schema | accepted | `modernization/p1-schema` | #82 | `086b16f41d7d` | v0-draft | 2026-11-20 | Flyway V1–V8 + dev seed + embedded-PG16 tests (`mvn -f backend/pom.xml test`, 17 tests). No API changes. Details: §4.1. PR head `05cb2c1369d0`. Accepted by the coordinator after re-running `mvn -f backend/pom.xml test` green (recorded by P2). |
-| P2 Auth + employee read model | submitted | `modernization/p2-auth` | _see PR_ | _P2_SHA_ | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. |
+| P2 Auth + employee read model | submitted | `modernization/p2-auth` | _see PR_ | `de31dad1ffd4` | v0-draft | 2026-11-20 | Flyway V9 (`user_credentials`, `permission_rules`, token/expiry on `user_sessions`), auth/session/matrix/menu/change-password/employee-read API, draft `openapi-v1.yaml`. `mvn -f backend/pom.xml test`: 53 tests green. No frontend (optional). Details: §4.2. |
 | P3 Leave pilot + contract freeze | pending | | | | | | Freezes v1. |
 | P4 Performance | pending | | | | | | Runs in parallel with P5, after P3. |
 | P5 Employee core | pending | | | | | | Runs in parallel with P4, after P3. |
